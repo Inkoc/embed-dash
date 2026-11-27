@@ -92,9 +92,19 @@ test("provides a working retry after a failed connection", async () => {
 });
 
 test("the preview shows every part of the embed in Discord's order", () => {
+  const example = exampleDraft();
   render(
     <DiscordPreview
-      draft={exampleDraft()}
+      draft={{
+        ...example,
+        embeds: [
+          {
+            ...example.embeds[0]!,
+            image: "https://example.com/banner.png",
+            thumbnail: "attachment://mark.png",
+          },
+        ],
+      }}
       bot={undefined}
       botPending={false}
       time="Today at 18:00"

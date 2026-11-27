@@ -121,6 +121,17 @@ const hexColor = /^#[0-9a-f]{6}$/i;
  * Title and author links open in a browser, so they must be web links; images
  * and icons may also point at a file uploaded with the message.
  */
+/**
+ * An uploaded file is referenced as `attachment://filename`; Discord only
+ * matches filenames made of ASCII letters, digits, dots, dashes and underscores.
+ */
+const attachmentReference = /^attachment:\/\/(?!\.+$)[\w.-]+$/;
+
+/** Whether Discord would accept the link; empty counts as acceptable, since every link is optional. */
+export function isAcceptedLink(url: string, media: boolean): boolean {
+  return linkProblem(url, media) === null;
+}
+
 function linkProblem(url: string, media: boolean): string | null {
   const value = url.trim();
   if (!value) return null;
@@ -135,6 +146,10 @@ function linkProblem(url: string, media: boolean): string | null {
       ? "Use a full link that starts with https://, or attachment:// for an uploaded file."
       : "Use a full link that starts with https://.";
   }
+  if (protocol === "attachment:" && media)
+    return attachmentReference.test(value)
+      ? null
+      : "Name an uploaded file as attachment://filename, using only letters, digits, dots, dashes and underscores.";
   if (schemes.includes(protocol)) return null;
   return media
     ? `Discord only shows images from https://, http:// or attachment:// links, not ${protocol}//.`

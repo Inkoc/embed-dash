@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { BotIdentity } from "@embed-dash/shared";
+import { isAcceptedLink, type BotIdentity } from "@embed-dash/shared";
 import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
 import styles from "./DiscordPreview.module.css";
@@ -13,9 +13,9 @@ interface Props {
   time: string;
 }
 
-/** Only links Discord would show; anything else would also fail validation. */
+/** Only links Discord would show; anything else also fails validation. */
 const shown = (url: string) =>
-  /^(https?:\/\/|attachment:\/\/)/i.test(url.trim()) ? url.trim() : "";
+  url.trim() && isAcceptedLink(url, true) ? url.trim() : "";
 
 /** Discord writes an embed's time as "Today at 18:00" or as a date and time. */
 export function embedTime(timestamp: string, sent: string, now = new Date()) {

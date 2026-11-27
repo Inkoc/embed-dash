@@ -121,8 +121,38 @@ export function toggleLinePrefix(
   };
 }
 
-/** Fences the selection, or an empty block, on lines of its own. */
+const fenced = /^```[^\n`]*\n([\s\S]*?)\n?```$/;
+
+/**
+ * Fences the selection, or an empty block, on lines of its own; a selection
+ * that is already fenced, or sits just inside fences, is unfenced instead.
+ */
 export function codeBlock(text: string, start: number, end: number): Edit {
+  const whole = fenced.exec(text.slice(start, end));
+  if (whole) {
+    const body = whole[1]!;
+    return {
+      from: start,
+      to: end,
+      insert: body,
+      selectionStart: start,
+      selectionEnd: start + body.length,
+    };
+  }
+  const prior = text.slice(0, start);
+  const opening = /```[^\n`]*\n$/.exec(prior);
+  // An odd count of fences before the selection means the last one opens a block.
+  const inside = opening && prior.split("```").length % 2 === 0;
+  if (inside && text.startsWith("\n```", end)) {
+    const body = text.slice(start, end);
+    return {
+      from: opening.index,
+      to: end + 4,
+      insert: body,
+      selectionStart: opening.index,
+      selectionEnd: opening.index + body.length,
+    };
+  }
   const before = start > 0 && text[start - 1] !== "\n" ? "\n" : "";
   const after = end < text.length && text[end] !== "\n" ? "\n" : "";
   const body = text.slice(start, end);

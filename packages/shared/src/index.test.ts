@@ -5,6 +5,7 @@ import {
   discordLimits,
   emptyEmbed,
   embedTextLength,
+  isAcceptedLink,
   messageDraftSchema,
   messageEmbedTextLength,
   validateMessage,
@@ -266,6 +267,26 @@ describe("validation", () => {
       "embeds.0.author.iconUrl",
       "embeds.0.footer.iconUrl",
     ]);
+  });
+
+  test("attachment links must name one file", () => {
+    for (const image of [
+      "attachment:foo",
+      "attachment://",
+      "attachment:///foo",
+      "attachment://a/b.png",
+      "attachment://my banner.png",
+      "attachment://..",
+    ])
+      expect(paths({ embeds: [embed({ image })] }), image).toEqual([
+        "embeds.0.image",
+      ]);
+    expect(
+      paths({ embeds: [embed({ image: "attachment://My_banner-2.png" })] }),
+    ).toEqual([]);
+    expect(isAcceptedLink("attachment://a.png", true)).toBe(true);
+    expect(isAcceptedLink("attachment://a.png", false)).toBe(false);
+    expect(isAcceptedLink("", false)).toBe(true);
   });
 
   test("author and footer extras need their text", () => {

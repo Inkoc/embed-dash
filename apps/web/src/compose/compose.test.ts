@@ -100,6 +100,18 @@ describe("formatting commands", () => {
     expect(run("", (t) => codeBlock(t, 0, 0))).toBe("```\n[]\n```");
   });
 
+  test("a fenced selection, or one just inside fences, is unfenced", () => {
+    const once = "say \n```\nhi\n```\n now";
+    expect(run(once, (t) => codeBlock(t, 9, 11))).toBe("say \n[hi]\n now");
+    expect(run(once, (t) => codeBlock(t, 5, 15))).toBe("say \n[hi]\n now");
+    expect(run("```js\nx\n```", (t) => codeBlock(t, 0, 12))).toBe("[x]");
+    expect(run("```\n\n```", (t) => codeBlock(t, 4, 4))).toBe("[]");
+    // Text after a closed block isn't inside it.
+    expect(run("```\na\n```\nb\n```", (t) => codeBlock(t, 10, 11))).toBe(
+      "```\na\n```\n```\n[b]\n```\n```",
+    );
+  });
+
   test("links select whatever is still to be typed", () => {
     expect(run("docs", (t) => link(t, 0, 4))).toBe("[docs]([https://])");
     expect(run("https://a.b", (t) => link(t, 0, 11))).toBe(
@@ -180,18 +192,24 @@ describe("draft edits", () => {
     const draft = sample();
     const [a, b] = draft.embeds;
     const field = b!.fields[1]!;
-    expect(locate(draft, "content")).toEqual({ id: "in-content", open: [] });
-    expect(locate(draft, "embeds")).toEqual({ id: "compose-budget", open: [] });
+    expect(locate(draft, "content")).toEqual({
+      id: "in-content",
+      open: [],
+      unfold: [],
+    });
+    expect(locate(draft, "embeds").id).toBe("compose-budget");
     expect(locate(draft, "embeds.0")).toEqual({
       id: `${a!.id}-head`,
       open: [],
+      unfold: [`${a!.id}:folded`],
     });
     expect(locate(draft, "embeds.1.fields.1.value")).toEqual({
       id: `${field.id}-value`,
       open: [field.id],
+      unfold: [`${b!.id}:folded`],
     });
     expect(locate(draft, "embeds.1.fields").id).toBe(`${b!.id}-fields`);
-    expect(locate(draft, "embeds.0.author.iconUrl")).toEqual({
+    expect(locate(draft, "embeds.0.author.iconUrl")).toMatchObject({
       id: `${a!.id}-author-iconUrl`,
       open: [`${a!.id}:author`],
     });
