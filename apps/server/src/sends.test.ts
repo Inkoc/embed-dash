@@ -51,6 +51,7 @@ async function setup(
     host: "127.0.0.1",
     dataDir: dir,
     maxUploadMb: options.maxUploadMb ?? 10,
+    uploadRetentionDays: 14,
     discordApiBase: `http://127.0.0.1:${address.port}/api`,
   };
   const app = await createApp(config, { logger: false });
@@ -353,6 +354,26 @@ test("a partial failure keeps the other copies, and retry re-sends only the fail
   const nothing = await retry(s, send.id);
   expect(nothing.statusCode).toBe(409);
   expect(nothing.json().code).toBe("NOTHING_TO_RETRY");
+});
+
+test("clearing the draft after a partial send keeps the file its retry needs", async () => {
+  const s = await setup();
+  const banner = await upload(s, "banner.png");
+  s.fake.fail(results, { status: 403, code: 50013 });
+  const send = await sent(s, [news, results], { attachments: [banner] });
+  expect(send.status).toBe("partial");
+
+  // What Clear draft does with each of the draft's files.
+  const cleared = await s.app.inject({
+    method: "DELETE",
+    url: `/api/uploads/${banner.id}`,
+    headers: s.headers,
+  });
+  expect(cleared.statusCode).toBe(204);
+
+  const done = await retried(s, send.id);
+  expect(done.status).toBe("done");
+  expect(s.fake.messages.at(-1)?.channelId).toBe(results);
 });
 
 test("retry can be limited to chosen failed copies", async () => {

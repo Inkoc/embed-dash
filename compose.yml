@@ -16,6 +16,8 @@ services:
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       BOT_TOKEN_FILE: /run/secrets/bot_token
       DATA_DIR: /data
+      # Days a file only a draft uses is kept; files a send uses are always kept.
+      UPLOAD_RETENTION_DAYS: ${UPLOAD_RETENTION_DAYS:-14}
       PORT: "8742"
       HOST: "0.0.0.0"
     secrets:

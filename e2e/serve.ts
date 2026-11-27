@@ -29,6 +29,7 @@ const discordApp = await createApp(
     port: discordPort,
     dataDir: discordDataDir,
     maxUploadMb: 10,
+    uploadRetentionDays: 14,
     discordApiBase,
     publicUrl: `http://127.0.0.1:${discordPort}`,
     discordLogin: {
@@ -49,6 +50,7 @@ const app = await createApp(
     port,
     dataDir,
     maxUploadMb: 10,
+    uploadRetentionDays: 14,
     discordApiBase,
   },
   { spaRoot, logger: false },

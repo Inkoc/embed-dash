@@ -111,6 +111,15 @@ HTTP(S) origin without credentials or a path.
 Pre-login session checks use an HttpOnly CSRF cookie and do not create database
 rows. Authenticated session identifiers are stored as SHA-256 hashes.
 
+## Uploaded files
+
+Files attached in the composer are stored under `DATA_DIR/uploads`, up to
+`MAX_UPLOAD_MB` each (default 10). A file that a send uses is kept, so a failed
+channel can be retried later. A file only a draft uses is kept for
+`UPLOAD_RETENTION_DAYS` (default 14, a whole number of days); after that the
+composer shows it as no longer on the server and asks for it again. Clear draft
+deletes the draft's files at once, apart from any a send still uses.
+
 ## Sign in with Discord
 
 `AUTH_MODE=discord` lets a team share one instance: people sign in with their

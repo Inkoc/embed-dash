@@ -107,6 +107,7 @@ async function fixture(
   const app = await createApp(
     {
       maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "discord",
       botToken: "fixture-token",
       port: 8742,
@@ -506,6 +507,7 @@ test("the Discord routes only exist in Discord mode", async () => {
   const app = await createApp(
     {
       maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",

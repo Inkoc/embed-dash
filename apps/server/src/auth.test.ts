@@ -17,6 +17,7 @@ async function fixture(overrides: Partial<Config> = {}) {
   const app = await createApp(
     {
       maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",

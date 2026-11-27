@@ -13,11 +13,7 @@ import { afterEach, expect, test } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "./app.js";
 import { openDatabase } from "./db.js";
-import {
-  sniffContentType,
-  sweepUploads,
-  unreferencedUploadMs,
-} from "./uploads.js";
+import { sniffContentType, sweepUploads } from "./uploads.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -35,6 +31,7 @@ async function fixture() {
       host: "127.0.0.1",
       dataDir: dir,
       maxUploadMb: 1,
+      uploadRetentionDays: 14,
       discordApiBase: "http://127.0.0.1:1/api",
     },
     { logger: false },
@@ -282,12 +279,13 @@ test("deleting removes the row and the file", async () => {
   expect(readdirSync(join(dir, "uploads"))).toEqual([]);
 });
 
-test("the sweep removes day-old files no send refers to, and keeps the rest", () => {
+test("the sweep removes files past retention that no send refers to, and keeps the rest", () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-sweep-"));
   const db = openDatabase(dir);
   try {
     const now = Date.now();
-    const old = now - unreferencedUploadMs - 1;
+    const day = 24 * 60 * 60 * 1000;
+    const old = now - 14 * day - 1;
     const uploads = join(dir, "uploads");
     mkdirSync(uploads);
     const add = (id: string, createdAt: number) => {
@@ -298,7 +296,8 @@ test("the sweep removes day-old files no send refers to, and keeps the rest", ()
     };
     add("old-unused", old);
     add("old-sent", old);
-    add("recent", now - 1000);
+    // A draft left for nearly two weeks still has its file.
+    add("recent", now - 13 * day);
     db.prepare(
       "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('s', ?, '', 'done', 1, 1)",
     ).run(JSON.stringify({ attachments: [{ id: "old-sent" }] }));
@@ -307,7 +306,7 @@ test("the sweep removes day-old files no send refers to, and keeps the rest", ()
     utimesSync(join(uploads, "stray-old"), old / 1000, old / 1000);
     writeFileSync(join(uploads, "stray-new"), png);
 
-    sweepUploads(dir, db, now);
+    sweepUploads(dir, db, 14, now);
 
     expect(readdirSync(uploads).sort()).toEqual([
       "old-sent",
@@ -320,6 +319,40 @@ test("the sweep removes day-old files no send refers to, and keeps the rest", ()
     ]);
   } finally {
     db.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("a failing cleanup is logged and doesn't stop the server", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-sweep-fail-"));
+  // A directory where a stray file would be: removing it as a file throws.
+  const stray = join(dir, "uploads", "stray-dir");
+  mkdirSync(stray, { recursive: true });
+  const long = Date.now() / 1000 - 60 * 24 * 60 * 60;
+  utimesSync(stray, long, long);
+  let logs = "";
+  const app = await createApp(
+    {
+      authMode: "none",
+      botToken: "fixture-token",
+      port: 8742,
+      host: "127.0.0.1",
+      dataDir: dir,
+      maxUploadMb: 1,
+      uploadRetentionDays: 14,
+      discordApiBase: "http://127.0.0.1:1/api",
+    },
+    {
+      logger: {
+        stream: { write: (chunk: string) => void (logs += chunk) },
+      },
+    },
+  );
+  try {
+    expect(logs).toContain("Upload cleanup failed");
+    expect((await app.inject("/health")).statusCode).toBe(200);
+  } finally {
+    await app.close();
     rmSync(dir, { recursive: true });
   }
 });

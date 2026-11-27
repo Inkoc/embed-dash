@@ -19,6 +19,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Database from "better-sqlite3";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
+import { safeErrorDetails } from "./errors.js";
 import { uploads } from "./schema.js";
 
 /** Types an `<img>` can show without being able to run anything; SVG is deliberately absent. */
@@ -103,30 +104,32 @@ export function createUploadStore(dataDir: string, sqlite: Database.Database) {
   };
 }
 
-/** How long a file nothing refers to is kept: long enough to finish a draft in one sitting. */
-export const unreferencedUploadMs = 24 * 60 * 60 * 1000;
+const dayMs = 24 * 60 * 60 * 1000;
 const sweepEveryMs = 60 * 60 * 1000;
 
+/** True for an upload some stored send names, whatever its status: a retry sends the file again. */
+const referencedBySend = sql`exists (
+  select 1 from sends, json_each(sends.payload_json, '$.attachments') as attachment
+  where json_extract(attachment.value, '$.id') = ${uploads.id}
+)`;
+
 /**
- * Removes files older than a day that no stored send refers to. Drafts live
- * in the browser, so a file only a draft uses counts as unreferenced; the
- * composer marks it missing if the draft comes back later. Files on disk
- * without a record (an interrupted upload) go too.
+ * Removes files older than the retention period that no stored send refers
+ * to. Drafts live in the browser, so a file only a draft uses counts as
+ * unreferenced; the composer marks it missing if the draft comes back later.
+ * Files on disk without a record (an interrupted upload) go too.
  */
 export function sweepUploads(
   dataDir: string,
   sqlite: Database.Database,
+  retentionDays: number,
   now = Date.now(),
 ) {
   const db = drizzle(sqlite);
-  const cutoff = now - unreferencedUploadMs;
-  const referenced = sql`exists (
-    select 1 from sends, json_each(sends.payload_json, '$.attachments') as attachment
-    where json_extract(attachment.value, '$.id') = ${uploads.id}
-  )`;
+  const cutoff = now - retentionDays * dayMs;
   const stale = db
     .delete(uploads)
-    .where(and(lt(uploads.createdAt, cutoff), sql`not ${referenced}`))
+    .where(and(lt(uploads.createdAt, cutoff), sql`not ${referencedBySend}`))
     .returning({ id: uploads.id })
     .all();
   const { directory, find } = createUploadStore(dataDir, sqlite);
@@ -160,11 +163,16 @@ export async function registerUploads(
   await app.register(multipart, {
     limits: { fileSize: maxBytes, files: 1, fields: 0, parts: 1 },
   });
-  sweepUploads(config.dataDir, sqlite);
-  const sweeper = setInterval(
-    () => sweepUploads(config.dataDir, sqlite),
-    sweepEveryMs,
-  );
+  // A failed sweep only leaves files for the next one; it must never stop the server.
+  const sweep = () => {
+    try {
+      sweepUploads(config.dataDir, sqlite, config.uploadRetentionDays);
+    } catch (error) {
+      app.log.warn(safeErrorDetails(error), "Upload cleanup failed");
+    }
+  };
+  sweep();
+  const sweeper = setInterval(sweep, sweepEveryMs);
   sweeper.unref();
   app.addHook("onClose", async () => clearInterval(sweeper));
   const tooLarge = {
@@ -257,8 +265,15 @@ export async function registerUploads(
 
   app.delete("/api/uploads/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
-    db.delete(uploads).where(eq(uploads.id, id)).run();
-    rmSync(join(directory, id), { force: true });
+    // The draft lets go of the file, but a send that names it may still need
+    // it for a retry; the sweep removes it once nothing refers to it.
+    const removed = db
+      .delete(uploads)
+      .where(and(eq(uploads.id, id), sql`not ${referencedBySend}`))
+      .returning({ id: uploads.id })
+      .all();
+    if (removed.length || !find(id))
+      rmSync(join(directory, id), { force: true });
     return reply.code(204).send();
   });
 }
