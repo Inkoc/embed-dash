@@ -32,7 +32,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 
 - **config** — reads environment once at startup, resolves `*_FILE` secrets, fails fast with a clear message on invalid config.
 - **discord** — wraps `@discordjs/rest`: bot identity, guilds + channels (cached ~60 s, refreshable), effective permission computation, create/edit message (multipart), forum thread create, crosspost. Base URL is configurable so tests run against a fake Discord.
-- **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit.
+- **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit. Discord mode runs the OAuth authorization-code flow (`identify` only, `state` bound to the browser by a cookie, single-use, 10-minute expiry), checks the user ID against the allowlist, then revokes the Discord tokens at Discord and discards them; only the ID, display name and avatar address are kept in the session. The callback is a GET navigation, so `state` replaces the origin/CSRF checks there.
 - **sends** — validates payload with the shared schema, checks attachments against the stored upload records and each channel against the current guild listing, stores the send and one target row per channel, delivers sequentially through the rate-limited client (short 429s are waited out, long ones fail that channel; a 401 ends the send), records per-target result; retry and edit operate on target rows. A post that got no answer is `unknown`, not `failed`, because it may have been created.
 - **scheduler** (M3) — a timer that claims due sends in a transaction and hands them to **sends**. A target whose outcome is unknown after a crash is marked `unknown`, not retried automatically.
 - **uploads** — multipart upload to `/data/uploads/<uuid>`, streamed to disk (never buffered) and refused as soon as the declared length or the stream passes `MAX_UPLOAD_MB`; the filename is sanitised with the shared rule and the content type is sniffed from the bytes, not taken from the client. The draft references a file by id and filename; the payload says `attachment://<filename>`. The per-message limits (10 files, 25 MB together, unique names) are checked in the browser and by the shared message validation.
@@ -46,7 +46,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 | `uploads` | id, filename, content_type, size, created_at |
 | `templates` | id, name, payload_json, updated_at |
 | `channel_groups` | id, name, channel_ids_json |
-| `sessions` | id (random), subject (`local` / `password` / Discord user id + name), csrf_token, expires_at |
+| `sessions` | id (SHA-256 of the cookie value), subject (`password` / `discord:<user id>`), user_name and user_avatar_url (Discord only), csrf_token, expires_at |
 
 `payload_json` is the shared `MessagePayload` (content, embeds, link buttons, attachment references by upload id, flags, mention settings). Guild and channel names are copied onto targets so history stays readable after channels change.
 
@@ -57,7 +57,7 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | Method + path | Purpose |
 |---|---|
 | `GET /health` | Liveness (no auth) |
-| `GET /api/session` | Current user, auth mode, CSRF token, `insecure` flag for mode `none` |
+| `GET /api/session` | Auth mode, signed-in `user` (Discord mode), `deniedUserId` after a refused sign-in, CSRF token, `insecure` flag for mode `none` |
 | `POST /api/auth/login`, `POST /api/auth/logout` | Password mode |
 | `GET /api/auth/discord`, `GET /api/auth/discord/callback` | Discord OAuth (`identify`, state check, allowlist) |
 | `GET /api/bot` | Bot identity |
@@ -85,10 +85,10 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 | `AUTH_MODE` | `password` | `none` / `password` / `discord` |
 | `BOT_TOKEN_FILE` (or `BOT_TOKEN`) | — | Required |
 | `ADMIN_PASSWORD_FILE` (or `ADMIN_PASSWORD`) | — | Required for `password` |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET_FILE`, `PUBLIC_URL`, `ALLOWED_USER_IDS` | — | Required for `discord` |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET_FILE` (or `DISCORD_CLIENT_SECRET`), `PUBLIC_URL`, `ALLOWED_USER_IDS` | — | Required for `discord`; the redirect URI is `<PUBLIC_URL>/api/auth/discord/callback` |
 | `DATA_DIR` | `/data` | SQLite file and uploads |
 | `MAX_UPLOAD_MB` | `10` | Per file; total request capped at 25 MB |
-| `DISCORD_API_BASE` | Discord's | Tests only |
+| `DISCORD_API_BASE` | Discord's | Tests only; also serves the OAuth token, revoke and user requests, and the consent page is derived from its host |
 
 ## Key decisions
 

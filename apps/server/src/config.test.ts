@@ -93,9 +93,6 @@ test("resolves workspace-relative paths from the invoking directory", () => {
 test("auth mode defaults to password, rejects unsupported modes and reads password files", () => {
   const base = { BOT_TOKEN: "fixture" };
   expect(() => readConfig(base)).toThrow("ADMIN_PASSWORD");
-  expect(() => readConfig({ ...base, AUTH_MODE: "discord" })).toThrow(
-    "not supported yet",
-  );
   expect(() => readConfig({ ...base, AUTH_MODE: "other" })).toThrow(
     "AUTH_MODE",
   );
@@ -152,6 +149,76 @@ test("proxy trust is opt-in and public origins are validated", () => {
     expect(() => readConfig({ ...base, PUBLIC_URL })).toThrow("PUBLIC_URL");
 });
 
+const discordEnv = {
+  BOT_TOKEN: "fixture",
+  AUTH_MODE: "discord",
+  DISCORD_CLIENT_ID: "999999999999999999",
+  DISCORD_CLIENT_SECRET: "fixture-secret",
+  PUBLIC_URL: "https://embed.example/",
+  ALLOWED_USER_IDS: "111111111111111111, 222222222222222222,111111111111111111",
+};
+test("reads Discord login settings, with the secret file taking precedence", () => {
+  expect(readConfig(discordEnv)).toMatchObject({
+    authMode: "discord",
+    publicUrl: "https://embed.example",
+    discordLogin: {
+      clientId: "999999999999999999",
+      clientSecret: "fixture-secret",
+      allowedUserIds: ["111111111111111111", "222222222222222222"],
+    },
+  });
+  const dir = mkdtempSync(join(tmpdir(), "embed-discord-config-"));
+  try {
+    writeFileSync(join(dir, "secret"), "file-secret\n");
+    expect(
+      readConfig({
+        ...discordEnv,
+        INIT_CWD: dir,
+        DISCORD_CLIENT_SECRET_FILE: "secret",
+      }).discordLogin,
+    ).toMatchObject({ clientSecret: "file-secret" });
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+test("Discord settings are ignored in other modes, and an empty PUBLIC_URL is unset", () => {
+  const config = readConfig({
+    BOT_TOKEN: "fixture",
+    AUTH_MODE: "none",
+    DISCORD_CLIENT_ID: "invalid",
+    PUBLIC_URL: "",
+  });
+  expect(config.discordLogin).toBeUndefined();
+  expect(config.publicUrl).toBeUndefined();
+});
+test.each([
+  [{ DISCORD_CLIENT_ID: undefined }, "DISCORD_CLIENT_ID"],
+  [{ DISCORD_CLIENT_ID: "my-app" }, "DISCORD_CLIENT_ID"],
+  [{ DISCORD_CLIENT_SECRET: undefined }, "DISCORD_CLIENT_SECRET"],
+  [{ DISCORD_CLIENT_SECRET: "two words" }, "DISCORD_CLIENT_SECRET"],
+  [
+    { DISCORD_CLIENT_SECRET_FILE: "/nonexistent-secret" },
+    "DISCORD_CLIENT_SECRET_FILE",
+  ],
+  [{ PUBLIC_URL: undefined }, "PUBLIC_URL"],
+  [{ PUBLIC_URL: "https://embed.example/app" }, "PUBLIC_URL"],
+  [{ ALLOWED_USER_IDS: undefined }, "ALLOWED_USER_IDS"],
+  [{ ALLOWED_USER_IDS: " , " }, "ALLOWED_USER_IDS"],
+  [{ ALLOWED_USER_IDS: "111111111111111111,someone" }, "ALLOWED_USER_IDS"],
+  [{ ALLOWED_USER_IDS: "@someone" }, "ALLOWED_USER_IDS"],
+] as [Record<string, string | undefined>, string][])(
+  "fails startup for invalid Discord login settings %j",
+  (override, field) => {
+    expect(() => readConfig({ ...discordEnv, ...override })).toThrow(field);
+  },
+);
+test("Discord config errors never include the secret", () => {
+  try {
+    readConfig({ ...discordEnv, ALLOWED_USER_IDS: "nope" });
+  } catch (error) {
+    expect(String(error)).not.toContain("fixture-secret");
+  }
+});
 test("the per-file upload limit defaults to 10 MB and can be set", () => {
   const env = { ADMIN_PASSWORD: "fixture-password", BOT_TOKEN: "test" };
   expect(readConfig(env).maxUploadMb).toBe(10);

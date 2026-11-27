@@ -66,7 +66,7 @@ protocol is HTTPS. Use HTTPS for remote deployments.
 `AUTH_MODE=none` skips login and displays a permanent access warning. Anyone
 who can reach the instance can use its bot, so keep the published address on
 `127.0.0.1`, including when using Docker. Do not expose this mode to your LAN
-or the internet. Discord login is not supported yet; invalid modes fail startup.
+or the internet. Invalid modes fail startup.
 
 `PORT` sets the server listening port (default 8742). Compose maps
 `127.0.0.1:8742:8742`; change the host port on the left to publish elsewhere.
@@ -81,7 +81,8 @@ is also accepted. Cross-site writes and writes with no origin metadata are
 rejected. Fetch the session again after login to get the
 rotated token. Responses from session and API routes are not cached.
 
-E2E uses password mode by default and a fake Discord API on an ephemeral port.
+E2E uses password mode by default and a fake Discord API on an ephemeral port;
+a second instance in Discord login mode runs on the next port up (`E2E_PORT + 1`).
 Set `E2E_PORT` to an unused high port for concurrent test runs.
 
 No-login mode also accepts only loopback Host names (`localhost`,
@@ -97,7 +98,72 @@ AUTH_MODE=none ADMIN_PASSWORD_SECRET_FILE=/dev/null docker compose up --build
 ```
 
 The bot-token secret is still required. Password mode must use a real password
-file. To set an external `PUBLIC_URL` in Compose, add it to the service's
-environment; the value must be an HTTP(S) origin without credentials or a path.
+file. Compose passes `PUBLIC_URL` through from the shell; the value must be an
+HTTP(S) origin without credentials or a path.
 Pre-login session checks use an HttpOnly CSRF cookie and do not create database
 rows. Authenticated session identifiers are stored as SHA-256 hashes.
+
+## Sign in with Discord
+
+`AUTH_MODE=discord` lets a team share one instance: people sign in with their
+Discord account, and only the accounts you list get in. There is no instance
+password in this mode.
+
+1. In the [Discord developer portal](https://discord.com/developers/applications),
+   open an application (the bot's, or a separate one) and go to **OAuth2**. Copy
+   the **Client ID** and **Client secret**.
+2. Under **Redirects**, add `<PUBLIC_URL>/api/auth/discord/callback`, for example
+   `https://embed.example/api/auth/discord/callback`. It must match exactly:
+   the server builds the redirect address from `PUBLIC_URL`, which is the
+   address people type in the browser (an origin, no path). Use HTTPS for
+   anything beyond your own machine.
+3. Save the client secret in `secrets/discord_client_secret.txt`. With Compose,
+   set `DISCORD_CLIENT_SECRET_SOURCE=./secrets/discord_client_secret.txt` so the
+   file is mounted as the `discord_client_secret` secret (it is optional in the
+   other modes).
+4. List the approved accounts in `ALLOWED_USER_IDS`, comma-separated. In
+   Discord, turn on Developer Mode (Settings → Advanced), then right-click a
+   profile and choose **Copy User ID**. People who are not listed see a "Not
+   allowed" screen with their own user ID to send to you.
+
+```sh
+AUTH_MODE=discord PUBLIC_URL=https://embed.example \
+  DISCORD_CLIENT_ID=123456789012345678 \
+  ALLOWED_USER_IDS=111111111111111111,222222222222222222 \
+  DISCORD_CLIENT_SECRET_SOURCE=./secrets/discord_client_secret.txt \
+  docker compose up --build
+```
+
+Outside Compose use `DISCORD_CLIENT_SECRET_FILE` (or `DISCORD_CLIENT_SECRET`;
+the file takes precedence). A missing or invalid value stops startup with a
+message naming the variable. The allowlist is read at startup: after you change
+it, restart, and anyone you removed is signed out because their sessions stop
+being accepted. Start sign-in from the `PUBLIC_URL` address; the browser keeps
+the sign-in state per host, so starting from another address ends in an
+"expired" message.
+
+### What the `identify` scope can and cannot do
+
+The instance asks Discord for the `identify` scope and nothing else. That lets
+it read who the signed-in person is: their user ID, username, display name,
+avatar and similar public profile fields. It cannot read their email address,
+servers, friends, messages or direct messages; it cannot post, join servers or
+change anything on their account.
+
+The instance keeps only the user ID, display name and avatar address for the
+12-hour session. Discord's access and refresh tokens are used once, during
+sign-in, to read the profile; they are never written to the database or logs.
+Right after the profile is read, the server asks Discord to revoke them, which
+ends the whole authorization, so the account no longer lists the app under
+**User Settings → Authorized Apps**. This also happens for accounts that are
+refused. The revoke is best-effort: if Discord cannot be reached the sign-in
+still completes, the failure is logged (status only, never the token), and the
+person can remove the app from Authorized Apps themselves. Anyone who runs an
+instance (or modifies its code) could capture the token during the moment it is
+valid, so sign in only to instances run by people you trust; with `identify`,
+the most that token can do is read the same profile.
+
+Each sign-in attempt carries a random `state` that is bound to the browser that
+started it, works once and expires after 10 minutes, so a callback link opened
+elsewhere or replayed is rejected. The authorization code is exchanged with the
+client secret; PKCE is not used.
