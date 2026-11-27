@@ -1,0 +1,486 @@
+/* Editor sheet, resize handle and preview, side by side; the preview's width is the operator's. */
+.compose {
+  display: grid;
+  grid-template-columns:
+    minmax(var(--editor-min), 1fr) var(--tap)
+    minmax(var(--preview-min), var(--preview-w));
+  align-items: start;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--space-6) var(--space-7);
+}
+.editor {
+  min-width: 0;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-6) 0 var(--space-5);
+}
+.head h2 {
+  margin-right: auto;
+  font-size: var(--text-display);
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-tight);
+}
+.paneToggle {
+  display: none;
+}
+
+/* one sheet: the always-needed parts open, the rest one line each */
+.sheet {
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  box-shadow: var(--shadow-2);
+}
+.section {
+  --bleed: var(--space-5);
+  padding: var(--space-5);
+}
+.section + .section {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--tap);
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+}
+.sectionHead h3 {
+  font-size: var(--text-section);
+  font-weight: var(--weight-section);
+  letter-spacing: var(--tracking-section);
+}
+.aside {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* the side colour sits on the embed's own heading, like the bar it paints */
+.colour {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.colour label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  color: var(--ink-2);
+}
+.colour input {
+  width: var(--tap);
+  height: var(--tap);
+  padding: var(--space-1);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  cursor: pointer;
+}
+.colour input:hover {
+  border-color: var(--ink-2);
+}
+.colour input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.colour input::-webkit-color-swatch {
+  border: 0;
+  border-radius: var(--radius-xs);
+}
+.colour input::-moz-color-swatch {
+  border: 0;
+  border-radius: var(--radius-xs);
+}
+.colour output {
+  min-width: 4.5em;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink);
+}
+.linkline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.linkline svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.linkline b {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+/* fields and optional parts are ruled lists that run to the sheet's edges, not boxes inside it */
+.rows {
+  margin: 0 calc(var(--bleed) * -1);
+  border-top: var(--rule-width) solid var(--rule);
+  border-bottom: var(--rule-width) solid var(--rule);
+}
+.fieldRow,
+.partRow {
+  display: grid;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--bleed);
+}
+.fieldRow + .fieldRow,
+.partRow + .partRow {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.fieldRow {
+  grid-template-columns: 2rem minmax(0, 9.5rem) minmax(0, 1fr) auto;
+}
+.fieldNo {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.fieldText {
+  display: contents;
+}
+.fieldName,
+.partRow dt {
+  overflow: hidden;
+  font-weight: var(--weight-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fieldValue,
+.partRow dd {
+  overflow: hidden;
+  font-size: var(--text-label);
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fieldTag {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.partRow {
+  grid-template-columns: 9rem minmax(0, 1fr);
+}
+
+/* the resize handle: a ruled edge with a grip, dragged or moved with arrow keys */
+.handle {
+  position: sticky;
+  top: calc(var(--bar-height) + var(--space-5));
+  display: grid;
+  place-items: center;
+  height: calc(100vh - var(--bar-height) - var(--space-6));
+  max-height: 100%;
+  margin-top: var(--space-5);
+  cursor: col-resize;
+  touch-action: none;
+}
+.handle::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: var(--rule-width);
+  background: var(--rule-2);
+  transition:
+    background var(--dur-fast),
+    transform var(--dur-fast) var(--ease-out);
+}
+.grip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  height: var(--tap);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-sm);
+  background: var(--sheet);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.grip svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.handle:hover::before,
+.handle:active::before,
+.handle:focus-visible::before {
+  background: var(--accent);
+  transform: scaleX(2);
+}
+.handle:hover .grip,
+.handle:active .grip,
+.handle:focus-visible .grip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.handle:focus-visible {
+  outline: none;
+}
+.handle:focus-visible .grip {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.previewColumn {
+  position: sticky;
+  top: calc(var(--bar-height) + var(--space-5));
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-top: var(--space-5);
+}
+.widthBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.widthLabel {
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  color: var(--ink-2);
+}
+.readout {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.frame {
+  overflow: hidden;
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+.strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--rule-width) solid var(--rule);
+  background: var(--sheet);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+.live::before {
+  content: "";
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--accent);
+}
+.next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+}
+.next p {
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.next b {
+  display: block;
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-strong);
+}
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: calc(var(--tap) + var(--space-1));
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: var(--weight-section);
+  text-decoration: none;
+  transition:
+    background var(--dur-fast),
+    transform var(--dur-fast) var(--ease-out);
+}
+.primary:hover {
+  background: var(--accent-hover);
+}
+.primary:active {
+  transform: translateY(var(--press-shift));
+}
+.primary > svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+.primary kbd {
+  border-color: currentColor;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+}
+.actionBar {
+  display: none;
+}
+
+/*
+ * Tablet: editor and preview stay side by side with tighter gutters. The
+ * preview scrolls with the page here, because at this width it is often
+ * taller than the screen.
+ */
+@media (max-width: 1100px) {
+  .compose {
+    padding: 0 var(--space-4) var(--space-7);
+  }
+  .previewColumn {
+    position: static;
+  }
+  .fieldRow {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+  .fieldText {
+    display: grid;
+    min-width: 0;
+  }
+}
+
+/* Stacked: Edit and Preview become a toggle, and the forward action pins to the bottom. */
+@media (max-width: 700px) {
+  .compose {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: calc(var(--tap) + var(--space-7) + var(--space-5));
+  }
+  .handle,
+  .next {
+    display: none;
+  }
+  .head {
+    padding: var(--space-5) var(--space-1) var(--space-4);
+  }
+  .paneToggle {
+    position: sticky;
+    top: calc(var(--bar-height) + var(--space-2));
+    z-index: 5;
+    display: grid;
+    grid-auto-columns: 1fr;
+    margin-bottom: var(--space-4);
+    box-shadow: 0 calc(var(--space-3) * -1) 0 var(--space-2) var(--ground);
+  }
+  .compose[data-pane="edit"] .previewColumn,
+  .compose[data-pane="preview"] .sheet {
+    display: none;
+  }
+  .compose[data-pane="preview"] .previewColumn {
+    animation: rise var(--dur-move) var(--ease-out);
+  }
+  .previewColumn {
+    position: static;
+    margin-top: 0;
+  }
+  .frame {
+    width: min(var(--preview-w), 100%);
+    margin-inline: auto;
+  }
+  .actionBar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5)
+      calc(var(--space-3) + env(safe-area-inset-bottom));
+    border-top: var(--rule-width) solid var(--rule-2);
+    background: var(--sheet);
+    box-shadow: var(--shadow-bar);
+  }
+  .actionMeta {
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+  }
+  .actionBar .primary {
+    flex: 0 1 18rem;
+  }
+}
+
+/* Phones: one column edge to edge; the preview fills it, so width presets step aside. */
+@media (max-width: 640px) {
+  .compose {
+    padding-inline: var(--space-3);
+  }
+  .widthBar,
+  .actionBar kbd {
+    display: none;
+  }
+  .frame {
+    width: auto;
+    margin: 0 calc(var(--space-3) * -1);
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .sheet {
+    border-radius: var(--radius-md);
+  }
+  .section {
+    --bleed: var(--space-4);
+    padding: var(--space-4);
+  }
+  .fieldRow {
+    grid-template-columns: var(--icon-md) minmax(0, 1fr) auto;
+  }
+  .partRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .actionBar {
+    padding-inline: var(--space-3);
+  }
+  .actionBar .primary {
+    flex: 1 1 auto;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+}

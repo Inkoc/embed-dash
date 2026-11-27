@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "#e8a33d",
+        "createdAt": "2026-11-27T03:32:59.923Z",
+        "reason": "user-chosen sample embed colour, not part of the app palette; see DESIGN.md > Colors > Sample content"
+      }
+    ]
+  }
+}

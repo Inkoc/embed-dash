@@ -1,0 +1,32 @@
+services:
+  embed-dash:
+    build: .
+    ports:
+      - "127.0.0.1:8742:8742"
+    environment:
+      BOT_TOKEN_FILE: /run/secrets/bot_token
+      DATA_DIR: /data
+      PORT: "8742"
+      HOST: "0.0.0.0"
+    secrets:
+      - bot_token
+    volumes:
+      - embed-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8742/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+volumes:
+  embed-data:
+secrets:
+  bot_token:
+    file: ./secrets/bot_token.txt

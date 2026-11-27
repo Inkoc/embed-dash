@@ -1,0 +1,190 @@
+/* Discord's chat message, using Discord's own metrics; Noto Sans stands in for its font. */
+.message {
+  display: grid;
+  grid-template-columns: var(--dc-gutter) minmax(0, 1fr);
+  padding: var(--space-4) var(--space-4) var(--space-5) 0;
+  background: var(--dc-bg);
+  color: var(--dc-text-color);
+  font-family: var(--font-preview);
+  font-size: var(--dc-text);
+  line-height: var(--dc-leading);
+  font-weight: var(--weight-body);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  transition:
+    background var(--dur-base),
+    color var(--dur-base);
+}
+.message p {
+  margin: 0;
+}
+.message ::selection {
+  background: var(--dc-selection);
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: var(--dc-avatar);
+  height: var(--dc-avatar);
+  margin: var(--dc-nudge) var(--space-4) 0;
+  border-radius: 50%;
+  background: var(--dc-app);
+  color: var(--dc-on-app);
+  font-weight: var(--dc-weight-strong);
+}
+.avatar[data-placeholder="loading"] {
+  background: var(--dc-placeholder);
+}
+.body {
+  min-width: 0;
+  padding-right: var(--space-2);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.name {
+  color: var(--dc-head);
+  font-weight: var(--dc-weight-name);
+}
+.nameSkeleton {
+  display: inline-block;
+  width: var(--dc-name-skeleton);
+  height: var(--dc-text-sm);
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-placeholder);
+}
+.app {
+  position: relative;
+  top: var(--rule-width);
+  margin-left: var(--dc-nudge);
+  padding: 0 var(--dc-tag-pad);
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-app);
+  color: var(--dc-on-app);
+  font-size: var(--dc-text-tag);
+  font-weight: var(--dc-weight-strong);
+  line-height: var(--dc-tag-leading);
+  text-transform: uppercase;
+}
+.time {
+  margin-left: var(--space-1);
+  color: var(--dc-muted);
+  font-size: var(--dc-text-xs);
+  font-weight: var(--dc-weight-name);
+}
+.content {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.embed {
+  display: grid;
+  grid-template-columns: var(--dc-bar) minmax(0, 1fr);
+  max-width: var(--dc-embed-max);
+  margin-top: var(--dc-nudge);
+  border-radius: var(--dc-radius);
+  background: var(--dc-embed);
+  overflow: hidden;
+}
+.bar {
+  background: var(--embed-color);
+}
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--space-2) var(--space-4) var(--space-4) var(--space-3);
+}
+.grid[data-thumbnail] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.grid > * {
+  grid-column: 1;
+  min-width: 0;
+}
+.author {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--dc-head);
+  font-size: var(--dc-text-sm);
+  font-weight: var(--dc-weight-strong);
+}
+.author img {
+  width: var(--dc-author-icon);
+  height: var(--dc-author-icon);
+  margin-right: var(--space-2);
+  border-radius: 50%;
+}
+.title {
+  margin-top: var(--space-2);
+  color: var(--dc-head);
+  font-weight: var(--dc-weight-strong);
+  overflow-wrap: anywhere;
+}
+.link {
+  color: var(--dc-link);
+}
+.description {
+  margin-top: var(--space-2);
+  font-size: var(--dc-text-sm);
+  line-height: var(--dc-leading-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.field {
+  min-width: 0;
+  font-size: var(--dc-text-sm);
+  line-height: var(--dc-leading-sm);
+}
+.fieldName {
+  margin-bottom: var(--dc-nudge);
+  color: var(--dc-head);
+  font-weight: var(--dc-weight-strong);
+}
+.fieldValue {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.image {
+  display: block;
+  width: var(--dc-image-max);
+  max-width: 100%;
+  height: auto;
+  margin-top: var(--space-4);
+  border-radius: var(--dc-radius);
+}
+.thumbnail {
+  grid-column: 2;
+  grid-row: 1 / 8;
+  justify-self: end;
+  width: var(--dc-thumb);
+  height: var(--dc-thumb);
+  margin: var(--space-2) 0 0 var(--space-4);
+  border-radius: var(--dc-radius);
+  object-fit: contain;
+}
+.footer {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--dc-muted);
+  font-size: var(--dc-text-xs);
+  line-height: var(--dc-leading-xs);
+  font-weight: var(--dc-weight-name);
+}
+.footer img {
+  width: var(--dc-footer-icon);
+  height: var(--dc-footer-icon);
+  margin-right: var(--space-2);
+  border-radius: 50%;
+}
+.dot {
+  margin: 0 var(--space-1);
+}

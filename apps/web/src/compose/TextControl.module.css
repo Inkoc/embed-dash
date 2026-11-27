@@ -1,0 +1,90 @@
+.control {
+  display: grid;
+  gap: var(--space-2);
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.top label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+}
+.optional {
+  font-weight: var(--weight-body);
+  color: var(--ink-2);
+}
+.control input,
+.control textarea {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--ink);
+  font-size: var(--text-body);
+  line-height: var(--leading-field);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.control textarea {
+  resize: vertical;
+}
+.control input:hover,
+.control textarea:hover {
+  border-color: var(--ink-2);
+}
+.control input:focus-visible,
+.control textarea:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow:
+    0 0 0 var(--rule-width) var(--ring),
+    0 0 0 var(--space-1) var(--accent-wash-2);
+}
+/* counts stay quiet until the control is in use or close to its limit */
+.count {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  opacity: 0;
+  transition: opacity var(--dur-base);
+}
+.control:focus-within .count,
+.count[data-level="near"],
+.count[data-level="over"] {
+  opacity: 1;
+}
+.count[data-level="near"] {
+  color: var(--warn);
+  font-weight: var(--weight-strong);
+}
+.count[data-level="over"] {
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+}
+/* hints open beneath the control only while it has focus */
+.hint {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+  transition:
+    grid-template-rows var(--dur-base) var(--ease-out),
+    opacity var(--dur-base);
+}
+.hint > span {
+  overflow: hidden;
+  min-height: 0;
+}
+.control:focus-within .hint {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}

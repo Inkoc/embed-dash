@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+playwright-report
+test-results
+LICENSE
+# Existing product documentation keeps its authored formatting.
+AGENTS.md
+CLAUDE.md
+PRODUCT.md
+docs/
+.github/
+.impeccable/
