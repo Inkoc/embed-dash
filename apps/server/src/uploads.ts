@@ -60,6 +60,31 @@ function head(path: string) {
   }
 }
 
+/** The upload records and the files behind them; a record without its file counts as gone. */
+export function createUploadStore(dataDir: string, sqlite: Database.Database) {
+  const db = drizzle(sqlite);
+  const directory = join(dataDir, "uploads");
+  const find = (id: string) =>
+    db.select().from(uploads).where(eq(uploads.id, id)).get();
+  const stored = (id: string) => {
+    try {
+      return statSync(join(directory, id)).isFile();
+    } catch {
+      return false;
+    }
+  };
+  return {
+    directory,
+    find,
+    stored,
+    /** The record if its file is still on disk. */
+    present: (id: string) => {
+      const row = find(id);
+      return row && stored(id) ? row : undefined;
+    },
+  };
+}
+
 /**
  * Uploaded files are untrusted. They are stored under generated names, never
  * served except as images whose type was sniffed from the bytes, and never
@@ -71,7 +96,7 @@ export async function registerUploads(
   sqlite: Database.Database,
 ) {
   const db = drizzle(sqlite);
-  const directory = join(config.dataDir, "uploads");
+  const { directory, find, stored } = createUploadStore(config.dataDir, sqlite);
   const maxBytes =
     (config.maxUploadMb ?? uploadLimits.defaultFileMb) * 1024 * 1024;
   await app.register(multipart, {
@@ -129,16 +154,6 @@ export async function registerUploads(
       });
     },
   );
-
-  const find = (id: string) =>
-    db.select().from(uploads).where(eq(uploads.id, id)).get();
-  const stored = (id: string) => {
-    try {
-      return statSync(join(directory, id)).isFile();
-    } catch {
-      return false;
-    }
-  };
 
   app.get("/api/uploads/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };

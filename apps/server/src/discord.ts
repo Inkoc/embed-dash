@@ -7,6 +7,8 @@ import {
   type RESTGetAPIGuildChannelsResult,
   type RESTGetAPIGuildMemberResult,
   type RESTGetAPIGuildResult,
+  type RESTPostAPIChannelMessageJSONBody,
+  type RESTPostAPIChannelMessageResult,
 } from "discord-api-types/v10";
 import {
   botIdentitySchema,
@@ -26,6 +28,17 @@ const maxGuildPageSize = 200;
 const cacheMs = 60_000;
 /** Guilds fetched at once; the REST client still queues per rate-limit bucket. */
 const guildConcurrency = 4;
+/** A rate limit longer than this fails that channel instead of holding the whole send. */
+const maxRateLimitWaitMs = 30_000;
+/** Rate-limit pauses one post may sit through before it is given up on. */
+const maxRateLimitReplays = 3;
+/** Uploads of up to 25 MB share this budget. */
+const postTimeoutMs = 60_000;
+
+export interface MessageFile {
+  name: string;
+  data: Buffer;
+}
 
 const kinds: Partial<Record<ChannelType, ChannelKind>> = {
   [ChannelType.GuildText]: "text",
@@ -40,6 +53,12 @@ export function createDiscord(
 ): {
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
+  /** Posts a message, with files as multipart `files[n]` beside `payload_json`; resolves to its ID. */
+  createMessage: (
+    channelId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) => Promise<string>;
 } {
   // The bot status answers at once, so a rate limit is reported, not waited out.
   const rest = new REST({
@@ -56,6 +75,22 @@ export function createDiscord(
     retries: 1,
     rejectOnRateLimit: (limit) => limit.retryAfter > 10_000,
     timeout: 5000,
+  });
+  const rateLimitPauses = new Map<string, number>();
+  // Posting waits out short rate limits. It never retries by itself: repeating
+  // a post that timed out could put the message in the channel twice.
+  const posting = new REST({
+    api: config.discordApiBase,
+    version: "10",
+    retries: 0,
+    rejectOnRateLimit: (limit) => {
+      if (limit.retryAfter > maxRateLimitWaitMs) return true;
+      // The major parameter of a message post is its channel, and one post per channel runs at a time.
+      const pauses = (rateLimitPauses.get(limit.majorParameter) ?? 0) + 1;
+      rateLimitPauses.set(limit.majorParameter, pauses);
+      return pauses > maxRateLimitReplays;
+    },
+    timeout: postTimeoutMs,
   });
   // The REST client clears its token after a 401; retries still use startup configuration.
   const client = (instance: REST) => instance.setToken(config.botToken);
@@ -137,7 +172,24 @@ export function createDiscord(
     return inFlight;
   }
 
-  return { getBot, listGuilds };
+  async function createMessage(
+    channelId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) {
+    rateLimitPauses.delete(channelId);
+    try {
+      const message = (await client(posting).post(
+        Routes.channelMessages(channelId),
+        { body, files: files.map((file) => ({ ...file })) },
+      )) as RESTPostAPIChannelMessageResult;
+      return message.id;
+    } finally {
+      rateLimitPauses.delete(channelId);
+    }
+  }
+
+  return { getBot, listGuilds, createMessage };
 }
 
 async function fetchGuild(

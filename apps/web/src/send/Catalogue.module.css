@@ -186,7 +186,11 @@
 .row[data-blocked] .entry {
   cursor: default;
 }
-.row:not([data-blocked]):not([data-on]) .entry:hover {
+/* the send in flight owns the selection: entries show it and don't answer */
+.row[data-locked] .entry {
+  cursor: not-allowed;
+}
+.row:not([data-blocked]):not([data-on]):not([data-locked]) .entry:hover {
   background: var(--sheet-2);
 }
 /* the native checkbox stays in place for assistive tech; the drawn box shows its state */

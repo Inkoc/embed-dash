@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { check, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  index,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 export const sends = sqliteTable(
   "sends",
   {
@@ -45,3 +51,33 @@ export const uploads = sqliteTable("uploads", {
   size: integer("size").notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+export const sendTargets = sqliteTable(
+  "send_targets",
+  {
+    id: text("id").primaryKey(),
+    sendId: text("send_id")
+      .notNull()
+      .references(() => sends.id, { onDelete: "cascade" }),
+    guildId: text("guild_id").notNull(),
+    guildName: text("guild_name").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelName: text("channel_name").notNull(),
+    messageId: text("message_id"),
+    status: text("status", {
+      enum: ["pending", "sent", "failed", "unknown"],
+    }).notNull(),
+    /** A `deliveryErrors` code; the readable text comes from the shared package. */
+    error: text("error"),
+    attemptedAt: integer("attempted_at"),
+    /** Keeps targets in the order the operator saw them. */
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    index("send_targets_send_idx").on(table.sendId),
+    check(
+      "send_targets_status_check",
+      sql`${table.status} IN ('pending', 'sent', 'failed', 'unknown')`,
+    ),
+  ],
+);

@@ -1,6 +1,22 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
-import type { Guild, GuildChannel } from "@embed-dash/shared";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import type { Guild, GuildChannel, SendTarget } from "@embed-dash/shared";
 import { ChevronDown, X } from "lucide-react";
+import { isBlank, useDraft } from "../compose/draft";
+import {
+  BlockedList,
+  DeliveryOptions,
+  SendControls,
+  SlipDetail,
+  Verdict,
+} from "./SendPanel";
+import { useSending } from "./sending";
+import { plural, tally } from "./summary";
 import styles from "./Tray.module.css";
 
 export interface TrayEntry {
@@ -32,13 +48,19 @@ function motion() {
   };
 }
 
-const plural = (n: number, one: string, many: string) =>
-  `${n} ${n === 1 ? one : many}`;
+/** One slip: a ticked channel, or after a send its result. */
+interface Slip {
+  channelId: string;
+  channelName: string;
+  guildId: string;
+  guildName: string;
+  target?: SendTarget;
+}
 
 /**
  * The deep-ink tray: the selection as slips, a large count that rolls when it
- * changes, and the send button. Sending comes with the next step of the app,
- * so the button stays disabled and says why.
+ * changes, and the send button. Once a send has run the slips become its
+ * results, each with its own verdict, link or cause and retry.
  */
 export function Tray({
   entries,
@@ -49,31 +71,79 @@ export function Tray({
   onRemove: (id: string) => void;
   flightRef: RefObject<Flight | null>;
 }) {
+  const { draft, issues } = useDraft();
+  const { busy, reconnecting, result, retry, dismiss, pings, silent } =
+    useSending();
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const count = useRef<HTMLSpanElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const previous = useRef(entries.length);
-  const servers = new Set(entries.map((e) => e.guild.id)).size;
-  const visible = showAll ? entries : entries.slice(0, foldAt);
-  const grouped = entries.length > groupAt;
-  const groups = visible.reduce<{ guild: Guild; entries: TrayEntry[] }[]>(
-    (all, entry) => {
+  const summary = useRef<HTMLParagraphElement>(null);
+
+  // After a send the slips are its results; before one, the ticked channels.
+  const slips: Slip[] = result
+    ? result.targets.map((target) => ({
+        channelId: target.channelId,
+        channelName: target.channelName,
+        guildId: target.guildId,
+        guildName: target.guildName,
+        target,
+      }))
+    : entries.map((entry) => ({
+        channelId: entry.channel.id,
+        channelName: entry.channel.name,
+        guildId: entry.guild.id,
+        guildName: entry.guild.name,
+      }));
+  const total = slips.length;
+  const previous = useRef(total);
+  const servers = new Set(slips.map((slip) => slip.guildId)).size;
+  // A failure is never folded away; only sent slips past the fold are.
+  const visible = showAll
+    ? slips
+    : slips.filter(
+        (slip, i) =>
+          i < foldAt || (slip.target && slip.target.status !== "sent"),
+      );
+  const grouped = total > groupAt;
+  const groups = visible.reduce<{ id: string; name: string; slips: Slip[] }[]>(
+    (all, slip) => {
       const last = all.at(-1);
-      if (last?.guild.id === entry.guild.id) last.entries.push(entry);
-      else all.push({ guild: entry.guild, entries: [entry] });
+      if (last?.id === slip.guildId) last.slips.push(slip);
+      else all.push({ id: slip.guildId, name: slip.guildName, slips: [slip] });
       return all;
     },
     [],
   );
+  const outcome = result ? tally(result) : null;
+  // Copies still in flight spin; before the first answer every ticked channel does.
+  const waiting = (slip: Slip) =>
+    slip.target ? slip.target.status === "pending" : !!busy;
+
+  const blocked = busy
+    ? null
+    : entries.length === 0
+      ? "Tick channels in the catalogue to choose where this goes."
+      : isBlank(draft)
+        ? "Nothing to send yet. Write a message in Compose."
+        : issues.length > 0
+          ? `${plural(issues.length, "problem", "problems")} to fix before sending.`
+          : null;
+
+  // The summary takes focus when results arrive, so they are read out and the
+  // Retry button that vanished doesn't leave focus nowhere.
+  const finished = !!result && !busy;
+  useEffect(() => {
+    if (finished) summary.current?.focus({ preventScroll: true });
+  }, [finished]);
 
   // The numeral rolls one step up or down when the count changes.
   useLayoutEffect(() => {
     const before = previous.current;
-    previous.current = entries.length;
-    if (before === entries.length || !count.current || reduceMotion()) return;
-    const up = entries.length > before;
+    previous.current = total;
+    if (before === total || !count.current || reduceMotion()) return;
+    const up = total > before;
     count.current.animate(
       [
         { transform: `translateY(${up ? 55 : -55}%)`, opacity: 0 },
@@ -81,7 +151,7 @@ export function Tray({
       ],
       { duration: motion().move, easing: motion().easing },
     );
-  }, [entries.length]);
+  }, [total]);
 
   // Filing: a slip flies in an arc from the ticked row to its place in the tray.
   useLayoutEffect(() => {
@@ -146,52 +216,72 @@ export function Tray({
     requestAnimationFrame(() => {
       const button = next
         ? list.current?.querySelector<HTMLElement>(
-            `[data-slip="${next.channel.id}"] button`,
+            `[data-slip="${next.channelId}"] button`,
           )
         : null;
       (button ?? heading.current)?.focus();
     });
   };
 
-  const position = new Map(visible.map((e, i) => [e.channel.id, i]));
-  const slip = (entry: TrayEntry) => (
-    <li
-      key={entry.channel.id}
-      className={styles.slip}
-      data-slip={entry.channel.id}
-    >
-      <span className={styles.slipText}>
-        <b>#{entry.channel.name}</b>
-        {!grouped && <small>{entry.guild.name}</small>}
-      </span>
-      <button
-        type="button"
-        className={styles.remove}
-        aria-label={`Take #${entry.channel.name} (${entry.guild.name}) out of the tray`}
-        onClick={() =>
-          remove(entry.channel.id, position.get(entry.channel.id)!)
-        }
+  const position = new Map(visible.map((slip, i) => [slip.channelId, i]));
+  const slip = (item: Slip) => {
+    const index = position.get(item.channelId)!;
+    const pending = waiting(item);
+    return (
+      <li
+        key={item.target?.id ?? item.channelId}
+        className={styles.slip}
+        data-slip={item.channelId}
+        data-result={pending ? "pending" : item.target?.status}
       >
-        <X aria-hidden="true" />
-      </button>
-    </li>
-  );
+        <span className={styles.slipText}>
+          <b>#{item.channelName}</b>
+          {!grouped && <small>{item.guildName}</small>}
+        </span>
+        {item.target || pending ? (
+          <>
+            <Verdict
+              state={pending ? "waiting" : item.target!.status}
+              index={index}
+            />
+            {item.target && (
+              <SlipDetail
+                target={item.target}
+                retrying={pending}
+                disabled={!!busy}
+                onRetry={() => void retry([item.target!.id])}
+              />
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            className={styles.remove}
+            aria-label={`Take #${item.channelName} (${item.guildName}) out of the tray`}
+            onClick={() => remove(item.channelId, index)}
+          >
+            <X aria-hidden="true" />
+          </button>
+        )}
+      </li>
+    );
+  };
 
   return (
     <aside
       className={styles.tray}
       aria-labelledby="tray-title"
       data-open={open || undefined}
-      data-empty={entries.length === 0 || undefined}
+      data-empty={total === 0 || undefined}
     >
       <div className={styles.head}>
         <h3 id="tray-title" ref={heading} tabIndex={-1}>
           Tray
         </h3>
         <p className={styles.summary} aria-live="polite">
-          {entries.length ? (
+          {total ? (
             <>
-              <b>{plural(entries.length, "channel", "channels")}</b> in{" "}
+              <b>{plural(total, "channel", "channels")}</b> in{" "}
               {plural(servers, "server", "servers")}
             </>
           ) : (
@@ -200,7 +290,7 @@ export function Tray({
         </p>
         <span className={styles.countClip} aria-hidden="true">
           <span ref={count} className={styles.count}>
-            {entries.length}
+            {total}
           </span>
         </span>
         <button
@@ -211,53 +301,100 @@ export function Tray({
           onClick={() => setOpen((value) => !value)}
         >
           {open ? "Hide" : "Show"}{" "}
-          <span className="visually-hidden">ticked channels</span>
+          <span className="visually-hidden">
+            {result ? "results" : "ticked channels"}
+          </span>
           <ChevronDown aria-hidden="true" />
         </button>
       </div>
       <div id="tray-slips" ref={list} className={styles.slips}>
-        {entries.length === 0 ? (
+        {total === 0 ? (
           <p className={styles.empty}>
             <b>The tray is empty.</b> Tick channels in the catalogue to file
             them here.
           </p>
         ) : grouped ? (
           groups.map((group) => (
-            <section key={group.guild.id} className={styles.group}>
+            <section key={group.id} className={styles.group}>
               <h4>
-                {group.guild.name}
-                <span>{group.entries.length}</span>
+                {group.name}
+                <span>{group.slips.length}</span>
               </h4>
-              <ul>{group.entries.map((entry) => slip(entry))}</ul>
+              <ul>{group.slips.map((item) => slip(item))}</ul>
             </section>
           ))
         ) : (
-          <ul>{visible.map((entry) => slip(entry))}</ul>
+          <ul>{visible.map((item) => slip(item))}</ul>
         )}
-        {entries.length > visible.length && (
+        {total > visible.length && (
           <button
             type="button"
             className={styles.folded}
             onClick={() => setShowAll(true)}
           >
-            + {entries.length - visible.length} more · Show
+            + {total - visible.length} more · Show
           </button>
         )}
+        {!result && !busy && entries.length > 0 && (
+          <DeliveryOptions channels={entries.length} />
+        )}
+        {!result &&
+          !busy &&
+          entries.length > 0 &&
+          !isBlank(draft) &&
+          issues.length > 0 && <BlockedList issues={issues} />}
       </div>
-      <button
-        type="button"
-        className={styles.go}
-        disabled
-        aria-describedby="tray-note"
-      >
-        {entries.length
-          ? `Send to ${plural(entries.length, "channel", "channels")}`
-          : "Send"}
-      </button>
-      <p id="tray-note" className={styles.note}>
-        Sending isn’t available yet. Your selection stays here while you switch
-        views.
-      </p>
+      <SendControls
+        draft={draft}
+        entries={entries}
+        blocked={blocked}
+        describedBy="tray-note"
+        onDismiss={() => {
+          dismiss();
+          setShowAll(false);
+          requestAnimationFrame(() => heading.current?.focus());
+        }}
+      />
+      {busy ? (
+        <p id="tray-note" className={styles.rising} aria-live="polite">
+          <b>
+            {reconnecting
+              ? "Lost contact with the server; still checking."
+              : outcome
+                ? outcome.sentence
+                : `Sending to ${plural(entries.length, "channel", "channels")}…`}
+          </b>{" "}
+          {reconnecting
+            ? "The send carries on there. Nothing is sent twice."
+            : `Mentions ${pings.length ? `notify ${pings.join(", ")}` : "notify nobody"}${silent ? "; sent silently" : ""}.`}
+        </p>
+      ) : outcome ? (
+        <p
+          ref={summary}
+          id="tray-note"
+          className={styles.rising}
+          tabIndex={-1}
+          aria-live="polite"
+        >
+          <b>{outcome.sentence}</b>{" "}
+          {outcome.stoppedByToken
+            ? "Discord rejected the bot token, so the send stopped."
+            : outcome.failed
+              ? "Retry sends only to the failed channels."
+              : outcome.unknown
+                ? "Look at the unconfirmed channels in Discord before sending again."
+                : "Every copy arrived."}
+        </p>
+      ) : (
+        <p
+          id="tray-note"
+          className={styles.note}
+          data-reason={blocked ? "" : undefined}
+        >
+          {blocked ??
+            "Mentions notify nobody unless you allow it above. Your selection stays here while you switch views."}
+        </p>
+      )}
     </aside>
   );
 }

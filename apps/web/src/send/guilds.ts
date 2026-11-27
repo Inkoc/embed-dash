@@ -1,4 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { guildsResponseSchema } from "@embed-dash/shared";
 
 export const guildsErrorMessage =
@@ -20,6 +24,16 @@ async function loadGuilds(refresh: boolean) {
   return guildsResponseSchema.parse(await response.json());
 }
 
+export const refreshGuilds = (client: QueryClient) =>
+  client
+    .fetchQuery({
+      queryKey: ["guilds"],
+      staleTime: 0,
+      queryFn: () => loadGuilds(true),
+    })
+    // The query keeps the error for the view to show.
+    .catch(() => undefined);
+
 /** The bot's servers and channels; the server caches them for a minute, Refresh skips that. */
 export function useGuilds() {
   const client = useQueryClient();
@@ -29,14 +43,6 @@ export function useGuilds() {
     staleTime: 60_000,
     queryFn: () => loadGuilds(false),
   });
-  const refresh = () =>
-    client
-      .fetchQuery({
-        queryKey: ["guilds"],
-        staleTime: 0,
-        queryFn: () => loadGuilds(true),
-      })
-      // The query keeps the error for the view to show.
-      .catch(() => undefined);
+  const refresh = () => refreshGuilds(client);
   return { ...query, refresh };
 }

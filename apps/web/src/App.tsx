@@ -10,6 +10,7 @@ import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
 import { SelectionProvider } from "./send/selection";
+import { SendingProvider } from "./send/sending";
 import { SendView } from "./send/SendView";
 import { SessionGate } from "./shell/SessionGate";
 import { BotStatus } from "./shell/BotStatus";
@@ -27,7 +28,9 @@ export function App() {
       <DraftProvider>
         <EditorStateProvider>
           <SelectionProvider>
-            <Shell />
+            <SendingProvider>
+              <Shell />
+            </SendingProvider>
           </SelectionProvider>
         </EditorStateProvider>
       </DraftProvider>
@@ -50,15 +53,18 @@ function Shell() {
   const [arrival, setArrival] = useState<{
     view: View;
     direction: "none" | "forward" | "back";
-  }>({ view, direction: "none" });
+    /** Arrived through a "Go to the field" link, which brings its own focus and scroll. */
+    reveal: boolean;
+  }>({ view, direction: "none", reveal: false });
   if (arrival.view !== view)
     setArrival({
       view,
       direction: order[view] > order[arrival.view] ? "forward" : "back",
+      reveal: !!location.state?.reveal,
     });
 
   useEffect(() => {
-    if (arrival.direction === "none") return;
+    if (arrival.direction === "none" || arrival.reveal) return;
     scrollTo({ top: 0 });
     document
       .querySelector<HTMLElement>("main h2")

@@ -38,7 +38,9 @@ test("finds channels by server name and by ID, and ticks two into the tray", asy
 
   // A channel ID finds the one channel, with the hit marked in its call number.
   await search.fill("110348291550200002");
-  await expect(page.getByRole("checkbox")).toHaveCount(1);
+  await expect(page.locator("[data-drawer]").getByRole("checkbox")).toHaveCount(
+    1,
+  );
   // The mark runs across the call number's plain prefix and its bold tail.
   await expect(page.locator("li mark")).toHaveText(["110348291550", "200002"]);
   // ↓ enters the list and Space ticks.

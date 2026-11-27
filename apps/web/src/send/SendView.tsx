@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Link } from "react-router";
 import {
-  canPost,
+  canSendTo,
   inviteUrl,
   type Guild,
   type GuildChannel,
@@ -31,6 +31,7 @@ import { Catalogue, drawerId } from "./Catalogue";
 import { useGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
 import { ServerRail, ServerStrip } from "./ServerRail";
+import { useSending } from "./sending";
 import { Tray, type Flight, type TrayEntry } from "./Tray";
 import styles from "./SendView.module.css";
 
@@ -38,6 +39,23 @@ import styles from "./SendView.module.css";
 export function SendView() {
   const { draft } = useDraft();
   const guilds = useGuilds();
+  const [selected, setSelected] = useSelection();
+  const [dropped, setDropped] = useState(0);
+  const { busy } = useSending();
+  // A refresh can take channels away from the bot; they leave the tray instead of lingering unseen.
+  const refresh = async () => {
+    const fresh = await guilds.refresh();
+    if (!fresh) return;
+    const sendable = new Set(
+      fresh.guilds.flatMap((g) =>
+        g.channels.filter(canSendTo).map((c) => c.id),
+      ),
+    );
+    const gone = [...selected].filter((id) => !sendable.has(id));
+    if (gone.length === 0 || busy) return;
+    setDropped(gone.length);
+    setSelected((set) => withIds(set, gone, false));
+  };
   const title = draft.embeds[0]?.title.trim();
   const data = guilds.data;
   const channelCount = data?.guilds.reduce((n, g) => n + g.channels.length, 0);
@@ -51,7 +69,7 @@ export function SendView() {
         <button
           type="button"
           className={styles.primary}
-          onClick={() => void guilds.refresh()}
+          onClick={() => void refresh()}
           disabled={guilds.isFetching}
         >
           <RefreshCw aria-hidden="true" />
@@ -60,8 +78,8 @@ export function SendView() {
       </Closed>
     );
   else if (data.guilds.length === 0)
-    body = <NoServers refresh={guilds.refresh} busy={guilds.isFetching} />;
-  else body = <Picker guilds={data.guilds} />;
+    body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
+  else body = <Picker guilds={data.guilds} locked={!!busy} />;
 
   return (
     <section className={styles.send} aria-labelledby="send-title">
@@ -88,7 +106,7 @@ export function SendView() {
             <button
               type="button"
               className={styles.quiet}
-              onClick={() => void guilds.refresh()}
+              onClick={() => void refresh()}
               disabled={guilds.isFetching}
               data-busy={guilds.isFetching || undefined}
             >
@@ -103,6 +121,25 @@ export function SendView() {
           <X aria-hidden="true" />
           {guilds.error.message} The list below is from{" "}
           {new Date(data.fetchedAt).toLocaleTimeString()}.
+        </p>
+      )}
+      {dropped > 0 && (
+        <p className={styles.unavailable} role="status">
+          <Lock aria-hidden="true" />
+          <span>
+            {dropped === 1
+              ? "1 ticked channel is"
+              : `${dropped} ticked channels are`}{" "}
+            no longer available to the bot and {dropped === 1 ? "was" : "were"}{" "}
+            taken out of the tray.{" "}
+            <button
+              type="button"
+              className={styles.quiet}
+              onClick={() => setDropped(0)}
+            >
+              Dismiss
+            </button>
+          </span>
         </p>
       )}
       {data && data.unavailable.length > 0 && (
@@ -124,7 +161,7 @@ export function SendView() {
   );
 }
 
-function Picker({ guilds }: { guilds: Guild[] }) {
+function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
   const [selected, setSelected] = useSelection();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -143,13 +180,13 @@ function Picker({ guilds }: { guilds: Guild[] }) {
     [guilds],
   );
   const allPostable = useMemo(
-    () => guilds.flatMap((g) => g.channels.filter(canPost).map((c) => c.id)),
+    () => guilds.flatMap((g) => g.channels.filter(canSendTo).map((c) => c.id)),
     [guilds],
   );
   // The tray follows catalogue order; IDs gone after a refresh drop out.
   const entries: TrayEntry[] = guilds.flatMap((guild) =>
     guild.channels
-      .filter((channel) => selected.has(channel.id))
+      .filter((channel) => selected.has(channel.id) && canSendTo(channel))
       .map((channel) => ({ guild, channel })),
   );
   const hits = drawers.reduce((n, d) => n + d.channels.length, 0);
@@ -218,6 +255,15 @@ function Picker({ guilds }: { guilds: Guild[] }) {
         onJump={onJump}
       />
       <div className={styles.main}>
+        {locked && (
+          <p className={styles.unavailable} role="status">
+            <Lock aria-hidden="true" />
+            <span>
+              The selection is locked while the send is delivered. It unlocks
+              when every channel has an answer.
+            </span>
+          </p>
+        )}
         <div className={styles.lookup}>
           <label htmlFor="channel-search" className={styles.label}>
             Find channels
@@ -280,7 +326,7 @@ function Picker({ guilds }: { guilds: Guild[] }) {
             <button
               type="button"
               className={styles.pick}
-              disabled={!mainIds.size}
+              disabled={!mainIds.size || locked}
               onClick={() => onTickMany([...mainIds], true)}
             >
               <Star aria-hidden="true" />
@@ -290,7 +336,7 @@ function Picker({ guilds }: { guilds: Guild[] }) {
             <button
               type="button"
               className={styles.pick}
-              disabled={!allPostable.length}
+              disabled={!allPostable.length || locked}
               onClick={() => onTickMany(allPostable, true)}
             >
               <ListChecks aria-hidden="true" />
@@ -300,7 +346,7 @@ function Picker({ guilds }: { guilds: Guild[] }) {
             <button
               type="button"
               className={styles.pick}
-              disabled={!entries.length}
+              disabled={!entries.length || locked}
               onClick={() => setSelected(new Set())}
             >
               <X aria-hidden="true" />
@@ -316,6 +362,7 @@ function Picker({ guilds }: { guilds: Guild[] }) {
             mainIds={mainIds}
             collapsed={collapsed}
             onToggleCollapsed={onToggleCollapsed}
+            locked={locked}
             onTick={onTick}
             onTickMany={onTickMany}
             onLeaveTop={() => search.current?.focus()}
