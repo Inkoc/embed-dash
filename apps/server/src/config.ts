@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 export interface Config {
   botToken: string;
+  authMode: "password" | "none";
+  adminPassword?: string;
   port: number;
   host: string;
   dataDir: string;
@@ -48,7 +50,33 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       "DISCORD_API_BASE must be an HTTP(S) URL without credentials, query or fragment",
     );
   }
+  const authMode = env.AUTH_MODE ?? "password";
+  if (authMode === "discord")
+    throw new Error("AUTH_MODE discord is not supported yet");
+  if (authMode !== "password" && authMode !== "none")
+    throw new Error("AUTH_MODE must be password or none");
+  let adminPassword = env.ADMIN_PASSWORD;
+  if (authMode === "password") {
+    if (env.ADMIN_PASSWORD_FILE) {
+      try {
+        adminPassword = readFileSync(
+          resolve(baseDir, env.ADMIN_PASSWORD_FILE),
+          "utf8",
+        ).trimEnd();
+      } catch {
+        throw new Error(
+          "ADMIN_PASSWORD_FILE must point to a readable secret file",
+        );
+      }
+    }
+    if (!adminPassword?.trim())
+      throw new Error(
+        "ADMIN_PASSWORD or ADMIN_PASSWORD_FILE must provide a non-empty password",
+      );
+  }
   return {
+    authMode,
+    adminPassword,
     botToken,
     port,
     host,

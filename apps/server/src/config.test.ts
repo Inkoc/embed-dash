@@ -9,7 +9,11 @@ test("reads defaults and secret files with file precedence", () => {
     const file = join(dir, "token");
     writeFileSync(file, "file-token\n");
     expect(
-      readConfig({ BOT_TOKEN: "env-token", BOT_TOKEN_FILE: file }),
+      readConfig({
+        ADMIN_PASSWORD: "fixture-password",
+        BOT_TOKEN: "env-token",
+        BOT_TOKEN_FILE: file,
+      }),
     ).toMatchObject({
       botToken: "file-token",
       port: 8742,
@@ -18,6 +22,7 @@ test("reads defaults and secret files with file precedence", () => {
     });
     expect(
       readConfig({
+        ADMIN_PASSWORD: "fixture-password",
         BOT_TOKEN: "env-token",
         PORT: "9000",
         DATA_DIR: dir,
@@ -65,12 +70,49 @@ test("resolves workspace-relative paths from the invoking directory", () => {
   try {
     writeFileSync(join(dir, "token"), "fixture-token");
     expect(
-      readConfig({ INIT_CWD: dir, BOT_TOKEN_FILE: "token", DATA_DIR: "data" }),
+      readConfig({
+        ADMIN_PASSWORD: "fixture-password",
+        INIT_CWD: dir,
+        BOT_TOKEN_FILE: "token",
+        DATA_DIR: "data",
+      }),
     ).toMatchObject({
       botToken: "fixture-token",
       dataDir: join(dir, "data"),
       host: "127.0.0.1",
     });
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("auth mode defaults to password, rejects unsupported modes and reads password files", () => {
+  const base = { BOT_TOKEN: "fixture" };
+  expect(() => readConfig(base)).toThrow("ADMIN_PASSWORD");
+  expect(() => readConfig({ ...base, AUTH_MODE: "discord" })).toThrow(
+    "not supported yet",
+  );
+  expect(() => readConfig({ ...base, AUTH_MODE: "other" })).toThrow(
+    "AUTH_MODE",
+  );
+  expect(readConfig({ ...base, AUTH_MODE: "none" }).authMode).toBe("none");
+  expect(readConfig({ ...base, ADMIN_PASSWORD: "fixture" }).authMode).toBe(
+    "password",
+  );
+  const dir = mkdtempSync(join(tmpdir(), "embed-password-"));
+  try {
+    writeFileSync(join(dir, "password"), "file-password\n");
+    expect(
+      readConfig({
+        ...base,
+        INIT_CWD: dir,
+        ADMIN_PASSWORD_FILE: "password",
+        ADMIN_PASSWORD: "env",
+      }).adminPassword,
+    ).toBe("file-password");
+    expect(() =>
+      readConfig({ ...base, ADMIN_PASSWORD_FILE: join(dir, "missing") }),
+    ).toThrow("ADMIN_PASSWORD_FILE");
   } finally {
     rmSync(dir, { recursive: true });
   }

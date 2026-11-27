@@ -1,3 +1,4 @@
+import { registerAuth } from "./auth.js";
 import Fastify, { LogController, type FastifyServerOptions } from "fastify";
 import fastifyStatic from "@fastify/static";
 import type { Config } from "./config.js";
@@ -22,6 +23,7 @@ export async function createApp(
   app.addHook("onClose", async () => {
     database.close();
   });
+  await registerAuth(app, config, database);
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/api/bot", async (_request, reply) => {
     try {
