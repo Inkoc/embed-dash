@@ -14,7 +14,7 @@ mkdir -p secrets
 docker compose up --build
 ```
 
-Open <http://127.0.0.1:8742>. The first page displays the connected bot's name and ID, and its avatar when available. The service binds to localhost and has no authentication in this baseline. SQLite lives in the named `embed-data` volume and migrations run at startup. Stop with `docker compose down`; the volume persists.
+Open <http://127.0.0.1:8742>. The composer opens with an illustrative example embed and a live Discord-style preview; the top bar shows which bot is connected. Sending to channels is not available yet. The service binds to localhost and has no authentication in this baseline. SQLite lives in the named `embed-data` volume and migrations run at startup. Stop with `docker compose down`; the volume persists.
 
 ### Development
 
@@ -39,6 +39,8 @@ pnpm build
 bash scripts/ci.sh
 ```
 
-`pnpm format` applies formatting. E2E builds and starts the real app with a local fake Discord API; no real token or Discord request is needed. Coverage reports and Playwright artifacts go to `~/forge-artifacts/embed-dash/scaffold/`. To serve a production build outside Docker, run `NODE_ENV=production BOT_TOKEN_FILE=./secrets/bot_token.txt DATA_DIR=./data node apps/server/dist/index.js` after `pnpm build`.
+`pnpm format` applies formatting. E2E builds and starts the real app with a local fake Discord API; no real token or Discord request is needed. Coverage reports and Playwright artifacts go to `~/forge-artifacts/embed-dash/scaffold/`; the composer specs also write screenshots to `~/forge-artifacts/embed-dash/baseline/`.
+
+The visual design system is described in [DESIGN.md](DESIGN.md), and bundled fonts and icons with their licences in [docs/assets.md](docs/assets.md). To serve a production build outside Docker, run `NODE_ENV=production BOT_TOKEN_FILE=./secrets/bot_token.txt DATA_DIR=./data node apps/server/dist/index.js` after `pnpm build`.
 
 Dependencies are locked. TypeScript 6.0.3 is retained for typescript-eslint's supported range; the other adopted packages use compatible current releases. The project is licensed under [AGPL-3.0](LICENSE).

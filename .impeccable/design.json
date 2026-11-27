@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-27T03:06:43+00:00",
+  "title": "Design System: embed-dash",
+  "extensions": {
+    "colorMeta": {
+      "accent-light": {
+        "role": "primary",
+        "displayName": "Index Teal",
+        "canonical": "oklch(47% 0.085 186)",
+        "tonalRamp": [
+          "oklch(15% 0.05 186)",
+          "oklch(25% 0.08 186)",
+          "oklch(35% 0.1 186)",
+          "oklch(47% 0.1 186)",
+          "oklch(60% 0.1 186)",
+          "oklch(72% 0.09 186)",
+          "oklch(85% 0.06 186)",
+          "oklch(95% 0.03 186)"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Index Teal (dark)",
+        "canonical": "oklch(78% 0.115 182)",
+        "tonalRamp": [
+          "oklch(15% 0.058 182)",
+          "oklch(25% 0.092 182)",
+          "oklch(35% 0.115 182)",
+          "oklch(47% 0.115 182)",
+          "oklch(60% 0.115 182)",
+          "oklch(72% 0.104 182)",
+          "oklch(85% 0.069 182)",
+          "oklch(95% 0.035 182)"
+        ]
+      },
+      "tray-light": {
+        "role": "neutral",
+        "displayName": "Deep Ink Tray",
+        "canonical": "oklch(25% 0.035 248)",
+        "tonalRamp": [
+          "oklch(15% 0.02 248)",
+          "oklch(25% 0.032 248)",
+          "oklch(35% 0.04 248)",
+          "oklch(47% 0.04 248)",
+          "oklch(60% 0.04 248)",
+          "oklch(72% 0.036 248)",
+          "oklch(85% 0.024 248)",
+          "oklch(95% 0.012 248)"
+        ]
+      },
+      "ground-light": {
+        "role": "neutral",
+        "displayName": "Card Stock Desk",
+        "canonical": "oklch(96.3% 0.006 232)",
+        "tonalRamp": [
+          "oklch(15% 0.006 232)",
+          "oklch(25% 0.01 232)",
+          "oklch(35% 0.012 232)",
+          "oklch(47% 0.012 232)",
+          "oklch(60% 0.012 232)",
+          "oklch(72% 0.011 232)",
+          "oklch(85% 0.007 232)",
+          "oklch(95% 0.004 232)"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Blue-black Desk",
+        "canonical": "oklch(17% 0.016 250)",
+        "tonalRamp": [
+          "oklch(15% 0.01 250)",
+          "oklch(25% 0.016 250)",
+          "oklch(35% 0.02 250)",
+          "oklch(47% 0.02 250)",
+          "oklch(60% 0.02 250)",
+          "oklch(72% 0.018 250)",
+          "oklch(85% 0.012 250)",
+          "oklch(95% 0.006 250)"
+        ]
+      },
+      "danger-light": {
+        "role": "error",
+        "displayName": "Error Red",
+        "canonical": "oklch(50% 0.175 27)",
+        "tonalRamp": [
+          "oklch(15% 0.085 27)",
+          "oklch(25% 0.136 27)",
+          "oklch(35% 0.17 27)",
+          "oklch(47% 0.17 27)",
+          "oklch(60% 0.17 27)",
+          "oklch(72% 0.153 27)",
+          "oklch(85% 0.102 27)",
+          "oklch(95% 0.051 27)"
+        ]
+      },
+      "warn-light": {
+        "role": "warning",
+        "displayName": "Near-limit Amber",
+        "canonical": "oklch(50% 0.11 62)",
+        "tonalRamp": [
+          "oklch(15% 0.055 62)",
+          "oklch(25% 0.088 62)",
+          "oklch(35% 0.11 62)",
+          "oklch(47% 0.11 62)",
+          "oklch(60% 0.11 62)",
+          "oklch(72% 0.099 62)",
+          "oklch(85% 0.066 62)",
+          "oklch(95% 0.033 62)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "View titles only."
+      },
+      "count": {
+        "displayName": "Count",
+        "purpose": "The tray's selection numeral."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings and server names."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Inputs and prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, nav items, buttons."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Summaries, hints, secondary lines."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Counts, budgets, widths, IDs: measurements only."
+      },
+      "key": {
+        "displayName": "Key",
+        "purpose": "Printed key caps."
+      },
+      "preview": {
+        "displayName": "Preview",
+        "purpose": "Inside the Discord preview only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-1",
+        "value": "var(--shadow-1)",
+        "purpose": "Small lifted pieces: segmented thumbs, the grip, the next-step card."
+      },
+      {
+        "name": "shadow-2",
+        "value": "var(--shadow-2)",
+        "purpose": "Sheets, frames and the tray."
+      },
+      {
+        "name": "shadow-lift",
+        "value": "var(--shadow-lift)",
+        "purpose": "Things in flight: the filing slip, the shortcuts dialog."
+      },
+      {
+        "name": "tray-edge",
+        "value": "var(--tray-edge)",
+        "purpose": "The tray's inner highlight (and 1px edge in dark)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Every arrival."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.55, 0, 0.75, 0.2)",
+        "purpose": "Quick departures such as a slip leaving the tray."
+      },
+      {
+        "name": "dur-fast",
+        "value": "120ms",
+        "purpose": "Key presses, hovers, borders."
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "Reveals and colour changes."
+      },
+      {
+        "name": "dur-move",
+        "value": "320ms",
+        "purpose": "Thumbs, knobs, the view slide, the ruler."
+      },
+      {
+        "name": "dur-file",
+        "value": "520ms",
+        "purpose": "Filing flight and tray arrival."
+      },
+      {
+        "name": "dur-wipe",
+        "value": "560ms",
+        "purpose": "Theme wipe."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "640px"
+      },
+      {
+        "name": "stacked",
+        "value": "860px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The forward path, with its arrow and key cap.",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">Choose channels <span aria-hidden=\"true\">→</span> <kbd class=\"ds-kbd\">Ctrl ↵</kbd></a>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:var(--space-3);min-height:3rem;padding:0 var(--space-5);border-radius:var(--radius-md);background:var(--accent);color:var(--on-accent);font-weight:750;text-decoration:none;transition:background var(--dur-fast),transform var(--dur-fast) var(--ease-out)}.ds-btn-primary:hover{background:var(--accent-hover)}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.ds-btn-primary .ds-kbd{font-family:var(--font-mono);font-size:var(--text-key);padding:.25em .45em;border:1px solid currentColor;border-radius:var(--radius-xs)}"
+    },
+    {
+      "name": "Text Input with Quiet Count",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Label above, count shown on focus or past 90% of the limit.",
+      "html": "<label class=\"ds-ctl\"><span class=\"ds-top\"><span>Title</span><span class=\"ds-count\">34 / 256</span></span><input value=\"Patch 0.9.4 — The Saltmarsh Update\"></label>",
+      "css": ".ds-ctl{display:grid;gap:var(--space-2);font-family:var(--font-sans)}.ds-top{display:flex;justify-content:space-between;font-size:var(--text-label);font-weight:650}.ds-count{font-family:var(--font-mono);font-size:var(--text-meta);color:var(--ink-2);opacity:0;transition:opacity var(--dur-base)}.ds-ctl:focus-within .ds-count{opacity:1}.ds-ctl input{min-height:var(--tap);padding:var(--space-2) var(--space-3);border:1px solid var(--field-line);border-radius:var(--radius-md);background:var(--field);color:var(--ink);font:inherit}.ds-ctl input:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 1px var(--ring),0 0 0 4px var(--accent-wash-2)}"
+    },
+    {
+      "name": "Segmented Views",
+      "kind": "nav",
+      "refersTo": "segmented-track",
+      "description": "One thumb slides under the active view.",
+      "html": "<nav class=\"ds-seg\"><a class=\"ds-on\" href=\"#\">Compose</a><a href=\"#\">Send</a></nav>",
+      "css": ".ds-seg{display:inline-grid;grid-auto-flow:column;padding:var(--space-hair);background:var(--ground);border:1px solid var(--rule-2);border-radius:var(--radius-lg)}.ds-seg a{min-height:var(--tap);display:inline-flex;align-items:center;padding:0 var(--space-4);border-radius:var(--radius-md);color:var(--ink-2);font-weight:650;text-decoration:none}.ds-seg a:hover{color:var(--ink)}.ds-seg a.ds-on{background:var(--sheet);color:var(--ink);box-shadow:var(--shadow-1),0 0 0 1px var(--rule-2)}"
+    },
+    {
+      "name": "Key Cap",
+      "kind": "chip",
+      "refersTo": "key-cap",
+      "description": "A printed shortcut; presses when used.",
+      "html": "<kbd class=\"ds-key\">Esc</kbd> <kbd class=\"ds-key ds-pressed\">?</kbd>",
+      "css": ".ds-key{display:inline-flex;font-family:var(--font-mono);font-size:var(--text-key);font-weight:600;line-height:1;padding:.25em .45em .2em;border:1px solid var(--rule-2);box-shadow:inset 0 -1px 0 var(--rule-2);border-radius:var(--radius-xs);color:var(--ink-2);background:var(--sheet);transition:transform var(--dur-fast) var(--ease-out)}.ds-pressed{transform:translateY(1px);box-shadow:none;border-color:var(--accent);color:var(--accent);background:var(--accent-wash)}"
+    },
+    {
+      "name": "Budget Ruler",
+      "kind": "custom",
+      "description": "The 6,000-character embed budget, a tick per 1,000.",
+      "html": "<div class=\"ds-budget\"><span>Embed text</span><span class=\"ds-num\"><b>435</b> / 6,000</span><span class=\"ds-ruler\"><span></span></span></div>",
+      "css": ".ds-budget{display:grid;grid-template-columns:auto auto;gap:var(--space-2) var(--space-3);font-size:var(--text-meta);color:var(--ink-2)}.ds-num{font-family:var(--font-mono)}.ds-num b{color:var(--ink)}.ds-ruler{grid-column:1/-1;position:relative;width:11rem;height:.5rem;border-bottom:1px solid var(--field-line);background:linear-gradient(to right,var(--field-line) 1px,transparent 1px) left bottom/calc(100%/6) 100% repeat-x;overflow:hidden}.ds-ruler span{position:absolute;left:0;bottom:0;height:3px;width:7.25%;background:var(--accent)}"
+    },
+    {
+      "name": "Drawer Label Holder",
+      "kind": "custom",
+      "description": "Initials fallback for a server without an icon.",
+      "html": "<span class=\"ds-holder\">LC</span>",
+      "css": ".ds-holder{position:relative;display:inline-grid;place-items:center;width:2.25rem;height:1.75rem;border:1.5px solid var(--ink-2);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:var(--text-key);font-weight:700;color:var(--ink)}.ds-holder::before,.ds-holder::after{content:'';position:absolute;top:50%;width:3px;height:3px;margin-top:-1.5px;border-radius:50%;background:var(--ink-2)}.ds-holder::before{left:-5px}.ds-holder::after{right:-5px}"
+    },
+    {
+      "name": "Tray Slip",
+      "kind": "custom",
+      "refersTo": "tray",
+      "description": "A filed channel in the deep-ink tray with its result.",
+      "html": "<div class=\"ds-tray\"><div class=\"ds-slip\"><span><b>#news</b><small>Lanternfall Cup EU</small></span><span class=\"ds-fail\">✗ Failed</span></div></div>",
+      "css": ".ds-tray{background:var(--tray);color:var(--tray-ink);border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-2),var(--tray-edge)}.ds-slip{display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) var(--space-3);background:var(--tray-2);border-radius:var(--radius-md);box-shadow:var(--tray-edge)}.ds-slip span{display:grid}.ds-slip small{font-size:var(--text-meta);color:var(--tray-soft)}.ds-fail{color:var(--tray-danger);font-weight:700;font-size:var(--text-meta)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Index Desk",
+    "overview": "embed-dash is a library card catalogue run from the keyboard. The composer is one index sheet on a desk, with the live Discord preview beside it; sending is filing channels, read by their call numbers, into a deep-ink tray that holds the selection and each result. Measurements are the only things set in monospace.",
+    "keyCharacteristics": [
+      "One accent, teal; red only for errors, amber only near a limit.",
+      "Atkinson Hyperlegible Next for reading, its Mono only for data.",
+      "Ruled lists and one sheet per view; depth in three layers.",
+      "Every shortcut printed as a key cap that presses when used.",
+      "Motion is exponential ease-out, has a job, and never holds input."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Teal is the only accent. Red and amber are signals, not decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Coloured Text Rule",
+        "body": "Text on a coloured surface uses that surface's own ink token, never a grey.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measurement Rule",
+        "body": "Monospace is for things that are measured or identified: counts, limits, widths, IDs, keys.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do use tokens from apps/web/src/styles/tokens.css for every value.",
+      "Do keep the composer one sheet with ruled lists.",
+      "Do print a key cap for every shortcut and give the control aria-keyshortcuts.",
+      "Do show counts on focus or past 90% of a limit.",
+      "Do give every data view loading, empty and error states.",
+      "Do keep the preview in Discord's exact colours and metrics."
+    ],
+    "donts": [
+      "Don't box sections or rows inside the sheet.",
+      "Don't add a second accent colour, gradients, glass or glow.",
+      "Don't use monospace for labels or headings.",
+      "Don't use View Transitions or delays for navigation.",
+      "Don't bind browser-reserved shortcuts such as Alt+number.",
+      "Don't use Discord's logo, font or chrome outside the preview."
+    ]
+  }
+}
