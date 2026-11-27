@@ -4,18 +4,22 @@ import { join, resolve } from "node:path";
 import { once } from "node:events";
 import { createApp } from "../apps/server/src/app.js";
 import { startFakeDiscord } from "./fake-discord.js";
-// E2E_PORT lets two checkouts run the suite side by side; the fake Discord takes the next port.
-const port = Number(process.env.E2E_PORT ?? 18742);
 const dataDir = mkdtempSync(join(tmpdir(), "embed-e2e-"));
-const fake = startFakeDiscord(port + 1);
+const port = Number(process.env.E2E_PORT ?? 28742);
+const fake = startFakeDiscord(0);
 await once(fake, "listening");
+const address = fake.address();
+if (!address || typeof address === "string")
+  throw new Error("No fake API address");
 const app = await createApp(
   {
     botToken: "e2e-test-token",
+    authMode: process.env.E2E_AUTH_MODE === "none" ? "none" : "password",
+    adminPassword: "e2e-password",
     host: "127.0.0.1",
     port,
     dataDir,
-    discordApiBase: `http://127.0.0.1:${port + 1}/api`,
+    discordApiBase: `http://127.0.0.1:${address.port}/api`,
   },
   { spaRoot: resolve("apps/web/dist"), logger: false },
 );

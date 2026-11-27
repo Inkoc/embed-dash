@@ -107,6 +107,7 @@ async function startApp() {
   return createApp(
     {
       botToken: token,
+      authMode: "none",
       host: "127.0.0.1",
       port: 8742,
       dataDir: dir,

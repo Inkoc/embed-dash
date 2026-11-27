@@ -9,13 +9,16 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@embed-dash/shared": "workspace:*",
     "@discordjs/rest": "2.6.3",
-    "discord-api-types": "0.38.60",
-    "fastify": "5.12.8",
+    "@embed-dash/shared": "workspace:*",
+    "@fastify/cookie": "11.1.5",
+    "@fastify/rate-limit": "11.3.0",
     "@fastify/static": "9.3.0",
+    "@node-rs/argon2": "2.2.2",
     "better-sqlite3": "13.2.0",
-    "drizzle-orm": "0.45.4"
+    "discord-api-types": "0.38.60",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",

@@ -82,7 +82,9 @@
 
   /* sizes */
   --tap: 2.75rem;
-  --bar-height: 3.75rem;
+  --nav-height: 3.75rem;
+  --bar-height: var(--nav-height);
+  --login-measure: 40rem;
   --content-max: 86rem;
   --editor-min: 22rem;
   --preview-min: 20rem;
@@ -155,6 +157,7 @@
   --danger: oklch(50% 0.175 27);
   --danger-wash: oklch(96.6% 0.018 27);
   --warn: oklch(50% 0.11 62);
+  --access-warning: oklch(50% 0.11 62);
   --mark: oklch(90% 0.11 95);
   --sel: oklch(88% 0.06 185);
   --scrim: oklch(23% 0.028 250 / 0.45);
@@ -208,6 +211,7 @@
   --danger: oklch(75% 0.14 25);
   --danger-wash: oklch(25.5% 0.045 25);
   --warn: oklch(82% 0.12 78);
+  --access-warning: oklch(82% 0.12 78);
   --mark: oklch(44% 0.09 95);
   --sel: oklch(40% 0.07 190);
   --scrim: oklch(10% 0.01 250 / 0.6);

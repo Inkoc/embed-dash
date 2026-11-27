@@ -17,7 +17,7 @@ pnpm workspace on Node 26 (versions pinned in `mise.toml`): `apps/web` (React + 
 | Lint | `pnpm lint` |
 | Format check / fix | `pnpm format:check` / `pnpm format` |
 | Typecheck | `pnpm typecheck` |
-| E2E | `pnpm e2e` (first time: `pnpm exec playwright install chromium`; `E2E_PORT=…` moves the app and fake Discord to another port pair) |
+| E2E | `pnpm e2e` (first time: `pnpm exec playwright install chromium`; `E2E_PORT=…` moves the app off its default port 28742; the fake Discord always takes a free port) |
 | Build | `pnpm build` |
 | Everything CI runs | `bash scripts/ci.sh` |
 | Container | `docker compose up --build` |

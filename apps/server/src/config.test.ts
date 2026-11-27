@@ -9,7 +9,11 @@ test("reads defaults and secret files with file precedence", () => {
     const file = join(dir, "token");
     writeFileSync(file, "file-token\n");
     expect(
-      readConfig({ BOT_TOKEN: "env-token", BOT_TOKEN_FILE: file }),
+      readConfig({
+        ADMIN_PASSWORD: "fixture-password",
+        BOT_TOKEN: "env-token",
+        BOT_TOKEN_FILE: file,
+      }),
     ).toMatchObject({
       botToken: "file-token",
       port: 8742,
@@ -18,6 +22,7 @@ test("reads defaults and secret files with file precedence", () => {
     });
     expect(
       readConfig({
+        ADMIN_PASSWORD: "fixture-password",
         BOT_TOKEN: "env-token",
         PORT: "9000",
         DATA_DIR: dir,
@@ -65,7 +70,12 @@ test("resolves workspace-relative paths from the invoking directory", () => {
   try {
     writeFileSync(join(dir, "token"), "fixture-token");
     expect(
-      readConfig({ INIT_CWD: dir, BOT_TOKEN_FILE: "token", DATA_DIR: "data" }),
+      readConfig({
+        ADMIN_PASSWORD: "fixture-password",
+        INIT_CWD: dir,
+        BOT_TOKEN_FILE: "token",
+        DATA_DIR: "data",
+      }),
     ).toMatchObject({
       botToken: "fixture-token",
       dataDir: join(dir, "data"),
@@ -74,4 +84,66 @@ test("resolves workspace-relative paths from the invoking directory", () => {
   } finally {
     rmSync(dir, { recursive: true });
   }
+});
+
+test("auth mode defaults to password, rejects unsupported modes and reads password files", () => {
+  const base = { BOT_TOKEN: "fixture" };
+  expect(() => readConfig(base)).toThrow("ADMIN_PASSWORD");
+  expect(() => readConfig({ ...base, AUTH_MODE: "discord" })).toThrow(
+    "not supported yet",
+  );
+  expect(() => readConfig({ ...base, AUTH_MODE: "other" })).toThrow(
+    "AUTH_MODE",
+  );
+  expect(readConfig({ ...base, AUTH_MODE: "none" }).authMode).toBe("none");
+  expect(readConfig({ ...base, ADMIN_PASSWORD: "fixture" }).authMode).toBe(
+    "password",
+  );
+  const dir = mkdtempSync(join(tmpdir(), "embed-password-"));
+  try {
+    writeFileSync(join(dir, "password"), "file-password\n");
+    expect(
+      readConfig({
+        ...base,
+        INIT_CWD: dir,
+        ADMIN_PASSWORD_FILE: "password",
+        ADMIN_PASSWORD: "env",
+      }).adminPassword,
+    ).toBe("file-password");
+    expect(() =>
+      readConfig({ ...base, ADMIN_PASSWORD_FILE: join(dir, "missing") }),
+    ).toThrow("ADMIN_PASSWORD_FILE");
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test.each(["-1", "true", "1.5", "11", "", "abc"])(
+  "rejects invalid proxy trust %s",
+  (TRUST_PROXY) => {
+    expect(() =>
+      readConfig({ BOT_TOKEN: "fixture", AUTH_MODE: "none", TRUST_PROXY }),
+    ).toThrow("TRUST_PROXY");
+  },
+);
+test("proxy trust is opt-in and public origins are validated", () => {
+  const base = { BOT_TOKEN: "fixture", AUTH_MODE: "none" };
+  expect(readConfig(base).trustProxy).toBeUndefined();
+  expect(
+    readConfig({
+      ...base,
+      TRUST_PROXY: "127.0.0.1,::1",
+      PUBLIC_URL: "https://embed.example/",
+    }),
+  ).toMatchObject({
+    trustProxy: ["127.0.0.1", "::1"],
+    publicUrl: "https://embed.example",
+  });
+  for (const PUBLIC_URL of [
+    "file:///tmp",
+    "https://user:secret@example.com",
+    "https://example.com/path",
+    "invalid",
+  ])
+    expect(() => readConfig({ ...base, PUBLIC_URL })).toThrow("PUBLIC_URL");
 });

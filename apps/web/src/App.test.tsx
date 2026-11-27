@@ -46,12 +46,17 @@ function stubBot(...responses: Response[]) {
 }
 
 function renderApp(path = "/") {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryDefaults(["session"], { staleTime: Infinity });
+  client.setQueryData(["session"], {
+    authenticated: true,
+    insecure: false,
+    csrfToken: "fixture",
+  });
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <App />
       </MemoryRouter>
@@ -151,7 +156,7 @@ test("the theme follows the system until the operator chooses", () => {
   expect(screen.getByText("Discord dark")).toBeTruthy();
   act(() => mediaListeners.forEach((listener) => listener({ matches: false })));
   expect(html.dataset.theme).toBe("dark");
-  act(() => vi.runAllTimers());
+  act(() => vi.advanceTimersByTime(1000));
   expect(html.classList.contains("theme-fade")).toBe(false);
 });
 

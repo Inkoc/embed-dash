@@ -1,5 +1,7 @@
 import { Link } from "react-router";
-import { Moon, Sun } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
+import { AccessWarning, SessionControls } from "./SessionGate";
+import { ThemeSwitch } from "./ThemeSwitch";
 import type { Theme } from "../theme";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { BotStatus } from "./BotStatus";
@@ -20,54 +22,63 @@ const views = [
 ] as const;
 
 export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
+  const header = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const element = header.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    // Sticky composer controls use the full header height, including the access notice.
+    const measure = () =>
+      document.documentElement.style.setProperty(
+        "--bar-height",
+        element.getBoundingClientRect().height + "px",
+      );
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    measure();
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--bar-height");
+    };
+  }, []);
   return (
-    <header className={styles.bar}>
-      <Link to="/" className={styles.brand}>
-        <img src="/icon.svg" alt="" width="28" height="28" />
-        <span className={styles.brandName}>embed-dash</span>
-      </Link>
-      <nav aria-label="Main" className={styles.views}>
-        <Segmented activeKey={view}>
-          {views.map((item) => (
-            <Link
-              key={item.view}
-              to={item.to}
-              className={segmentedItem}
-              aria-current={item.view === view ? "page" : undefined}
-              data-active={item.view === view || undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </Segmented>
-      </nav>
-      <div className={styles.end}>
-        <BotStatus variant="bar" />
-        <button
-          type="button"
-          className={styles.quiet}
-          onClick={onShowShortcuts}
-          aria-keyshortcuts="?"
-        >
-          <span className={styles.shortcutsLabel}>Shortcuts</span>
-          <kbd data-k="help" aria-hidden="true">
-            ?
-          </kbd>
-        </button>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={theme === "dark"}
-          className={styles.theme}
-          onClick={onToggleTheme}
-        >
-          <span className={styles.track} aria-hidden="true">
-            <span className={styles.knob} />
-            <Sun className={styles.sun} />
-            <Moon className={styles.moon} />
-          </span>
-          <span className={styles.themeLabel}>Dark theme</span>
-        </button>
+    <header className={styles.header} ref={header}>
+      <AccessWarning />
+      <div className={styles.bar}>
+        <Link to="/" className={styles.brand}>
+          <img src="/icon.svg" alt="" width="28" height="28" />
+          <span className={styles.brandName}>embed-dash</span>
+        </Link>
+        <nav aria-label="Main" className={styles.views}>
+          <Segmented activeKey={view}>
+            {views.map((item) => (
+              <Link
+                key={item.view}
+                to={item.to}
+                className={segmentedItem}
+                aria-current={item.view === view ? "page" : undefined}
+                data-active={item.view === view || undefined}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </Segmented>
+        </nav>
+        <div className={styles.end}>
+          <BotStatus variant="bar" />
+          <button
+            type="button"
+            className={styles.quiet}
+            onClick={onShowShortcuts}
+            aria-keyshortcuts="?"
+          >
+            <span className={styles.shortcutsLabel}>Shortcuts</span>
+            <kbd data-k="help" aria-hidden="true">
+              ?
+            </kbd>
+          </button>
+          <SessionControls />
+          <ThemeSwitch theme={theme} onToggle={onToggleTheme} />
+        </div>
       </div>
     </header>
   );

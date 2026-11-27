@@ -18,6 +18,7 @@ async function failure(dataDir: string, port = 8742) {
         env: {
           PATH: process.env.PATH,
           BOT_TOKEN: token,
+          AUTH_MODE: "none",
           DATA_DIR: dataDir,
           PORT: String(port),
         },
