@@ -22,10 +22,10 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const titleId = useId();
+  const bodyId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
-  // Several dialogs can share a view, so their ids must not collide.
-  const id = useId();
 
   useEffect(() => {
     const element = dialog.current;
@@ -41,16 +41,16 @@ export function ConfirmDialog({
     <dialog
       ref={dialog}
       className={styles.dialog}
-      aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-body`}
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
       onClose={onCancel}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
     >
       <div className={styles.sheet}>
-        <h2 id={`${id}-title`}>{title}</h2>
-        <div id={`${id}-body`} className={styles.body}>
+        <h2 id={titleId}>{title}</h2>
+        <div id={bodyId} className={styles.body}>
           {children}
         </div>
         <div className={styles.actions}>

@@ -593,3 +593,25 @@
   margin-top: var(--space-hair);
   color: var(--danger);
 }
+.importResult {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  overflow-wrap: anywhere;
+}
+.importResult ul {
+  list-style: disc;
+  padding-left: var(--space-5);
+}
+.importResult b {
+  display: block;
+  margin-top: var(--space-2);
+}
+/* phones: the save status takes its own line, so the head's actions pair up beneath it */
+@media (max-width: 640px) {
+  .saved {
+    flex-basis: 100%;
+  }
+}

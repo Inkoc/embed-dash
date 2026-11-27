@@ -30,6 +30,7 @@ import type { StartedFrom } from "../templates/TemplatesView";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
+import { MessageJson } from "./MessageJson";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
@@ -55,6 +56,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
   // Read once on arrival (each view arrives fresh); the history entry's state is
   // then cleared so a reload doesn't repeat the note.
   const [started] = useState(arrivalState?.started);
+  const [importNotices, setImportNotices] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [savedTemplate, setSavedTemplate] = useState<Template | null>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -146,10 +148,33 @@ export function ComposeView({ theme }: { theme: Theme }) {
               Clear
             </button>
           </div>
+          <div className={styles.draftState}>
+            <MessageJson onImported={setImportNotices} />
+          </div>
         </div>
 
         <SavedNote saved={savedTemplate} />
         {started && <StartedNote started={started} />}
+        {importNotices !== null && (
+          <div
+            id="json-result"
+            className={styles.importResult}
+            role="status"
+            tabIndex={-1}
+          >
+            <p>Message imported. The preview has been updated.</p>
+            {importNotices.length > 0 && (
+              <>
+                <b>Compatibility notice</b>
+                <ul>
+                  {importNotices.map((notice) => (
+                    <li key={notice}>{notice}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
 
         {!saved && (
           <p className={styles.saveFailed} role="alert">
