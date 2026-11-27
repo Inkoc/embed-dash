@@ -80,7 +80,7 @@ typography:
     fontSize: "0.75rem"
     fontWeight: 600
   preview:
-    fontFamily: "Noto Sans, Helvetica Neue, Arial, sans-serif"
+    fontFamily: "Preview Sans, Noto Sans, Helvetica Neue, Helvetica, Arial, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: "1.375rem"
@@ -216,7 +216,7 @@ All text pairs reach 4.5:1 and all control borders and focus rings 3:1 in both t
 
 **UI Font:** Atkinson Hyperlegible Next (variable, 200–800)
 **Data Font:** Atkinson Hyperlegible Mono (variable, 200–800)
-**Preview Font:** Noto Sans (variable, normal and italic), Discord's own first fallback, standing in for its proprietary face
+**Preview Font:** Noto Sans (variable, normal and italic), self-hosted under the family name `Preview Sans`; Discord's own first fallback, standing in for its proprietary face
 
 **Character:** a typeface designed for telling similar characters apart, which is the whole job when reading channel names and IDs; its mono sibling sets every measurement in the same voice.
 
