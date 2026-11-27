@@ -7,7 +7,7 @@ import { Segmented, segmentedItem } from "../ui/Segmented";
 import { BotStatus } from "./BotStatus";
 import styles from "./TopBar.module.css";
 
-export type View = "compose" | "send";
+export type View = "compose" | "send" | "history";
 
 interface Props {
   view: View;
@@ -51,6 +51,7 @@ function fit(cluster: HTMLElement) {
 const views = [
   { view: "compose", to: "/", label: "Compose" },
   { view: "send", to: "/send", label: "Send" },
+  { view: "history", to: "/history", label: "History" },
 ] as const;
 
 export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
