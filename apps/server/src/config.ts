@@ -1,10 +1,18 @@
 import { isIP } from "node:net";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { snowflakeSchema } from "@embed-dash/shared";
+export interface DiscordLoginConfig {
+  clientId: string;
+  clientSecret: string;
+  allowedUserIds: string[];
+  authorizeUrl: string;
+}
 export interface Config {
   botToken: string;
-  authMode: "password" | "none";
+  authMode: "password" | "none" | "discord";
   adminPassword?: string;
+  discordLogin?: DiscordLoginConfig;
   trustProxy?: string[];
   publicUrl?: string;
   port: number;
@@ -54,10 +62,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
   const authMode = env.AUTH_MODE ?? "password";
-  if (authMode === "discord")
-    throw new Error("AUTH_MODE discord is not supported yet");
-  if (authMode !== "password" && authMode !== "none")
-    throw new Error("AUTH_MODE must be password or none");
+  if (authMode !== "password" && authMode !== "none" && authMode !== "discord")
+    throw new Error("AUTH_MODE must be password, none or discord");
   let adminPassword = env.ADMIN_PASSWORD;
   if (authMode === "password") {
     if (env.ADMIN_PASSWORD_FILE) {
@@ -89,9 +95,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       "TRUST_PROXY must be off or a comma-separated list of proxy IP addresses",
     );
   let publicUrl: string | undefined;
-  if (env.PUBLIC_URL !== undefined) {
+  // Compose passes unset variables through as empty strings.
+  const rawPublicUrl = env.PUBLIC_URL?.trim();
+  if (rawPublicUrl) {
     try {
-      const url = new URL(env.PUBLIC_URL);
+      const url = new URL(rawPublicUrl);
       if (
         !["http:", "https:"].includes(url.protocol) ||
         url.username ||
@@ -108,15 +116,88 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       );
     }
   }
+  const discordLogin =
+    authMode === "discord"
+      ? readDiscordLogin(env, baseDir, publicUrl)
+      : undefined;
   return {
     trustProxy,
     publicUrl,
     authMode,
     adminPassword,
+    discordLogin,
     botToken,
     port,
     host,
     dataDir: resolve(baseDir, dataDir),
     discordApiBase,
+  };
+}
+
+function readDiscordLogin(
+  env: NodeJS.ProcessEnv,
+  baseDir: string,
+  publicUrl: string | undefined,
+): DiscordLoginConfig {
+  const clientId = env.DISCORD_CLIENT_ID?.trim() ?? "";
+  if (!snowflakeSchema.safeParse(clientId).success)
+    throw new Error(
+      "DISCORD_CLIENT_ID must be the application ID from the Discord developer portal",
+    );
+  let clientSecret = env.DISCORD_CLIENT_SECRET ?? "";
+  if (env.DISCORD_CLIENT_SECRET_FILE) {
+    try {
+      clientSecret = readFileSync(
+        resolve(baseDir, env.DISCORD_CLIENT_SECRET_FILE),
+        "utf8",
+      );
+    } catch {
+      throw new Error(
+        "DISCORD_CLIENT_SECRET_FILE must point to a readable secret file",
+      );
+    }
+  }
+  clientSecret = clientSecret.trim();
+  if (!clientSecret || /\s/.test(clientSecret))
+    throw new Error(
+      "DISCORD_CLIENT_SECRET or DISCORD_CLIENT_SECRET_FILE must provide a non-empty secret without whitespace",
+    );
+  if (!publicUrl)
+    throw new Error(
+      "PUBLIC_URL is required with AUTH_MODE=discord; it sets the OAuth redirect address",
+    );
+  const allowedUserIds = (env.ALLOWED_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    !allowedUserIds.length ||
+    !allowedUserIds.every((id) => snowflakeSchema.safeParse(id).success)
+  )
+    throw new Error(
+      "ALLOWED_USER_IDS must be a comma-separated list of Discord user IDs",
+    );
+  const authorizeUrl =
+    env.DISCORD_AUTHORIZE_URL ?? "https://discord.com/oauth2/authorize";
+  try {
+    const url = new URL(authorizeUrl);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    )
+      throw new Error();
+  } catch {
+    throw new Error(
+      "DISCORD_AUTHORIZE_URL must be an HTTP(S) URL without credentials, query or fragment",
+    );
+  }
+  return {
+    clientId,
+    clientSecret,
+    allowedUserIds: [...new Set(allowedUserIds)],
+    authorizeUrl,
   };
 }

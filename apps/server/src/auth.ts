@@ -6,12 +6,21 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq, lte } from "drizzle-orm";
 import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { snowflakeSchema, type SessionUser } from "@embed-dash/shared";
 import type { Config } from "./config.js";
+import { authorizeUrl, fetchDiscordUser, OAuthError } from "./discord-oauth.js";
+import { safeErrorDetails } from "./errors.js";
 import { sessions } from "./schema.js";
 
 const cookieName = "embed_session";
 const csrfCookieName = "embed_csrf";
+const stateCookieName = "embed_oauth_state";
+const deniedCookieName = "embed_denied";
+const discordPath = "/api/auth/discord";
 const lifetime = 12 * 60 * 60 * 1000;
+const stateLifetime = 10 * 60 * 1000;
+const maxPendingStates = 1000;
+const discordSubject = "discord:";
 const random = () => randomBytes(32).toString("hex");
 const digest = (id: string) => createHash("sha256").update(id).digest("hex");
 const isApi = (path: string) => path === "/api" || path.startsWith("/api/");
@@ -58,6 +67,19 @@ export async function registerAuth(
     config.authMode === "password"
       ? await hash(config.adminPassword!, { algorithm: Algorithm.Argon2id })
       : undefined;
+  const discord =
+    config.authMode === "discord"
+      ? { login: config.discordLogin, publicUrl: config.publicUrl }
+      : undefined;
+  if (discord && (!discord.login || !discord.publicUrl))
+    throw new Error("Discord login needs discordLogin and publicUrl config");
+  const allowed = new Set(discord?.login?.allowedUserIds);
+  // Removing an ID from the allowlist also ends that person's open sessions.
+  const valid = (subject: string) =>
+    discord
+      ? subject.startsWith(discordSubject) &&
+        allowed.has(subject.slice(discordSubject.length))
+      : subject === "password";
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   const cookieOptions = (request: FastifyRequest) => ({
@@ -76,7 +98,9 @@ export async function registerAuth(
           .where(eq(sessions.id, digest(id)))
           .get()
       : undefined;
-    return session && session.expiresAt > Date.now() ? session : undefined;
+    return session && session.expiresAt > Date.now() && valid(session.subject)
+      ? session
+      : undefined;
   };
   const remove = (request: FastifyRequest) => {
     const id = request.cookies[cookieName];
@@ -85,13 +109,20 @@ export async function registerAuth(
         .where(eq(sessions.id, digest(id)))
         .run();
   };
-  const create = (request: FastifyRequest, reply: FastifyReply) => {
+  const create = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    subject: string,
+    user?: SessionUser,
+  ) => {
     db.delete(sessions).where(lte(sessions.expiresAt, Date.now())).run();
     const id = random();
     db.insert(sessions)
       .values({
         id: digest(id),
-        subject: "password",
+        subject,
+        userName: user?.name,
+        userAvatarUrl: user?.avatarUrl,
         csrfToken: random(),
         expiresAt: Date.now() + lifetime,
       })
@@ -109,12 +140,13 @@ export async function registerAuth(
     if (!isApi(route ?? "") && !isApi(decodedPath(request.url))) return;
     reply.header("Cache-Control", "no-store");
     const session = find(request);
-    const publicRoute = route === "/api/session" || route === "/api/auth/login";
-    if (
-      !publicRoute &&
-      config.authMode !== "none" &&
-      session?.subject !== "password"
-    )
+    const publicRoute = [
+      "/api/session",
+      "/api/auth/login",
+      discordPath,
+      `${discordPath}/callback`,
+    ].includes(route ?? "");
+    if (!publicRoute && config.authMode !== "none" && !session)
       return reply.code(401).send({ error: "Sign in to continue" });
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       if (!sameOrigin(request, config.publicUrl))
@@ -140,13 +172,21 @@ export async function registerAuth(
       csrfToken = random();
       reply.setCookie(csrfCookieName, csrfToken, cookieOptions(request));
     }
+    const denied = snowflakeSchema.safeParse(request.cookies[deniedCookieName]);
     return {
       authMode: config.authMode,
       insecure: config.authMode === "none",
-      authenticated:
-        config.authMode === "none" || session?.subject === "password",
+      authenticated: config.authMode === "none" || !!session,
       csrfToken,
       expiresAt: session?.expiresAt ?? null,
+      user: session?.userName
+        ? {
+            id: session.subject.slice(discordSubject.length),
+            name: session.userName,
+            avatarUrl: session.userAvatarUrl,
+          }
+        : null,
+      deniedUserId: denied.success ? denied.data : null,
     };
   });
   app.post(
@@ -173,7 +213,7 @@ export async function registerAuth(
           .code(401)
           .send({ error: "Incorrect password. Try again." });
       remove(request);
-      create(request, reply);
+      create(request, reply, "password");
       return { ok: true };
     },
   );
@@ -182,4 +222,79 @@ export async function registerAuth(
     reply.clearCookie(cookieName, { path: "/" });
     return { ok: true };
   });
+  if (discord?.login && discord.publicUrl) {
+    const { login, publicUrl } = discord;
+    // In memory on purpose: a restart only cancels sign-ins that are under way.
+    const pending = new Map<string, number>();
+    const stateCookie = (request: FastifyRequest) => ({
+      ...cookieOptions(request),
+      path: discordPath,
+      maxAge: stateLifetime / 1000,
+    });
+    const retry = (reply: FastifyReply, reason: string) =>
+      reply.redirect(`/login?auth=${reason}`);
+    app.get(
+      discordPath,
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const now = Date.now();
+        for (const [state, expiresAt] of pending)
+          if (expiresAt <= now || pending.size >= maxPendingStates)
+            pending.delete(state);
+        const state = random();
+        pending.set(state, now + stateLifetime);
+        reply.setCookie(stateCookieName, state, stateCookie(request));
+        reply.clearCookie(deniedCookieName, { path: "/" });
+        return reply.redirect(authorizeUrl(login, publicUrl, state));
+      },
+    );
+    // Discord sends the browser here with a GET, so the origin and CSRF checks
+    // for writes cannot apply; the state bound to this browser takes their place.
+    app.get(
+      `${discordPath}/callback`,
+      { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const query = request.query as Record<string, unknown>;
+        const bound = request.cookies[stateCookieName];
+        reply.clearCookie(stateCookieName, { path: discordPath });
+        const state = typeof query.state === "string" ? query.state : "";
+        const expiresAt =
+          bound && equal(state, bound) ? pending.get(state) : undefined;
+        if (expiresAt === undefined) return retry(reply, "expired");
+        pending.delete(state);
+        if (expiresAt <= Date.now()) return retry(reply, "expired");
+        if (typeof query.error === "string") return retry(reply, "cancelled");
+        const code = query.code;
+        if (typeof code !== "string" || !code || code.length > 512)
+          return retry(reply, "failed");
+        let user: SessionUser;
+        try {
+          user = await fetchDiscordUser(
+            { ...config, discordLogin: login, publicUrl },
+            code,
+          );
+        } catch (error) {
+          app.log.warn(
+            {
+              stage: error instanceof OAuthError ? error.stage : undefined,
+              status: error instanceof OAuthError ? error.status : undefined,
+              ...safeErrorDetails(error instanceof Error ? error.cause : error),
+            },
+            "Discord sign-in failed",
+          );
+          return retry(reply, "failed");
+        }
+        if (!allowed.has(user.id)) {
+          reply.setCookie(deniedCookieName, user.id, {
+            ...cookieOptions(request),
+            maxAge: stateLifetime / 1000,
+          });
+          return reply.redirect("/login");
+        }
+        remove(request);
+        create(request, reply, discordSubject + user.id, user);
+        return reply.redirect("/");
+      },
+    );
+  }
 }
