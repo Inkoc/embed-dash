@@ -11,7 +11,9 @@ import {
 import { withIds } from "../compose/draft";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import { useBot } from "../bot";
+import { asAppError, connectionFailure, failureFrom } from "../errors";
 import type { Theme } from "../theme";
+import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./HistoryView.module.css";
 
 const statusLabel = {
@@ -21,13 +23,13 @@ const statusLabel = {
   sending: "Sending",
 };
 async function load(url: string) {
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new Error(
-      response.status === 404
-        ? "That send doesn’t exist."
-        : "History could not be loaded. Check your connection and try again.",
-    );
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw connectionFailure("load-history");
+  }
+  if (!response.ok) throw await failureFrom("load-history", response);
   return response.json() as Promise<unknown>;
 }
 function Loading() {
@@ -40,10 +42,12 @@ function Loading() {
     </div>
   );
 }
-function Failure({ message, retry }: { message: string; retry: () => void }) {
+function Failure({ error, retry }: { error: Error; retry: () => void }) {
+  const failure = asAppError("load-history", error);
   return (
     <div className={styles.state} role="alert">
-      <p>✗ {message}</p>
+      <p>✗ {failure.message}</p>
+      <FailureDetail error={failure} />
       <button onClick={retry}>Try again</button>
     </div>
   );
@@ -247,10 +251,7 @@ export function HistoryList() {
         ) : query.isPending ? (
           <Loading />
         ) : query.isError ? (
-          <Failure
-            message={query.error.message}
-            retry={() => void query.refetch()}
-          />
+          <Failure error={query.error} retry={() => void query.refetch()} />
         ) : query.data.entries.length === 0 ? (
           <div className={styles.state}>
             <h3>
@@ -354,10 +355,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
-        <Failure
-          message={query.error.message}
-          retry={() => void query.refetch()}
-        />
+        <Failure error={query.error} retry={() => void query.refetch()} />
       ) : (
         draft && (
           <div className={styles.detail}>

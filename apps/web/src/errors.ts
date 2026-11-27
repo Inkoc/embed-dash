@@ -7,6 +7,7 @@
 
 export type Action =
   | "load-servers"
+  | "load-history"
   | "send"
   | "retry"
   | "follow"
@@ -16,6 +17,7 @@ export type Action =
 
 const lead: Record<Action, string> = {
   "load-servers": "Couldn’t load servers",
+  "load-history": "Couldn’t load history",
   send: "Couldn’t send",
   retry: "Couldn’t retry",
   follow: "Couldn’t check on the send",
