@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -9,20 +10,26 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router";
 import { TriangleAlert, X, LogOut } from "lucide-react";
+import type { SessionUser } from "@embed-dash/shared";
+import { DiscordEntry, NotAllowed, UserBadge } from "./DiscordSignIn";
 import { ThemeSwitch } from "./ThemeSwitch";
 import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
 export interface Session {
+  authMode: "password" | "none" | "discord";
   authenticated: boolean;
   insecure: boolean;
   csrfToken: string;
+  user: SessionUser | null;
+  deniedUserId: string | null;
   maxUploadMb?: number;
 }
 
 const AccessContext = createContext<{
   insecure: boolean;
+  user: SessionUser | null;
   busy: boolean;
   error: string;
   logout: () => void;
@@ -46,12 +53,20 @@ export function SessionControls() {
   if (!access || access.insecure) return null;
   return (
     <>
+      {access.user && <UserBadge user={access.user} />}
       <button
         className={headerStyles.quiet}
         data-session-control
         disabled={access.busy}
         onClick={access.logout}
-        aria-label={access.busy ? "Signing out…" : "Sign out"}
+        aria-label={
+          access.busy
+            ? "Signing out…"
+            : access.user
+              ? `Sign out ${access.user.name}`
+              : "Sign out"
+        }
+        title={access.user ? `Signed in as ${access.user.name}` : undefined}
       >
         <LogOut aria-hidden="true" className={styles.icon} />
         <span className={styles.signOutLabel}>
@@ -70,6 +85,7 @@ export function SessionControls() {
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const passwordInput = useRef<HTMLInputElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const client = useQueryClient();
   const location = useLocation();
   const [password, setPassword] = useState("");
@@ -85,6 +101,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
     refetchInterval: 60_000,
     retry: false,
   });
+  const discord = session.data?.authMode === "discord";
+  const denied = discord ? session.data?.deniedUserId : null;
+  // The sheet only mounts once the redirect to /login has happened.
+  const onLogin = location.pathname === "/login";
+  // After the redirect back from Discord, start reading at the explanation.
+  useEffect(() => {
+    if (denied && onLogin) heading.current?.focus();
+  }, [denied, onLogin]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!password.trim()) {
@@ -135,6 +159,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <AccessContext.Provider
         value={{
           insecure: session.data.insecure,
+          user: session.data.user,
           busy,
           error,
           logout: () => void change("/api/auth/logout"),
@@ -154,7 +179,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
-        <h1 id="login-title">Sign in</h1>
+        <h1 id="login-title" ref={heading} tabIndex={-1}>
+          {denied ? "Not allowed" : "Sign in"}
+        </h1>
         <p className={styles.address}>{window.location.host}</p>
         {session.isPending ? (
           <p role="status">Checking your session…</p>
@@ -171,6 +198,12 @@ export function SessionGate({ children }: { children: ReactNode }) {
               Retry
             </button>
           </>
+        ) : denied ? (
+          <NotAllowed userId={denied} />
+        ) : discord ? (
+          <DiscordEntry
+            reason={new URLSearchParams(location.search).get("auth")}
+          />
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <p>Use the password set by your instance operator.</p>

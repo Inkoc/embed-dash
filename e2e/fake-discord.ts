@@ -1,6 +1,25 @@
 import { createServer } from "node:http";
 
 const botId = "123456789012345678";
+
+export const fakeUsers = {
+  allowed: {
+    id: "111111111111111111",
+    username: "ada",
+    global_name: "Ada Lovelace",
+    avatar: null,
+  },
+  blocked: {
+    id: "222222222222222222",
+    username: "grace",
+    global_name: "Grace Hopper",
+    avatar: null,
+  },
+};
+export const fakeOAuth = {
+  clientId: "999999999999999999",
+  secret: "e2e-secret",
+};
 const view = 1 << 10;
 const send = 1 << 11;
 const embed = 1 << 14;
@@ -133,15 +152,49 @@ export const fakeGuilds: FakeGuild[] = [
 ];
 
 export function startFakeDiscord(port: number) {
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     const reply = (body: unknown, status = 200) => {
       response.statusCode = status;
       response.end(JSON.stringify(body));
     };
+    const url = new URL(request.url ?? "/", "http://fake");
+    const bearer = request.headers.authorization?.match(
+      /^Bearer e2e-access-(\w+)$/,
+    );
+    if (url.pathname === "/oauth2/authorize") {
+      // Stands in for Discord's consent screen: approve at once as the chosen user.
+      const target = new URL(url.searchParams.get("redirect_uri") ?? "");
+      // Browser cookies ignore ports, so a spec picks the user with a plain cookie.
+      const chosen = request.headers.cookie?.match(/(?:^|; )fake_user=(\w+)/);
+      target.searchParams.set("code", chosen?.[1] ?? "allowed");
+      target.searchParams.set("state", url.searchParams.get("state") ?? "");
+      response.statusCode = 302;
+      response.setHeader("location", target.toString());
+      return response.end();
+    }
+    if (url.pathname === "/api/oauth2/token" && request.method === "POST") {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const form = new URLSearchParams(body);
+      const user = form.get("code");
+      if (
+        form.get("client_secret") === fakeOAuth.secret &&
+        form.get("client_id") === fakeOAuth.clientId &&
+        (user === "allowed" || user === "blocked")
+      )
+        return reply({
+          access_token: `e2e-access-${user}`,
+          refresh_token: "e2e-refresh",
+          scope: "identify",
+        });
+      return reply({ error: "invalid_grant" }, 400);
+    }
+    if (url.pathname === "/api/oauth2/token/revoke") return reply({});
+    if (url.pathname === "/api/v10/users/@me" && bearer)
+      return reply(fakeUsers[bearer[1] as keyof typeof fakeUsers]);
     if (request.headers.authorization !== "Bot e2e-test-token")
       return reply({ message: "401: Unauthorized" }, 401);
-    const url = new URL(request.url ?? "/", "http://fake");
     const path = url.pathname.replace(/^\/api\/v10/, "");
     if (path === "/users/@me")
       return reply({
