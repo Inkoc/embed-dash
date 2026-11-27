@@ -45,6 +45,7 @@ Expected output is the markup the preview renders, without class names. `ID` sta
 | rich-quote-rest | `>>> every` / `line after` | everything after `>>>` quoted | documented |
 | rich-quote-mid-line | `a > b` | plain text | documented |
 | rich-masked-link | `[patch notes](https://example.com/notes)` | link labelled "patch notes" | documented |
+| rich-link-label-is-url | `[https://example.com](https://example.org/real)` | one link to the target; the address in the label is plain text, not a second link | observed (one link per label); the target is in the tooltip |
 | rich-bare-link | `see https://example.com` | the address as a link | documented |
 | rich-unsafe-link | `[x](javascript:alert(1))` | shown as typed, not a link | observed (Discord only links web addresses) |
 | rich-headings | `# One` … `#### Four` | three heading sizes; `####` stays as typed | documented |
@@ -90,7 +91,7 @@ Expected output is the markup the preview renders, without class names. `ID` sta
 | `D` | November 14, 2023 | documented |
 | `f` (default) | November 14, 2023 at 10:13 PM | documented (style); assumed ("at", which recent clients show) |
 | `F` | Tuesday, November 14, 2023 at 10:13 PM | documented (style); assumed ("at") |
-| `R` | 3 hours ago, in 2 days, 2 months ago | documented (style); assumed (exact wording, from the browser's relative-time formatter) |
+| `R` | 3 hours ago, in 2 days, 2 months ago; 59.5 minutes ahead reads "in 1 hour" and 364 days "next year" (rounded before the unit is chosen) | documented (style); assumed (exact wording, from the browser's relative-time formatter) |
 
 ## Layout
 
@@ -109,6 +110,7 @@ Deliberate, or not covered yet:
 
 - **Font.** Noto Sans stands in for Discord's own typeface, so line breaks can fall in slightly different places. Code uses the system's monospace font.
 - **Links are always underlined.** Discord underlines only on hover. The link colour alone isn't distinct enough from body text to be the only cue, and accessibility comes first.
+- **Chips in a linked title.** A timestamp, inline code or revealed spoiler in a title with a link uses a lighter tint than elsewhere, so the link-coloured text keeps AA contrast.
 - **Light-theme mention ink** is a little darker than Discord's so it passes AA contrast on the embed, like the light link colour.
 - **Mention names.** With no server context, user, role and channel mentions show Discord's fallback labels ("@unknown-user", "@deleted-role", "#unknown"). The ID is in the chip's tooltip. Readers in the server see the real names.
 - **Code blocks** aren't syntax-highlighted.
