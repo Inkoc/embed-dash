@@ -147,29 +147,52 @@
   color: var(--ink);
 }
 
-/* the picker sits under a link field and is the same width */
+/* the picker is one quiet line under its link field: a note, then a short select or a way to Files */
 .picker {
-  display: grid;
-  gap: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  margin: 0;
 }
-.picker label {
+.pickerNote {
   font-size: var(--text-label);
   color: var(--ink-2);
 }
 .picker select {
-  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--tap);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: var(--rule-width) solid var(--field-line);
   border-radius: var(--radius-md);
   background: var(--field);
   color: var(--ink);
   font: inherit;
+  font-size: var(--text-label);
 }
-.picker select:hover:not(:disabled) {
+.picker select:hover {
   border-color: var(--ink-2);
 }
-.picker select:disabled {
-  color: var(--ink-2);
-  background: var(--sheet-2);
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link:hover {
+  color: var(--accent-hover);
+}
+.link svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }

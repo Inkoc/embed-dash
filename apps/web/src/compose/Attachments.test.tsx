@@ -143,6 +143,19 @@ test("a server refusal shows on the file's row", async () => {
   );
 });
 
+test("with nothing uploaded, an image field points to Files", () => {
+  renderApp();
+  fireEvent.click(screen.getByRole("button", { name: /^Images/ }));
+  const go = screen.getAllByRole("button", {
+    name: /Upload in Files\s+for the thumbnail/,
+  })[0]!;
+  expect(screen.queryByLabelText(/Use an uploaded image for/)).toBeNull();
+  fireEvent.click(go);
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Choose files" }),
+  );
+});
+
 const deleted = () =>
   vi
     .mocked(fetch)

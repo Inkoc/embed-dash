@@ -269,7 +269,11 @@ function FileRow({
   );
 }
 
-/** "Use an uploaded image": fills a link field with `attachment://` for one of the attached images. */
+/**
+ * "Use an uploaded image": fills a link field with `attachment://` for one of
+ * the attached images. It stays one line under the link field; with nothing
+ * uploaded it points to Files instead of showing an empty choice.
+ */
 export function UploadedImagePicker({
   id,
   value,
@@ -283,29 +287,41 @@ export function UploadedImagePicker({
   onPick: (link: string) => void;
 }) {
   const { draft } = useDraft();
+  const { focusAfter } = useEditorState();
   const images = draft.attachments.filter(isImage);
   const chosen = images.find(
     (file) => value.trim() === `attachment://${file.filename}`,
   );
+  if (images.length === 0)
+    return (
+      <p className={styles.picker}>
+        <span className={styles.pickerNote}>Or use an uploaded image.</span>
+        <button
+          type="button"
+          id={id}
+          className={styles.link}
+          onClick={() => focusAfter("files-add", () => {})}
+        >
+          <Upload aria-hidden="true" />
+          Upload in Files{" "}
+          <span className="visually-hidden">for the {label}</span>
+        </button>
+      </p>
+    );
   return (
     <div className={styles.picker}>
-      <label htmlFor={id}>
+      <label htmlFor={id} className={styles.pickerNote}>
         Use an uploaded image
         <span className="visually-hidden"> for {label}</span>
       </label>
       <select
         id={id}
         value={chosen?.filename ?? ""}
-        disabled={images.length === 0}
         onChange={(event) => {
           if (event.target.value) onPick(`attachment://${event.target.value}`);
         }}
       >
-        <option value="">
-          {images.length === 0
-            ? "Upload an image under Files first"
-            : "Choose a file…"}
-        </option>
+        <option value="">Choose a file…</option>
         {images.map((file) => (
           <option key={file.id} value={file.filename}>
             {file.filename}
