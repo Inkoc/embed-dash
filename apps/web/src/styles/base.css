@@ -1,0 +1,152 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 100%;
+  line-height: var(--leading-body);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--rule-2) var(--ground);
+  caret-color: var(--accent);
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+[hidden] {
+  display: none !important;
+}
+::selection {
+  background: var(--sel);
+  color: var(--ink);
+}
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--accent);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: var(--rule-width);
+}
+svg {
+  flex: none;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Key caps: the keyboard layer is printed beside the controls it drives. */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  font-family: var(--font-mono);
+  font-size: var(--text-key);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  padding: 0.25em 0.45em 0.2em;
+  border: var(--rule-width) solid var(--rule-2);
+  box-shadow: inset 0 -1px 0 var(--rule-2);
+  border-radius: var(--radius-xs);
+  color: var(--ink-2);
+  background: var(--sheet);
+  white-space: nowrap;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast),
+    border-color var(--dur-fast),
+    color var(--dur-fast),
+    background var(--dur-fast);
+}
+kbd svg {
+  width: 0.875em;
+  height: 0.875em;
+}
+/* the cap visibly presses when its shortcut is used */
+kbd[data-pressed] {
+  transform: translateY(var(--press-shift));
+  box-shadow: none;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+
+/*
+ * Theme switch: the new theme is laid over the old one like a fresh card pulled
+ * down over the desk. The overlay never takes pointer input, and any key or
+ * pointer press skips it (see theme.ts), so the switch never blocks the page.
+ */
+::view-transition {
+  pointer-events: none;
+}
+html.theme-wipe::view-transition-old(root) {
+  animation: none;
+}
+html.theme-wipe::view-transition-new(root) {
+  animation: theme-wipe var(--dur-wipe) var(--ease-out) both;
+}
+@keyframes theme-wipe {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+/* fallback where view transitions are missing: colours fade instead */
+html.theme-fade,
+html.theme-fade * {
+  transition:
+    background-color var(--dur-base),
+    color var(--dur-base),
+    border-color var(--dur-base) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

@@ -22,11 +22,13 @@ test("shows the connected bot from Discord through the real server", async ({
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "embed-dash", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Walking Skeleton Bot")).toBeVisible();
+  ).toBeAttached();
+  await expect(page.getByRole("banner")).toContainText(
+    "Bot Walking Skeleton Bot",
+  );
   await page.keyboard.press("Tab");
   await expect(
-    page.getByRole("link", { name: "Skip to content" }),
+    page.getByRole("link", { name: "Skip to main content" }),
   ).toBeFocused();
   for (const width of [360, 768, 1280]) {
     await page.setViewportSize({ width, height: 800 });

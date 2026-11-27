@@ -1,0 +1,52 @@
+/* a measurement, so it earns the mono numerals */
+.budget {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.number {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.number b {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+.ruler {
+  position: relative;
+  grid-column: 1 / -1;
+  width: var(--ruler-length);
+  height: var(--space-2);
+  overflow: hidden;
+  border-bottom: var(--rule-width) solid var(--field-line);
+  /* the only gradient in the app: it draws one tick per 1,000 characters */
+  background-image: linear-gradient(
+    to right,
+    var(--field-line) var(--rule-width),
+    transparent var(--rule-width)
+  );
+  background-size: calc(100% / 6) 100%;
+  background-repeat: repeat-x;
+  background-position: left bottom;
+}
+.fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: var(--space-hair);
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform var(--dur-move) var(--ease-out);
+}
+.ruler[data-level="near"] .fill {
+  background: var(--warn);
+}
+.ruler[data-level="over"] .fill {
+  background: var(--danger);
+}

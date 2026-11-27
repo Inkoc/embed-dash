@@ -1,19 +1,239 @@
+/*
+ * embed-dash design tokens. DESIGN.md explains each role; components use these
+ * variables only. App colours are OKLCH. The --dc-* group reproduces Discord's
+ * chat colours and metrics for the preview, so it stays in Discord's own hex and px.
+ */
+
+@font-face {
+  font-family: "Atkinson Next";
+  src: url("/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2")
+    format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Mono";
+  src: url("/fonts/atkinson-hyperlegible-mono-latin-wght-normal.woff2")
+    format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Preview Sans";
+  src: url("/fonts/noto-sans-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Preview Sans";
+  src: url("/fonts/noto-sans-latin-wght-italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
-  font-family: system-ui, sans-serif;
-  color-scheme: light dark;
-  --space: 1rem;
-  --border: 1px solid currentColor;
-  --target: 2.75rem;
+  /* type */
+  --font-sans: "Atkinson Next", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Atkinson Mono", ui-monospace, Menlo, monospace;
+  --font-preview:
+    "Preview Sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  --text-display: 1.75rem; /* view titles */
+  --text-count: 2.5rem; /* the tray's numeral */
+  --text-section: 1.0625rem; /* section and server names */
+  --text-body: 1rem;
+  --text-label: 0.875rem;
+  --text-meta: 0.8125rem;
+  --text-key: 0.75rem; /* key caps */
+
+  --weight-body: 400;
+  --weight-medium: 600;
+  --weight-label: 650;
+  --weight-strong: 700;
+  --weight-section: 750;
+  --weight-display: 800;
+
+  --leading-tight: 1.1;
+  --leading-body: 1.45;
+  --leading-field: 1.5;
+  --tracking-display: -0.025em;
+  --tracking-section: -0.005em;
+
+  /* space: 4 / 8 / 12 / 16 / 24 / 32 / 48 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-hair: 0.1875rem; /* the inset between a segmented track and its thumb */
+
+  /* shape */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --rule-width: 1px;
+  --line-strong: 1.5px;
+
+  /* sizes */
+  --tap: 2.75rem;
+  --bar-height: 3.75rem;
+  --content-max: 86rem;
+  --editor-min: 22rem;
+  --preview-min: 20rem;
+  --icon-sm: 1rem;
+  --icon-md: 1.25rem;
+  --icon-lg: 1.75rem;
+  --dot: 0.5rem;
+  --row-min: 3.25rem; /* one ruled list row */
+  --ruler-length: 11rem;
+
+  /* motion: exponential ease-out for arrivals, a quick ease-in for departures */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
+  --dur-fast: 120ms; /* key presses, hovers, borders */
+  --dur-base: 200ms; /* reveals, colour changes */
+  --dur-move: 320ms; /* thumbs, knobs, the view slide, the ruler */
+  --dur-file: 520ms; /* filing flight and tray arrival */
+  --dur-wipe: 560ms; /* theme wipe */
+  --dur-pulse: 1.2s; /* "connecting" dot, one way */
+  --view-shift: 2.5rem; /* how far an incoming view travels */
+  --press-shift: 1px;
+
+  /* Discord preview metrics (Discord's own values) */
+  --dc-text: 1rem;
+  --dc-text-sm: 0.875rem;
+  --dc-text-xs: 0.75rem;
+  --dc-text-tag: 0.625rem;
+  --dc-leading: 1.375rem;
+  --dc-leading-sm: 1.125rem;
+  --dc-leading-xs: 1rem;
+  --dc-weight-name: 500;
+  --dc-weight-strong: 600;
+  --dc-gutter: 72px;
+  --dc-avatar: 40px;
+  --dc-author-icon: 24px;
+  --dc-footer-icon: 20px;
+  --dc-bar: 4px;
+  --dc-embed-max: 516px;
+  --dc-image-max: 400px;
+  --dc-thumb: 80px;
+  --dc-radius: 4px;
+  --dc-tag-radius: 3px;
+  --dc-tag-pad: 0.275rem;
+  --dc-tag-leading: 0.9375rem;
+  --dc-nudge: 2px;
+  --dc-name-skeleton: 7rem;
+  --dc-selection: rgb(0 168 252 / 0.35);
+  --dc-app: #5865f2;
+  --dc-on-app: #ffffff;
 }
-body {
-  margin: var(--space);
+
+/* Light: cool card stock, near-white index sheets, a deep-ink tray. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ground: oklch(96.3% 0.006 232);
+  --sheet: oklch(99.6% 0.002 232);
+  --sheet-2: oklch(97.4% 0.005 232);
+  --field: oklch(100% 0 0);
+  --ink: oklch(23% 0.028 250);
+  --ink-2: oklch(45% 0.022 250);
+  --rule: oklch(91.5% 0.009 236);
+  --rule-2: oklch(84% 0.013 236);
+  --field-line: oklch(60% 0.018 240);
+  --accent: oklch(47% 0.085 186);
+  --accent-hover: oklch(41% 0.08 186);
+  --on-accent: oklch(99% 0.004 185);
+  --accent-wash: oklch(95.4% 0.028 185);
+  --accent-wash-2: oklch(92% 0.045 185);
+  --ring: oklch(52% 0.1 186);
+  --danger: oklch(50% 0.175 27);
+  --danger-wash: oklch(96.6% 0.018 27);
+  --warn: oklch(50% 0.11 62);
+  --mark: oklch(90% 0.11 95);
+  --sel: oklch(88% 0.06 185);
+  --scrim: oklch(23% 0.028 250 / 0.45);
+  --tray: oklch(25% 0.035 248);
+  --tray-2: oklch(31% 0.04 248);
+  --tray-line: oklch(40% 0.04 248);
+  --tray-ink: oklch(97% 0.006 232);
+  --tray-soft: oklch(81% 0.022 236);
+  --tray-accent: oklch(81% 0.11 181);
+  --tray-on-accent: oklch(22% 0.04 225);
+  --tray-danger: oklch(80% 0.12 27);
+  --shadow-1:
+    0 1px 2px oklch(23% 0.03 250 / 0.06), 0 1px 1px oklch(23% 0.03 250 / 0.03);
+  --shadow-2:
+    0 1px 2px oklch(23% 0.03 250 / 0.05),
+    0 14px 32px -18px oklch(23% 0.03 250 / 0.28);
+  --shadow-lift:
+    0 12px 24px -10px oklch(23% 0.03 250 / 0.38),
+    0 2px 4px oklch(23% 0.03 250 / 0.12);
+  --shadow-bar: 0 -8px 24px -16px oklch(23% 0.03 250 / 0.4);
+  --tray-edge: inset 0 1px 0 oklch(100% 0 0 / 0.06);
+
+  /* Discord's light chat; the link is darkened slightly so it passes AA on the embed */
+  --dc-bg: #ffffff;
+  --dc-embed: #f2f3f5;
+  --dc-text-color: #313338;
+  --dc-head: #060607;
+  --dc-muted: #5c5e66;
+  --dc-link: #0063d3;
+  --dc-placeholder: #e3e5e8;
 }
-button {
-  min-height: var(--target);
-  font: inherit;
-}
-a {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--target);
+
+/* Dark: a blue-black desk, sheets one step lighter, the tray one step above that. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: oklch(17% 0.016 250);
+  --sheet: oklch(20.8% 0.018 250);
+  --sheet-2: oklch(23.6% 0.02 250);
+  --field: oklch(17.8% 0.016 250);
+  --ink: oklch(94.5% 0.007 232);
+  --ink-2: oklch(75% 0.016 238);
+  --rule: oklch(28.5% 0.018 250);
+  --rule-2: oklch(35% 0.02 250);
+  --field-line: oklch(57% 0.02 245);
+  --accent: oklch(78% 0.115 182);
+  --accent-hover: oklch(85% 0.1 182);
+  --on-accent: oklch(20% 0.035 222);
+  --accent-wash: oklch(27.5% 0.042 196);
+  --accent-wash-2: oklch(32% 0.055 192);
+  --ring: oklch(78% 0.115 182);
+  --danger: oklch(75% 0.14 25);
+  --danger-wash: oklch(25.5% 0.045 25);
+  --warn: oklch(82% 0.12 78);
+  --mark: oklch(44% 0.09 95);
+  --sel: oklch(40% 0.07 190);
+  --scrim: oklch(10% 0.01 250 / 0.6);
+  --tray: oklch(26% 0.032 246);
+  --tray-2: oklch(31% 0.036 246);
+  --tray-line: oklch(41% 0.035 246);
+  --tray-ink: oklch(96.5% 0.006 232);
+  --tray-soft: oklch(80% 0.02 236);
+  --tray-accent: oklch(80% 0.115 181);
+  --tray-on-accent: oklch(21% 0.04 225);
+  --tray-danger: oklch(79% 0.12 27);
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.35);
+  --shadow-2:
+    0 1px 2px oklch(0% 0 0 / 0.3), 0 18px 36px -20px oklch(0% 0 0 / 0.75);
+  --shadow-lift:
+    0 14px 28px -12px oklch(0% 0 0 / 0.7), 0 2px 4px oklch(0% 0 0 / 0.4);
+  --shadow-bar: 0 -8px 24px -16px oklch(0% 0 0 / 0.6);
+  --tray-edge:
+    inset 0 1px 0 oklch(100% 0 0 / 0.07), 0 0 0 1px oklch(40% 0.035 246);
+
+  /* Discord's dark chat */
+  --dc-bg: #313338;
+  --dc-embed: #2b2d31;
+  --dc-text-color: #dbdee1;
+  --dc-head: #f2f3f5;
+  --dc-muted: #949ba4;
+  --dc-link: #00a8fc;
+  --dc-placeholder: #3f4147;
 }

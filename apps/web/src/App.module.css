@@ -1,9 +1,33 @@
-.main {
-  max-width: 65ch;
-  margin-inline: auto;
+.skip {
+  position: absolute;
+  top: calc(var(--tap) * -2);
+  left: var(--space-4);
+  z-index: 40;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--ground);
 }
-.identity {
-  border: var(--border);
-  padding: var(--space);
-  overflow-wrap: anywhere;
+.skip:focus {
+  top: var(--space-2);
+}
+
+/* Only the arrival animates, so input is never held for a departing view. */
+.view[data-direction="forward"] {
+  animation: arrive-forward var(--dur-move) var(--ease-out);
+}
+.view[data-direction="back"] {
+  animation: arrive-back var(--dur-move) var(--ease-out);
+}
+@keyframes arrive-forward {
+  from {
+    opacity: 0;
+    transform: translateX(var(--view-shift));
+  }
+}
+@keyframes arrive-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--view-shift) * -1));
+  }
 }

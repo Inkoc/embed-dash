@@ -1,9 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>embed-dash</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script>
+      // Apply the theme before first paint so there is no flash: a stored
+      // choice wins, otherwise the system setting. Same key as src/theme.ts.
+      (function () {
+        var stored = null;
+        try {
+          stored = localStorage.getItem("embed-dash:theme");
+        } catch (error) {}
+        document.documentElement.dataset.theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
