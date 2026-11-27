@@ -28,10 +28,16 @@ const safeCodes = new Set([
   "SQLITE_IOERR",
 ]);
 
-// Error messages, request bodies and arbitrary string codes can contain secrets.
+/**
+ * Error messages, request bodies and arbitrary string codes can contain secrets.
+ * `causeCode` is a system or driver code (`ECONNREFUSED`, `SQLITE_FULL`);
+ * `discordCode` is the numeric code from Discord's JSON error body, kept apart
+ * so the two are never read as each other.
+ */
 export function safeErrorDetails(error: unknown): {
   status?: number;
-  causeCode?: string | number;
+  causeCode?: string;
+  discordCode?: number;
 } {
   if (!error || typeof error !== "object") return {};
   const value = error as {
@@ -48,11 +54,13 @@ export function safeErrorDetails(error: unknown): {
       ? value.status
       : undefined;
   const causeCode =
+    typeof value.code === "string" && safeCodes.has(value.code)
+      ? value.code
+      : undefined;
+  const discordCode =
     typeof value.code === "number" && Number.isSafeInteger(value.code)
       ? value.code
-      : typeof value.code === "string" && safeCodes.has(value.code)
-        ? value.code
-        : undefined;
+      : undefined;
   const nested = safeErrorDetails(value.cause);
   const aggregate = Array.isArray(value.errors)
     ? value.errors
@@ -62,6 +70,7 @@ export function safeErrorDetails(error: unknown): {
   return {
     status: status ?? nested.status,
     causeCode: causeCode ?? nested.causeCode ?? aggregate?.causeCode,
+    discordCode: discordCode ?? nested.discordCode,
   };
 }
 
@@ -110,7 +119,7 @@ const missingAccess = 50001;
 const missingPermissions = 50013;
 const unknownChannel = 10003;
 /** Failures that happen before anything leaves this machine, so nothing can have been posted. */
-const neverSent = new Set<string | number>([
+const neverSent = new Set<string>([
   "ECONNREFUSED",
   "ENOTFOUND",
   "EAI_AGAIN",
@@ -127,7 +136,7 @@ export function deliveryFailure(error: unknown): {
   outcome: "failed" | "unknown";
   stop: boolean;
 } {
-  const { status, causeCode } = safeErrorDetails(error);
+  const { status, causeCode, discordCode } = safeErrorDetails(error);
   const failed = (code: DeliveryErrorCode, stop = false) => ({
     code,
     outcome: "failed" as const,
@@ -138,11 +147,11 @@ export function deliveryFailure(error: unknown): {
   if (status === 401) return failed("INVALID_TOKEN", true);
   if (
     status === 403 ||
-    causeCode === missingPermissions ||
-    causeCode === missingAccess
+    discordCode === missingPermissions ||
+    discordCode === missingAccess
   )
     return failed("MISSING_PERMISSION");
-  if (status === 404 || causeCode === unknownChannel)
+  if (status === 404 || discordCode === unknownChannel)
     return failed("CHANNEL_GONE");
   // A 500 or 504 can come after Discord stored the message; 502 and 503 mean it never got that far.
   if (status === 500 || status === 504)
