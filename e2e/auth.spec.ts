@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test("password login reaches composer and logout protects it again", async ({
   page,
 }) => {
@@ -8,14 +10,9 @@ test("password login reaches composer and logout protects it again", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(
-    page.getByRole("heading", { name: "Sign in to your instance" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Dark theme" })).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(page.getByLabel("Instance password")).toBeFocused();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
@@ -36,6 +33,6 @@ test("password login reaches composer and logout protects it again", async ({
   await page.getByRole("switch", { name: "Dark theme" }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("button", { name: "Dark theme" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Dark theme" })).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -190,3 +190,31 @@ test("unreachable Discord is diagnosed without exposing the token", async () => 
     rmSync(dir, { recursive: true });
   }
 });
+
+test("local mode warns when bound beyond loopback", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-local-warning-"));
+  let logs = "";
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      logs += String(chunk);
+      callback();
+    },
+  });
+  const app = await createApp(
+    {
+      authMode: "none",
+      botToken: "fixture",
+      port: 8742,
+      host: "0.0.0.0",
+      dataDir: dir,
+      discordApiBase: "http://127.0.0.1:1/api",
+    },
+    { logger: { stream } },
+  );
+  try {
+    expect(logs).toContain("No-login mode is bound beyond loopback");
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true });
+  }
+});

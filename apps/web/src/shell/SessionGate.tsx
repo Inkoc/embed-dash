@@ -1,6 +1,16 @@
-import { useState, type ReactNode, type FormEvent } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router";
+import { TriangleAlert, X, LogOut } from "lucide-react";
+import { ThemeSwitch } from "./ThemeSwitch";
+import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
@@ -10,7 +20,55 @@ interface Session {
   csrfToken: string;
 }
 
+const AccessContext = createContext<{
+  insecure: boolean;
+  busy: boolean;
+  error: string;
+  logout: () => void;
+} | null>(null);
+
+export function AccessWarning() {
+  const access = useContext(AccessContext);
+  return access?.insecure ? (
+    <div className={styles.access} role="note">
+      <TriangleAlert aria-hidden="true" />
+      <p>
+        <strong>No login required.</strong> This instance is open to anyone who
+        can reach it. Keep it on 127.0.0.1.
+      </p>
+    </div>
+  ) : null;
+}
+
+export function SessionControls() {
+  const access = useContext(AccessContext);
+  if (!access || access.insecure) return null;
+  return (
+    <>
+      <button
+        className={headerStyles.quiet}
+        data-session-control
+        disabled={access.busy}
+        onClick={access.logout}
+        aria-label={access.busy ? "Signing out…" : "Sign out"}
+      >
+        <LogOut aria-hidden="true" className={styles.icon} />
+        <span className={styles.signOutLabel}>
+          {access.busy ? "Signing out…" : "Sign out"}
+        </span>
+      </button>
+      {access.error && (
+        <p className={styles.logoutError} role="alert">
+          <X aria-hidden="true" />
+          {access.error}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function SessionGate({ children }: { children: ReactNode }) {
+  const passwordInput = useRef<HTMLInputElement>(null);
   const client = useQueryClient();
   const location = useLocation();
   const [password, setPassword] = useState("");
@@ -32,8 +90,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
       setError("Enter the instance password.");
       return;
     }
-    await change("/api/auth/login", { password });
-    setPassword("");
+    if (await change("/api/auth/login", { password })) setPassword("");
+    else passwordInput.current?.focus();
   }
   async function change(url: string, body?: object) {
     setBusy(true);
@@ -56,14 +114,16 @@ export function SessionGate({ children }: { children: ReactNode }) {
               : "Your session changed. Refresh and try again.",
         );
         await session.refetch();
-        return;
+        return false;
       }
       client.removeQueries({
         predicate: (query) => query.queryKey[0] !== "session",
       });
       await session.refetch();
+      return true;
     } catch {
       setError("Unable to connect. Check your connection and try again.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -71,26 +131,16 @@ export function SessionGate({ children }: { children: ReactNode }) {
   if (session.data?.authenticated) {
     if (location.pathname === "/login") return <Navigate to="/" replace />;
     return (
-      <>
-        <section className={styles.access} aria-label="Instance access">
-          {session.data.insecure ? (
-            <p role="note">
-              <strong>No login required.</strong> This instance is open to
-              anyone who can reach it. Keep it on 127.0.0.1.
-            </p>
-          ) : (
-            <button
-              className={styles.quiet}
-              disabled={busy}
-              onClick={() => void change("/api/auth/logout")}
-            >
-              {busy ? "Signing out…" : "Sign out"}
-            </button>
-          )}
-          {error && <p role="alert">{error}</p>}
-        </section>
+      <AccessContext.Provider
+        value={{
+          insecure: session.data.insecure,
+          busy,
+          error,
+          logout: () => void change("/api/auth/logout"),
+        }}
+      >
         {children}
-      </>
+      </AccessContext.Provider>
     );
   }
   if (session.data && location.pathname !== "/login")
@@ -103,12 +153,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
-        <h1 id="login-title">Sign in to your instance</h1>
+        <h1 id="login-title">Sign in</h1>
+        <p className={styles.address}>{window.location.host}</p>
         {session.isPending ? (
           <p role="status">Checking your session…</p>
         ) : session.isError ? (
           <>
             <p role="alert">
+              <X aria-hidden="true" />
               Unable to check your session. Check your connection and retry.
             </p>
             <button
@@ -123,6 +175,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
             <p>Use the password set by your instance operator.</p>
             <label htmlFor="password">Instance password</label>
             <input
+              ref={passwordInput}
+              autoFocus
               id="password"
               type="password"
               autoComplete="current-password"
@@ -139,6 +193,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
             />
             {error && (
               <p id="login-error" role="alert">
+                <X aria-hidden="true" />
                 {error}
               </p>
             )}
@@ -154,9 +209,5 @@ export function SessionGate({ children }: { children: ReactNode }) {
 
 function LoginThemeSwitch() {
   const { theme, toggle } = useTheme();
-  return (
-    <button className={styles.quiet} onClick={toggle}>
-      {theme === "dark" ? "Light theme" : "Dark theme"}
-    </button>
-  );
+  return <ThemeSwitch theme={theme} onToggle={toggle} />;
 }

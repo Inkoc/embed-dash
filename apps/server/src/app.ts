@@ -12,8 +12,13 @@ export async function createApp(
 ) {
   const app = Fastify({
     logger: options.logger ?? true,
+    trustProxy: config.trustProxy ?? false,
     logController: new LogController({ disableRequestLogging: true }),
   });
+  if (config.authMode === "none" && !["127.0.0.1", "::1"].includes(config.host))
+    app.log.warn(
+      "No-login mode is bound beyond loopback. Keep the published port on 127.0.0.1; anyone who can reach it can use the bot.",
+    );
   const headers = securityHeaders(options.spaRoot);
   app.addHook("onSend", async (_request, reply) => {
     reply.headers(headers);

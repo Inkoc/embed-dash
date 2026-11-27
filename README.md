@@ -51,11 +51,17 @@ Generate SQLite migrations with `pnpm --filter @embed-dash/server db:generate` a
 
 `AUTH_MODE=password` is the default. Set `ADMIN_PASSWORD_FILE` to a readable
 secret file, or use `ADMIN_PASSWORD`; the file takes precedence. Passwords are
-hashed with Argon2id at startup. Login allows five attempts per minute per IP.
+hashed with Argon2id at startup. Login allows five attempts per minute per client address. With proxy trust off,
+this is the connection address, so clients behind a proxy share its budget.
 Sessions persist in SQLite for 12 hours, rotate on login and are removed on
 sign out. Cookies are HttpOnly and SameSite=Lax, with Secure enabled for HTTPS.
-A reverse proxy must replace `X-Forwarded-Proto` with the actual client protocol
-and prevent direct access to the backend. Use HTTPS for remote deployments.
+Proxy trust defaults to off (`TRUST_PROXY=off`). Set `TRUST_PROXY` to a
+comma-separated list of the proxy connection IPs (for example
+`127.0.0.1,::1`). Only those peers may supply forwarded client IPs and protocol.
+The proxy must replace `X-Forwarded-For` and `X-Forwarded-Proto`, and direct
+backend access must be blocked. Trusted forwarded client addresses receive
+separate login budgets. Cookies use Secure only when the trusted request
+protocol is HTTPS. Use HTTPS for remote deployments.
 
 `AUTH_MODE=none` skips login and displays a permanent access warning. Anyone
 who can reach the instance can use its bot, so keep the published address on
@@ -69,8 +75,29 @@ check. The development Vite proxy targets port 8742.
 
 API clients first call `GET /api/session` to obtain a session cookie and
 `csrfToken`, then include `x-csrf-token` on every state-changing request,
-including login and logout. Fetch the session again after login to get the
+including login and logout. Include an `Origin` header matching the request
+host and protocol (or `PUBLIC_URL` when configured); a same-origin `Referer`
+is also accepted. Cross-site writes and writes with no origin metadata are
+rejected. Fetch the session again after login to get the
 rotated token. Responses from session and API routes are not cached.
 
 E2E uses password mode by default and a fake Discord API on an ephemeral port.
 Set `E2E_PORT` to an unused high port for concurrent test runs.
+
+No-login mode also accepts only loopback Host names (`localhost`,
+`127.0.0.1`, or `[::1]`, with an optional port) to block DNS rebinding.
+Binding it to a non-loopback HOST emits a startup warning; Docker still needs
+its internal all-interface binding and a loopback-only published port.
+
+For Compose local mode without creating an admin password file, use the empty
+system file as the unused secret source:
+
+```sh
+AUTH_MODE=none ADMIN_PASSWORD_SECRET_FILE=/dev/null docker compose up --build
+```
+
+The bot-token secret is still required. Password mode must use a real password
+file. To set an external `PUBLIC_URL` in Compose, add it to the service's
+environment; the value must be an HTTP(S) origin without credentials or a path.
+Pre-login session checks use an HttpOnly CSRF cookie and do not create database
+rows. Authenticated session identifiers are stored as SHA-256 hashes.

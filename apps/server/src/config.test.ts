@@ -117,3 +117,33 @@ test("auth mode defaults to password, rejects unsupported modes and reads passwo
     rmSync(dir, { recursive: true });
   }
 });
+
+test.each(["-1", "true", "1.5", "11", "", "abc"])(
+  "rejects invalid proxy trust %s",
+  (TRUST_PROXY) => {
+    expect(() =>
+      readConfig({ BOT_TOKEN: "fixture", AUTH_MODE: "none", TRUST_PROXY }),
+    ).toThrow("TRUST_PROXY");
+  },
+);
+test("proxy trust is opt-in and public origins are validated", () => {
+  const base = { BOT_TOKEN: "fixture", AUTH_MODE: "none" };
+  expect(readConfig(base).trustProxy).toBeUndefined();
+  expect(
+    readConfig({
+      ...base,
+      TRUST_PROXY: "127.0.0.1,::1",
+      PUBLIC_URL: "https://embed.example/",
+    }),
+  ).toMatchObject({
+    trustProxy: ["127.0.0.1", "::1"],
+    publicUrl: "https://embed.example",
+  });
+  for (const PUBLIC_URL of [
+    "file:///tmp",
+    "https://user:secret@example.com",
+    "https://example.com/path",
+    "invalid",
+  ])
+    expect(() => readConfig({ ...base, PUBLIC_URL })).toThrow("PUBLIC_URL");
+});

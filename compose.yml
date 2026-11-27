@@ -4,6 +4,8 @@ services:
     ports:
       - "127.0.0.1:8742:8742"
     environment:
+      # Trust only the IP addresses of proxies that replace forwarded headers.
+      TRUST_PROXY: ${TRUST_PROXY:-off}
       AUTH_MODE: ${AUTH_MODE:-password}
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       BOT_TOKEN_FILE: /run/secrets/bot_token
@@ -34,4 +36,5 @@ secrets:
   bot_token:
     file: ./secrets/bot_token.txt
   admin_password:
-    file: ./secrets/admin_password.txt
+    # No password file in local mode: set ADMIN_PASSWORD_SECRET_FILE=/dev/null.
+    file: ${ADMIN_PASSWORD_SECRET_FILE:-./secrets/admin_password.txt}
