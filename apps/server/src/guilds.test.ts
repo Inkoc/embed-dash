@@ -18,6 +18,8 @@ let guildIds = ids(3);
 /** Guild ID → HTTP status its detail requests fail with. */
 let guildFailures = new Map<string, number>();
 let failGuildList = false;
+/** Guild IDs whose detail requests answer late. */
+let slowGuilds = new Set<string>();
 const requests: string[] = [];
 const dirs: string[] = [];
 
@@ -46,7 +48,11 @@ const upstream = createServer((req, res) => {
   }
   const [, , guildId, sub] = path.split("/");
   const failure = guildFailures.get(guildId);
-  if (failure) return send({ message: "Missing Access" }, failure);
+  if (failure)
+    return void setTimeout(
+      () => send({ message: "Missing Access" }, failure),
+      slowGuilds.has(guildId) ? 100 : 0,
+    );
   if (!sub)
     return send({
       id: guildId,
@@ -128,6 +134,7 @@ beforeEach(() => {
   guildIds = ids(3);
   guildFailures = new Map();
   failGuildList = false;
+  slowGuilds = new Set();
   requests.length = 0;
 });
 afterEach(() => {
@@ -238,11 +245,22 @@ test("concurrent listings, refreshes included, share one fetch", async () => {
   expect(guildRequests()).toBe(3 * 3);
 });
 
-test("servers the bot can no longer read are reported, not fatal", async () => {
+test("a plain read gets the fresh cached list while a refresh is running", async () => {
+  const discord = createDiscord(await config());
+  const first = await discord.listGuilds();
+  failGuildList = true;
+  const refresh = discord.listGuilds({ refresh: true });
+  expect(await discord.listGuilds()).toBe(first);
+  await expect(refresh).rejects.toThrow();
+});
+
+test("servers the bot can no longer read are reported in list order, not fatal", async () => {
   guildFailures = new Map([
     ["1000", 403],
     ["1002", 404],
   ]);
+  // The first one answers last, so completion order differs from list order.
+  slowGuilds = new Set(["1000"]);
   const discord = createDiscord(await config());
   const result = await discord.listGuilds();
   expect(result.guilds.map((g) => g.id)).toEqual(["1001"]);
