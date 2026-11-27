@@ -78,9 +78,6 @@ for (const width of [360, 1280])
     const signIn = page.locator("#login-error");
     await signIn.getByText("Details", { exact: true }).click();
     await expect(signIn.locator("details")).toHaveAttribute("open", "");
-    await page.screenshot({
-      path: `${process.env.ROUND2_SHOTS ?? "test-results"}/signin-${width}.png`,
-    });
     await expectOnScreen(page, signIn);
 
     await page.getByLabel("Instance password").fill("e2e-password");
@@ -99,8 +96,5 @@ for (const width of [360, 1280])
     await expect(page.getByRole("alert")).toContainText("Couldn’t sign out");
     await signOut.getByText("Details", { exact: true }).click();
     await expect(signOut.locator("details")).toHaveAttribute("open", "");
-    await page.screenshot({
-      path: `${process.env.ROUND2_SHOTS ?? "test-results"}/signout-${width}.png`,
-    });
     await expectOnScreen(page, signOut);
   });
