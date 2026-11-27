@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
+import { URL as NodeURL } from "node:url";
 import {
   cleanup,
   fireEvent,
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
@@ -35,6 +37,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -376,23 +379,33 @@ test("JSON import errors leave the draft and stored draft untouched; success lis
     target: {
       value: JSON.stringify({
         content: "Imported announcement",
-        components: [],
+        components: [{ type: 1 }],
       }),
     },
   });
   fireEvent.click(submit);
-  expect(within(dialog).queryByRole("alert")).toBeNull();
+  const confirmation = screen.getByRole("dialog", {
+    name: "Replace the current draft?",
+  });
+  expect(localStorage.getItem("embed-dash:draft")).toBe(original);
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(localStorage.getItem("embed-dash:draft")).toBe(original);
+  fireEvent.click(submit);
+  fireEvent.click(
+    within(confirmation).getByRole("button", { name: "Replace draft" }),
+  );
   expect(
-    within(dialog).getByText("Unsupported field: components."),
-  ).toBeTruthy();
-  expect(within(dialog).getByText(/Message imported/)).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    screen.queryByRole("dialog", { name: "Import message JSON" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Replace draft" })).toBeNull();
+  expect(screen.getByText("Unsupported field: components.")).toBeTruthy();
+  expect(document.activeElement).toBe(document.getElementById("json-result"));
   expect(field(/^Message text/).value).toBe("Imported announcement");
   expect(preview().textContent).toContain("Imported announcement");
 });
 
 test("JSON file import reads locally and export provides copy feedback and a download", async () => {
-  renderApp();
+  renderApp({ example: false });
   fireEvent.click(button("Import JSON"));
   const file = new File(['{"content":"From file"}'], "message.json", {
     type: "application/json",
@@ -405,32 +418,51 @@ test("JSON file import reads locally and export provides copy feedback and a dow
   });
   await screen.findByText("File ready to import.");
   fireEvent.click(button("Replace draft"));
-  fireEvent.click(button("Close"));
+  expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(button("Export JSON"));
   expect(
     (screen.getByLabelText("Message JSON") as HTMLTextAreaElement).value,
   ).toContain('"content": "From file"');
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText },
-  });
+  const clipboard = { writeText: async () => {} };
+  vi.stubGlobal(
+    "navigator",
+    Object.create(navigator, { clipboard: { value: clipboard } }),
+  );
+  const writeText = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockResolvedValue(undefined);
   fireEvent.click(button("Copy JSON"));
   await screen.findByText("JSON copied.");
   expect(writeText).toHaveBeenCalledWith(expect.stringContaining("From file"));
   writeText.mockRejectedValue(new Error("denied"));
   fireEvent.click(button("Copy JSON"));
   await screen.findByText(/Could not copy JSON/);
-  const create = vi.fn(() => "blob:test");
-  vi.stubGlobal(
-    "URL",
-    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }),
-  );
+  vi.stubGlobal("URL", NodeURL);
+  const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   const click = vi
     .spyOn(HTMLAnchorElement.prototype, "click")
     .mockImplementation(() => {});
   fireEvent.click(button("Download JSON"));
   expect(create).toHaveBeenCalled();
   expect(click).toHaveBeenCalled();
-  click.mockRestore();
+  await waitFor(() => expect(revoke).toHaveBeenCalledWith("blob:test"));
+});
+
+test("oversized JSON files are rejected before reading and leave the draft unchanged", () => {
+  renderApp();
+  const original = localStorage.getItem("embed-dash:draft");
+  fireEvent.click(button("Import JSON"));
+  const file = new File([""], "large.json");
+  const read = vi.fn();
+  Object.defineProperties(file, {
+    size: { value: 1024 * 1024 + 1 },
+    text: { value: read },
+  });
+  fireEvent.change(screen.getByLabelText("JSON file"), {
+    target: { files: [file] },
+  });
+  expect(screen.getByRole("alert").textContent).toContain("1 MB or smaller");
+  expect(read).not.toHaveBeenCalled();
+  expect(localStorage.getItem("embed-dash:draft")).toBe(original);
 });

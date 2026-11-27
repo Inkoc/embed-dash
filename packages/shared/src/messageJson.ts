@@ -8,36 +8,36 @@ import {
 
 const media = z.object({ url: z.string() });
 const externalEmbed = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
-  url: z.string().optional(),
-  color: z.number().int().min(0).max(0xffffff).optional(),
-  timestamp: z.iso.datetime({ offset: true }).optional(),
+  title: z.string().nullish(),
+  description: z.string().nullish(),
+  url: z.string().nullish(),
+  color: z.number().int().min(0).max(0xffffff).nullish(),
+  timestamp: z.iso.datetime({ offset: true }).nullish(),
   author: z
     .object({
       name: z.string(),
-      url: z.string().optional(),
-      icon_url: z.string().optional(),
+      url: z.string().nullish(),
+      icon_url: z.string().nullish(),
     })
-    .optional(),
+    .nullish(),
   footer: z
-    .object({ text: z.string(), icon_url: z.string().optional() })
-    .optional(),
+    .object({ text: z.string(), icon_url: z.string().nullish() })
+    .nullish(),
   fields: z
     .array(
       z.object({
         name: z.string(),
         value: z.string(),
-        inline: z.boolean().optional(),
+        inline: z.boolean().nullish(),
       }),
     )
-    .optional(),
-  image: media.optional(),
-  thumbnail: media.optional(),
+    .nullish(),
+  image: media.nullish(),
+  thumbnail: media.nullish(),
 });
 const externalMessage = z.object({
-  content: z.string().optional(),
-  embeds: z.array(externalEmbed).optional(),
+  content: z.string().nullish(),
+  embeds: z.array(externalEmbed).nullish(),
 });
 const wrapper = z.object({
   messages: z.array(z.unknown()).min(1),
@@ -63,10 +63,82 @@ function unsupported(raw: unknown, accepted: unknown, path = ""): string[] {
   const known = accepted as Record<string, unknown>;
   return Object.entries(raw).flatMap(([key, value]) => {
     const at = path ? `${path}.${key}` : key;
+    if (value === null || (Array.isArray(value) && value.length === 0))
+      return [];
     return Object.hasOwn(known, key)
       ? unsupported(value, known[key], at)
       : [`Unsupported field: ${at}.`];
   });
+}
+
+function schemaError(issue: z.core.$ZodIssue): string {
+  const path = issue.path.filter(
+    (part) => part !== "messages" && part !== "data",
+  );
+  if (issue.path[0] === "messages" && path[0] === 0) path.shift();
+  const labels: Record<string, string> = {
+    content: "message text",
+    embeds: "embeds",
+    title: "title",
+    description: "description",
+    color: "side colour",
+    timestamp: "time",
+    url: "link",
+    author: "author",
+    footer: "footer",
+    name: "name",
+    text: "text",
+    icon_url: "icon link",
+    image: "image",
+    thumbnail: "thumbnail",
+    fields: "fields",
+    value: "value",
+    inline: "inline setting",
+  };
+  let label = "";
+  if (path[0] === "embeds" && typeof path[1] === "number") {
+    label = `Embed ${path[1] + 1}`;
+    path.splice(0, 2);
+  }
+  if (path[0] === "fields" && typeof path[1] === "number") {
+    label += ` field ${path[1] + 1}`;
+    path.splice(0, 2);
+  }
+  label = [label, ...path.map((part) => labels[String(part)] ?? "property")]
+    .filter(Boolean)
+    .join(" ");
+  if (!label)
+    label = issue.path.includes("data")
+      ? "First message data"
+      : issue.path.includes("messages")
+        ? "Message list"
+        : "Message";
+  label = label[0]!.toUpperCase() + label.slice(1);
+  if (issue.path.at(-1) === "color")
+    return `${label} must be a whole number from 0 to 16777215, or null for the default colour.`;
+  if (issue.code === "invalid_type") {
+    const types: Record<string, string> = {
+      string: "text",
+      array: "a list",
+      object: "an object",
+      boolean: "true or false",
+      number: "a number",
+    };
+    return `${label} must be ${types[issue.expected] ?? "a valid value"}.`;
+  }
+  if (issue.code === "invalid_format")
+    return `${label} must be an ISO 8601 date and time, such as 2026-11-27T18:00:00Z.`;
+  return `${label} must contain at least one message.`;
+}
+
+function limitedNotices(notices: string[]): string[] {
+  const unique = [...new Set(notices)];
+  return unique.length > 20
+    ? [
+        ...unique.slice(0, 20),
+        `And ${unique.length - 20} more unsupported fields.`,
+      ]
+    : unique;
 }
 
 /** Accepts portable message JSON without trusting instance-specific fields. */
@@ -88,7 +160,7 @@ export function importMessageJson(text: string): JsonImportResult {
     const issue = parsed.error.issues[0]!;
     return {
       ok: false,
-      error: `${issue.path.join(".") || "Message"}: ${issue.message}`,
+      error: schemaError(issue),
     };
   }
   const first =
@@ -99,7 +171,7 @@ export function importMessageJson(text: string): JsonImportResult {
     const issue = first.error.issues[0]!;
     return {
       ok: false,
-      error: `messages.0.${issue.path.join(".")}: ${issue.message}`,
+      error: schemaError(issue),
     };
   }
   const data = first?.success
@@ -118,7 +190,7 @@ export function importMessageJson(text: string): JsonImportResult {
     embeds: (data.embeds ?? []).map((embed) => ({
       ...emptyEmbed(),
       color:
-        embed.color === undefined
+        embed.color == null
           ? emptyEmbed().color
           : `#${embed.color.toString(16).padStart(6, "0")}`,
       title: embed.title ?? "",
@@ -150,7 +222,7 @@ export function importMessageJson(text: string): JsonImportResult {
         .map((issue) => `${issue.label}: ${issue.message}`)
         .join("\n"),
     };
-  return { ok: true, message, notices: [...new Set(notices)] };
+  return { ok: true, message, notices: limitedNotices(notices) };
 }
 
 /** An explicit allowlist prevents editor ids and upload metadata from reaching an export. */
@@ -194,11 +266,16 @@ export function exportMessageJson(
       notices.push(
         `Embed ${i + 1} time of sending was resolved to the export time.`,
       );
+    const validColor = /^#[0-9a-f]{6}$/i.test(embed.color);
+    if (!validColor)
+      notices.push(
+        `Embed ${i + 1} side colour was omitted because it is not a six-digit hex colour.`,
+      );
     return {
       ...(embed.title && { title: embed.title }),
       ...(embed.description && { description: embed.description }),
       ...(embed.url && { url: embed.url }),
-      color: Number.parseInt(embed.color.slice(1), 16),
+      ...(validColor && { color: Number.parseInt(embed.color.slice(1), 16) }),
       ...(embed.timestamp && {
         timestamp:
           embed.timestamp === "now" ? now.toISOString() : embed.timestamp,

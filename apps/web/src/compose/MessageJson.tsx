@@ -1,15 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert } from "lucide-react";
-import { exportMessageJson, importMessageJson } from "@embed-dash/shared";
-import { toMessage, useDraft, withIds } from "./draft";
+import {
+  exportMessageJson,
+  importMessageJson,
+  type JsonImportResult,
+} from "@embed-dash/shared";
+import { isBlank, toMessage, useDraft, withIds } from "./draft";
 import { useEditorState } from "./editorState";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import dialogStyles from "../ui/ConfirmDialog.module.css";
 import composeStyles from "./ComposeView.module.css";
 import styles from "./MessageJson.module.css";
 
-export function MessageJson() {
+export function MessageJson({
+  onImported,
+}: {
+  onImported: (notices: string[]) => void;
+}) {
   const { draft, replace } = useDraft();
-  const { reset } = useEditorState();
+  const { reset, setPane, focusAfter } = useEditorState();
+  const [pending, setPending] = useState<Extract<
+    JsonImportResult,
+    { ok: true }
+  > | null>(null);
   const [mode, setMode] = useState<"import" | "export" | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -39,6 +52,16 @@ export function MessageJson() {
       setNotices(exported.notices);
     }
     setMode(next);
+  };
+  const applyImport = (result: Extract<JsonImportResult, { ok: true }>) => {
+    focusAfter("json-result", () => {
+      reset();
+      setPane("edit");
+      replace(withIds(result.message));
+      onImported(result.notices);
+      setPending(null);
+      close();
+    });
   };
   return (
     <>
@@ -87,6 +110,13 @@ export function MessageJson() {
                   setError("");
                   setText("");
                   setNotices([]);
+                  setStatus("");
+                  if (file.size > 1024 * 1024) {
+                    setError(
+                      "JSON files must be 1 MB or smaller. Choose a smaller file or paste the message JSON.",
+                    );
+                    return;
+                  }
                   setStatus("Reading file…");
                   try {
                     const value = await file.text();
@@ -140,7 +170,9 @@ export function MessageJson() {
               </ul>
             </div>
           )}
-          <p role="status">{status}</p>
+          <div role="status" className={status ? undefined : "visually-hidden"}>
+            {status && <p>{status}</p>}
+          </div>
           <div className={dialogStyles.actions}>
             <button
               type="button"
@@ -162,11 +194,9 @@ export function MessageJson() {
                     input.current?.focus();
                     return;
                   }
-                  reset();
-                  replace(withIds(result.message));
-                  setNotices(result.notices);
                   setError("");
-                  setStatus("Message imported. The preview has been updated.");
+                  if (isBlank(draft)) applyImport(result);
+                  else setPending(result);
                 }}
               >
                 Replace draft
@@ -213,6 +243,20 @@ export function MessageJson() {
           </div>
         </div>
       </dialog>
+      <ConfirmDialog
+        open={pending !== null}
+        title="Replace the current draft?"
+        confirmLabel="Replace draft"
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          if (pending) applyImport(pending);
+        }}
+      >
+        <p>
+          The current message and its uploaded files will be replaced by the
+          imported message.
+        </p>
+      </ConfirmDialog>
     </>
   );
 }

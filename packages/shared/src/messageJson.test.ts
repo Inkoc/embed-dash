@@ -99,12 +99,12 @@ test.each([
   ["{", "Invalid JSON"],
   ["null", "Message"],
   ["[]", "Message"],
-  ['{"content":5}', "content"],
-  ['{"messages":[]}', "messages"],
+  ['{"content":5}', "Message text"],
+  ['{"messages":[]}', "Message list"],
   ['{"messages":[{}]}', "data"],
-  ['{"embeds":[{"color":"#fff"}]}', "color"],
-  ['{"embeds":[{"color":16777216}]}', "color"],
-  ['{"embeds":[{"timestamp":"now"}]}', "timestamp"],
+  ['{"embeds":[{"color":"#fff"}]}', "colour"],
+  ['{"embeds":[{"color":16777216}]}', "colour"],
+  ['{"embeds":[{"timestamp":"now"}]}', "time"],
   ['{"embeds":[{"fields":[{"name":"x"}]}]}', "value"],
   [JSON.stringify({ content: "x".repeat(discordLimits.content + 1) }), "2,000"],
   [
@@ -187,4 +187,90 @@ test("exports only portable fields, omits uploads and resolves dynamic time with
   expect(result.notices).toHaveLength(6);
   expect(draft).toEqual(before);
   expect(importMessageJson(result.json).ok).toBe(true);
+});
+
+test.each([
+  {
+    content: null,
+    embeds: [{ title: "Evening programme", color: null }],
+    attachments: [],
+  },
+  { content: "Doors open", embeds: null, attachments: [] },
+])(
+  "imports nullable community-builder message fields without empty-value notices",
+  (data) => {
+    const result = importMessageJson(JSON.stringify({ messages: [{ data }] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.notices).toEqual([]);
+    expect(result.message.content).toBe(data.content ?? "");
+    expect(result.message.embeds).toEqual(
+      data.embeds ? [{ ...emptyEmbed(), title: "Evening programme" }] : [],
+    );
+  },
+);
+
+test("ignores null and empty-array unsupported values and limits nonempty notices", () => {
+  const data = {
+    content: "Hello",
+    ignored: null,
+    attachments: [],
+    ...Object.fromEntries(
+      Array.from({ length: 25 }, (_, i) => [`extra${i}`, true]),
+    ),
+  };
+  const result = importMessageJson(JSON.stringify(data));
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  expect(result.notices).toHaveLength(21);
+  expect(result.notices[0]).toBe("Unsupported field: extra0.");
+  expect(result.notices[19]).toBe("Unsupported field: extra19.");
+  expect(result.notices[20]).toBe("And 5 more unsupported fields.");
+});
+
+test.each(["#12", "#zz", "123456", "#1234567", ""])(
+  "omits invalid export colour %s with a notice",
+  (color) => {
+    const result = exportMessageJson(
+      {
+        content: "",
+        attachments: [],
+        embeds: [{ ...emptyEmbed(), title: "Hello", color }],
+      },
+      new Date("2026-11-27T18:00:00Z"),
+    );
+    expect(JSON.parse(result.json).embeds[0]).not.toHaveProperty("color");
+    expect(result.notices).toEqual([
+      "Embed 1 side colour was omitted because it is not a six-digit hex colour.",
+    ]);
+    expect(importMessageJson(result.json).ok).toBe(true);
+  },
+);
+
+test.each([
+  [{ content: 1 }, "Message text must be text."],
+  [{ embeds: [{ title: 12 }] }, "Embed 1 title must be text."],
+  [
+    { embeds: [{ fields: [{ name: "Place", value: false }] }] },
+    "Embed 1 field 1 value must be text.",
+  ],
+  [{ embeds: [{ author: { name: 1 } }] }, "Embed 1 author name must be text."],
+  [
+    { embeds: [{ image: "https://example.com" }] },
+    "Embed 1 image must be an object.",
+  ],
+  [
+    { embeds: [{ timestamp: "tomorrow" }] },
+    "Embed 1 time must be an ISO 8601 date and time, such as 2026-11-27T18:00:00Z.",
+  ],
+  [{ embeds: "wrong" }, "Embeds must be a list."],
+  [{ messages: [] }, "Message list must contain at least one message."],
+  [{ messages: [{}] }, "First message data must be an object."],
+])("maps schema failures to composer terms", (data, expected) => {
+  const result = importMessageJson(JSON.stringify(data));
+  expect(result).toEqual({ ok: false, error: expected });
+  if (!("messages" in data))
+    expect(importMessageJson(JSON.stringify({ messages: [{ data }] }))).toEqual(
+      result,
+    );
 });
