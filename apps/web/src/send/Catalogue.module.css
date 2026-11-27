@@ -1,0 +1,362 @@
+/* The catalogue: one sheet, a drawer per server, ruled rows to the sheet's edges. */
+.catalogue {
+  position: relative;
+  overflow: hidden;
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  box-shadow: var(--shadow-2);
+}
+
+/* the keyboard cursor: one frame that glides from entry to entry */
+.cursor {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  border: 2px solid var(--ring);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    height var(--dur-base) var(--ease-out),
+    opacity var(--dur-fast);
+}
+.cursor[data-show] {
+  opacity: 1;
+}
+.cursor[data-show="first"] {
+  transition: opacity var(--dur-fast);
+}
+
+.drawer {
+  /* jumps from the server rail land below the sticky bar and search */
+  scroll-margin-top: calc(var(--bar-height) + 11rem);
+  /* offscreen drawers skip layout and paint, so long catalogues stay smooth */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30rem;
+}
+.drawer + .drawer {
+  border-top: var(--rule-width) solid var(--rule-2);
+}
+
+/* chevron, mark and name share columns with the facts line beneath the name */
+.head {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  background: var(--sheet-2);
+}
+.head > .title,
+.toggle {
+  grid-column: 1 / 4;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+.head > .quiet {
+  grid-column: 4;
+  grid-row: 1 / 3;
+}
+.facts {
+  grid-column: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+  padding: 0 var(--space-2) var(--space-1);
+}
+.head[data-open] {
+  border-bottom: var(--rule-width) solid var(--rule);
+}
+.title {
+  min-width: 0;
+  font-size: var(--text-section);
+  font-weight: var(--weight-section);
+  letter-spacing: var(--tracking-section);
+}
+.toggle {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.toggle:hover {
+  background: var(--sheet);
+}
+.chevron {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--ink-2);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.toggle[aria-expanded="false"] .chevron {
+  transform: rotate(-90deg);
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticked {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.ticked b {
+  color: var(--accent);
+  font-weight: var(--weight-strong);
+}
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6.5rem;
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.quiet:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.quiet:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+/* call numbers: shared prefix in secondary ink, the last six digits bold */
+.call {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.call b {
+  color: var(--ink);
+  font-weight: var(--weight-label);
+}
+.catalogue mark {
+  border-radius: var(--radius-xs);
+  background: var(--mark);
+  color: var(--ink);
+}
+
+.row {
+  /* a snowflake ID is 17–20 digits; this fits the longest in the row's mono */
+  --call-w: 11rem;
+  position: relative;
+  border-bottom: var(--rule-width) solid var(--rule);
+  transition: background var(--dur-fast);
+}
+.rows > .row:last-child {
+  border-bottom: 0;
+}
+.row[data-on] {
+  background: var(--accent-wash);
+}
+.entry {
+  display: grid;
+  grid-template-columns: 1.25rem var(--call-w) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 3rem;
+  padding: var(--space-1) var(--space-5);
+  cursor: pointer;
+}
+.row[data-blocked] .entry {
+  cursor: default;
+}
+.row:not([data-blocked]):not([data-on]) .entry:hover {
+  background: var(--sheet-2);
+}
+/* the native checkbox stays in place for assistive tech; the drawn box shows its state */
+.input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.input:focus-visible {
+  outline: none;
+}
+.box {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: var(--line-strong) solid var(--field-line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--on-accent);
+  transition:
+    background var(--dur-fast),
+    border-color var(--dur-fast);
+}
+.box svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 3;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  transition: stroke-dashoffset var(--dur-base) var(--ease-out);
+}
+.row[data-on] .box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.row[data-on] .box svg {
+  stroke-dashoffset: 0;
+}
+.row[data-blocked] .box {
+  border-style: dashed;
+  border-color: var(--field-line);
+  background: none;
+}
+.row .call {
+  font-size: var(--text-label);
+}
+.channel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: var(--weight-label);
+}
+.channel svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--ink-2);
+}
+.channelName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row[data-blocked] .channel {
+  color: var(--ink-2);
+  font-weight: var(--weight-body);
+}
+.main {
+  padding: 0.1em 0.35em;
+  border: var(--rule-width) solid currentColor;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-key);
+  font-weight: var(--weight-strong);
+  color: var(--accent);
+}
+.kind {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+  text-align: right;
+}
+.why {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: calc(var(--space-2) * -1);
+  padding: 0 var(--space-5) var(--space-3)
+    calc(var(--space-5) + 1.25rem + var(--call-w) + var(--space-4) * 2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.why svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.note {
+  padding: var(--space-3) var(--space-5);
+  border-top: var(--rule-width) solid var(--rule);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.rows + .note {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.link {
+  min-height: var(--tap);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: var(--rule-width);
+  text-underline-offset: 0.2em;
+}
+
+@media (max-width: 860px) {
+  .drawer {
+    scroll-margin-top: calc(var(--bar-height) + var(--space-3));
+  }
+  .head {
+    padding: var(--space-1) var(--space-1) var(--space-1) 0;
+  }
+  .facts {
+    display: none;
+  }
+  .quiet {
+    min-width: 0;
+  }
+  .entry {
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+    gap: 0 var(--space-3);
+    padding: var(--space-2) var(--space-4);
+  }
+  .entry .call {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: var(--text-meta);
+  }
+  .entry .channel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .entry .box {
+    grid-row: 1 / 3;
+  }
+  .kind {
+    display: none;
+  }
+  .why {
+    padding-left: calc(var(--space-4) + 1.25rem + var(--space-3));
+  }
+  .note {
+    padding-inline: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor,
+  .chevron,
+  .box,
+  .box svg,
+  .row {
+    transition: none;
+  }
+}

@@ -1,6 +1,5 @@
-/* The empty state is one short statement, so the view is capped and centred. */
 .send {
-  max-width: 56rem;
+  max-width: 92rem;
   margin: 0 auto;
   padding: 0 var(--space-6) var(--space-7);
 }
@@ -9,7 +8,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3) var(--space-5);
-  padding: var(--space-6) 0 var(--space-5);
+  padding: var(--space-6) 0 var(--space-4);
 }
 .head h2 {
   font-size: var(--text-display);
@@ -24,13 +23,264 @@
   color: var(--ink);
   font-weight: var(--weight-strong);
 }
+.listed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  margin-left: auto;
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.problem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--rule-width) solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-wash);
+  color: var(--ink);
+  font-size: var(--text-label);
+}
+.problem svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--danger);
+}
 
-/* the empty catalogue: one closed drawer whose label says what's missing */
-.catalogue {
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.quiet:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.quiet:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+.quiet svg,
+.primary svg,
+.back svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.quiet[data-busy] svg {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 3rem;
+  padding: 0 var(--space-5);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: var(--weight-section);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    transform var(--dur-fast);
+}
+.primary:hover {
+  background: var(--accent-hover);
+}
+.primary:active {
+  transform: translateY(var(--press-shift));
+}
+
+/* three columns: server rail, catalogue, tray */
+.layout {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr) 22rem;
+  align-items: start;
+  gap: var(--space-5);
+}
+.main {
+  min-width: 0;
+}
+
+/* search and quick picks stay under the bar while the catalogue scrolls */
+.lookup {
+  position: sticky;
+  z-index: 6;
+  top: var(--bar-height);
+  display: grid;
+  /* the server strip scrolls inside the column instead of widening it */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  background: var(--ground);
+}
+.label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+}
+.search {
+  position: relative;
+}
+.search > svg {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  width: var(--icon-md);
+  height: var(--icon-md);
+  translate: 0 -50%;
+  color: var(--ink-2);
+}
+.search input {
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0 calc(var(--space-6) * 2) 0 calc(var(--space-4) * 3);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-lg);
+  background: var(--field);
+  font-size: var(--text-section);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.search input::placeholder {
+  color: var(--ink-2);
+  opacity: 1;
+}
+.search input:hover {
+  border-color: var(--ink-2);
+}
+.search input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 var(--rule-width) var(--accent),
+    0 0 0 var(--space-1) var(--accent-wash);
+}
+/* the app's own clear button replaces the browser's */
+.search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  translate: 0 -50%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.clear:hover {
+  background: var(--sheet-2);
+  color: var(--ink);
+}
+.clear svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+.search kbd {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  translate: 0 -50%;
+}
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.picks > span {
+  margin-right: var(--space-1);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.pick svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.pick:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pick:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+.n {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.nothing {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  color: var(--ink-2);
+}
+.nothing b {
+  color: var(--ink);
+}
+
+/* closed catalogue (error, no servers): one drawer whose label says what's missing */
+.closed {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-5) var(--space-6);
+  max-width: 56rem;
   padding: var(--space-6);
   border: var(--rule-width) solid var(--rule);
   border-radius: var(--radius-lg);
@@ -51,7 +301,6 @@
     inset 0 calc(var(--space-1) * -1) 0 var(--rule),
     var(--shadow-1);
 }
-/* the brass label holder: a framed tag with a rivet either side */
 .holder {
   position: relative;
   padding: var(--space-1) var(--space-3);
@@ -104,6 +353,12 @@
   color: var(--ink);
   font-weight: var(--weight-strong);
 }
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
 .back {
   display: inline-flex;
   align-items: center;
@@ -119,26 +374,123 @@
 .back:hover {
   background: var(--accent-wash);
 }
-.back svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
+
+/* loading skeleton: the three columns' shapes, still */
+.skel {
+  display: block;
+  height: var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--rule);
+  animation: breathe var(--dur-pulse) ease-in-out infinite alternate;
+}
+@keyframes breathe {
+  to {
+    opacity: 0.55;
+  }
+}
+.skelRail {
+  display: grid;
+  gap: var(--space-5);
+  padding-top: var(--space-6);
+}
+.skelRail .skel:nth-child(odd) {
+  width: 80%;
+}
+.skelSearch {
+  height: 3.5rem;
+  margin: var(--space-6) 0 var(--space-4);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-lg);
+  background: var(--field);
+}
+.skelSheet {
+  display: grid;
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.skelRow {
+  display: grid;
+  grid-template-columns: 13.5rem 10rem;
+  gap: var(--space-5);
+  align-items: center;
+  min-height: 3rem;
+  padding: 0 var(--space-5);
+  border-bottom: var(--rule-width) solid var(--rule);
+}
+.skelRow[data-head] {
+  min-height: var(--row-min);
+  background: var(--sheet-2);
+}
+.skelTray {
+  min-height: 18rem;
+  margin-top: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--tray);
+  box-shadow: var(--shadow-2), var(--tray-edge);
 }
 
+/* tablets: catalogue and tray; the rail becomes a strip under the search */
 @media (max-width: 1100px) {
   .send {
     padding-inline: var(--space-5);
   }
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+  .layout > nav,
+  .skelRail {
+    display: none;
+  }
 }
+@media (min-width: 1101px) {
+  .lookup > nav {
+    display: none;
+  }
+}
+
+/* phones and narrow tablets: one column; the tray is a bottom sheet */
 @media (max-width: 860px) {
+  .send {
+    padding-bottom: 12rem;
+  }
   .head {
-    padding: var(--space-5) var(--space-1) var(--space-4);
+    padding: var(--space-5) var(--space-1) var(--space-3);
+  }
+  .listed {
+    margin-left: 0;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .lookup {
+    position: static;
+    padding-top: 0;
+  }
+  .search kbd,
+  .picks > span {
+    display: none;
+  }
+  .search input {
+    min-height: 3.25rem;
+    padding-right: var(--space-4);
+    font-size: var(--text-body);
+  }
+  .skelSearch {
+    margin-top: 0;
+  }
+  .skelTray {
+    display: none;
   }
 }
 @media (max-width: 640px) {
   .send {
     padding-inline: var(--space-3);
   }
-  .catalogue {
+  .closed {
     grid-template-columns: minmax(0, 1fr);
     padding: var(--space-5) var(--space-4);
   }
@@ -149,5 +501,24 @@
     width: 100%;
     aspect-ratio: auto;
     padding: var(--space-5) 0;
+  }
+  .skelRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding-block: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel,
+  .quiet[data-busy] svg {
+    animation: none;
+  }
+  .quiet,
+  .primary,
+  .pick,
+  .back,
+  .search input {
+    transition: none;
   }
 }

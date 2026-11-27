@@ -8,6 +8,7 @@ import {
 } from "react-router";
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider } from "./compose/draft";
+import { SelectionProvider } from "./send/selection";
 import { SendView } from "./send/SendView";
 import { BotStatus } from "./shell/BotStatus";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
@@ -21,7 +22,9 @@ const order: Record<View, number> = { compose: 0, send: 1 };
 export function App() {
   return (
     <DraftProvider>
-      <Shell />
+      <SelectionProvider>
+        <Shell />
+      </SelectionProvider>
     </DraftProvider>
   );
 }
