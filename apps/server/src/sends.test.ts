@@ -1,4 +1,5 @@
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, truncateSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,11 +9,14 @@ import type { FastifyInstance } from "fastify";
 import { emptyEmbed, type MessagePayload } from "@embed-dash/shared";
 import { fakeGuilds, startFakeDiscord } from "../../../e2e/fake-discord.js";
 import { createApp } from "./app.js";
+import type { Config } from "./config.js";
+import { openDatabase } from "./db.js";
 import { deliveryFailure } from "./errors.js";
 import { discordMessage } from "./payload.js";
 
 type Fake = ReturnType<typeof startFakeDiscord>;
 interface Setup {
+  config: Config;
   app: FastifyInstance;
   fake: Fake;
   dir: string;
@@ -39,19 +43,17 @@ async function setup(
   const address = fake.address();
   if (!address || typeof address === "string") throw new Error("No address");
   const dir = mkdtempSync(join(tmpdir(), "embed-sends-"));
-  const app = await createApp(
-    {
-      authMode: "password",
-      adminPassword: "sends-test-password",
-      botToken: options.token ?? "e2e-test-token",
-      port: 8742,
-      host: "127.0.0.1",
-      dataDir: dir,
-      maxUploadMb: options.maxUploadMb,
-      discordApiBase: `http://127.0.0.1:${address.port}/api`,
-    },
-    { logger: false },
-  );
+  const config: Config = {
+    authMode: "password",
+    adminPassword: "sends-test-password",
+    botToken: options.token ?? "e2e-test-token",
+    port: 8742,
+    host: "127.0.0.1",
+    dataDir: dir,
+    maxUploadMb: options.maxUploadMb,
+    discordApiBase: `http://127.0.0.1:${address.port}/api`,
+  };
+  const app = await createApp(config, { logger: false });
   cleanups.push(async () => {
     await app.close();
     fake.close();
@@ -74,6 +76,7 @@ async function setup(
   const cookie = `${session.name}=${session.value}`;
   const next = await app.inject({ url: "/api/session", headers: { cookie } });
   return {
+    config,
     app,
     fake,
     dir,
@@ -98,12 +101,13 @@ const post = (
   { app, headers }: Setup,
   channelIds: string[],
   change: Partial<MessagePayload> = {},
+  id: string = randomUUID(),
 ) =>
   app.inject({
     method: "POST",
     url: "/api/sends",
     headers,
-    payload: { payload: payload(change), channelIds },
+    payload: { id, payload: payload(change), channelIds },
   });
 const retry = ({ app, headers }: Setup, id: string, body: object = {}) =>
   app.inject({
@@ -112,6 +116,35 @@ const retry = ({ app, headers }: Setup, id: string, body: object = {}) =>
     headers,
     payload: body,
   });
+const read = ({ app, headers }: Setup, id: string) =>
+  app.inject({ url: `/api/sends/${id}`, headers });
+
+/** Polls until the send has no copy left in flight, as the browser does. */
+async function settle(s: Setup, id: string) {
+  for (let i = 0; i < 500; i++) {
+    const send = (await read(s, id)).json();
+    if (send.status !== "sending") return send;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("The send never finished");
+}
+/** Sends and waits for every channel to be tried. */
+async function sent(
+  s: Setup,
+  channelIds: string[],
+  change: Partial<MessagePayload> = {},
+) {
+  const id = randomUUID();
+  const response = await post(s, channelIds, change, id);
+  expect(response.statusCode).toBe(202);
+  expect(response.json()).toEqual({ id });
+  return settle(s, id);
+}
+async function retried(s: Setup, id: string, body: object = {}) {
+  const response = await retry(s, id, body);
+  expect(response.statusCode).toBe(202);
+  return settle(s, id);
+}
 
 const database = (dir: string) => new Database(join(dir, "embed-dash.db"));
 const rows = (dir: string, sql: string) => {
@@ -159,9 +192,7 @@ async function upload(
 
 test("sends to every channel in order and records one target per channel", async () => {
   const s = await setup();
-  const response = await post(s, [news, schedule]);
-  expect(response.statusCode).toBe(201);
-  const send = response.json();
+  const send = await sent(s, [news, schedule]);
   expect(send.status).toBe("done");
   expect(send.targets).toEqual([
     expect.objectContaining({
@@ -216,7 +247,7 @@ test("sends to every channel in order and records one target per channel", async
 
 test("pings only when the send opts in, and silent sets the notification flag", async () => {
   const s = await setup();
-  await post(s, [news], {
+  await sent(s, [news], {
     pings: ["users", "roles", "everyone"],
     silent: true,
   });
@@ -224,7 +255,7 @@ test("pings only when the send opts in, and silent sets the notification flag", 
     allowed_mentions: { parse: ["users", "roles", "everyone"] },
     flags: 4096,
   });
-  await post(s, [news], { pings: ["roles"] });
+  await sent(s, [news], { pings: ["roles"] });
   expect(s.fake.messages[1].payload).toMatchObject({
     allowed_mentions: { parse: ["roles"] },
   });
@@ -289,8 +320,7 @@ test("turns the composed embeds into Discord's shape", () => {
 test("a partial failure keeps the other copies, and retry re-sends only the failed one", async () => {
   const s = await setup();
   s.fake.fail(results, { status: 403, code: 50013 });
-  const response = await post(s, [news, results, schedule]);
-  const send = response.json();
+  const send = await sent(s, [news, results, schedule]);
   expect(send.status).toBe("partial");
   expect(send.targets.map((t: { status: string }) => t.status)).toEqual([
     "sent",
@@ -303,9 +333,7 @@ test("a partial failure keeps the other copies, and retry re-sends only the fail
   });
   expect(s.fake.messages).toHaveLength(2);
 
-  const again = await retry(s, send.id);
-  expect(again.statusCode).toBe(200);
-  const done = again.json();
+  const done = await retried(s, send.id);
   expect(done.status).toBe("done");
   expect(done.targets.map((t: { status: string }) => t.status)).toEqual([
     "sent",
@@ -331,14 +359,14 @@ test("retry can be limited to chosen failed copies", async () => {
   const s = await setup();
   s.fake.fail(news, { status: 403, code: 50013 });
   s.fake.fail(results, { status: 403, code: 50013 });
-  const send = (await post(s, [news, results])).json();
+  const send = await sent(s, [news, results]);
   expect(send.status).toBe("failed");
-  const only = await retry(s, send.id, { targetIds: [send.targets[1].id] });
-  expect(only.json().targets.map((t: { status: string }) => t.status)).toEqual([
+  const only = await retried(s, send.id, { targetIds: [send.targets[1].id] });
+  expect(only.targets.map((t: { status: string }) => t.status)).toEqual([
     "failed",
     "sent",
   ]);
-  expect(only.json().status).toBe("partial");
+  expect(only.status).toBe("partial");
   expect(s.fake.messages.map((m) => m.channelId)).toEqual([results]);
   expect((await retry(s, "not-a-uuid")).statusCode).toBe(400);
   expect(
@@ -356,7 +384,7 @@ test.each([
 ])("a %i answer (code %i) reads as %s", async (status, code, expected) => {
   const s = await setup();
   s.fake.fail(news, { status, code });
-  const send = (await post(s, [news])).json();
+  const send = await sent(s, [news]);
   expect(send.targets[0]).toMatchObject({
     status: "failed",
     error: { code: expected },
@@ -367,7 +395,7 @@ test.each([
 test("a dropped connection leaves the copy unknown and is not retried unseen", async () => {
   const s = await setup();
   s.fake.fail(news, { status: 0 });
-  const send = (await post(s, [news, schedule])).json();
+  const send = await sent(s, [news, schedule]);
   expect(send.status).toBe("partial");
   expect(send.targets[0]).toMatchObject({
     status: "unknown",
@@ -382,7 +410,7 @@ test("waits out a short rate limit and then delivers", async () => {
   const s = await setup();
   s.fake.fail(news, { status: 429, retryAfter: 0.3 });
   const started = Date.now();
-  const send = (await post(s, [news, schedule])).json();
+  const send = await sent(s, [news, schedule]);
   expect(Date.now() - started).toBeGreaterThanOrEqual(250);
   expect(send.status).toBe("done");
   expect(s.fake.messages.map((m) => m.channelId)).toEqual([news, schedule]);
@@ -392,7 +420,7 @@ test("a rate limit that would hold the send for too long fails only that channel
   const s = await setup();
   s.fake.fail(news, { status: 429, retryAfter: 600 });
   const started = Date.now();
-  const send = (await post(s, [news, schedule])).json();
+  const send = await sent(s, [news, schedule]);
   expect(Date.now() - started).toBeLessThan(5000);
   expect(send.targets[0]).toMatchObject({
     status: "failed",
@@ -405,9 +433,7 @@ test("a rate limit that would hold the send for too long fails only that channel
 test("a refused bot token stops the send and says so", async () => {
   const s = await setup();
   s.fake.fail(news, { status: 401 });
-  const response = await post(s, [news, results, schedule]);
-  expect(response.statusCode).toBe(201);
-  const send = response.json();
+  const send = await sent(s, [news, results, schedule]);
   expect(send.status).toBe("failed");
   expect(send.targets[0].error).toMatchObject({
     code: "INVALID_TOKEN",
@@ -417,10 +443,9 @@ test("a refused bot token stops the send and says so", async () => {
   expect(send.targets[2].error.code).toBe("NOT_ATTEMPTED");
   // Nothing after the refused post was attempted.
   expect(s.fake.messages).toEqual([]);
-  expect(response.body).not.toContain("e2e-test-token");
+  expect(JSON.stringify(send)).not.toContain("e2e-test-token");
   // Once the cause is fixed, the stopped copies are retried like any failure.
-  const again = await retry(s, send.id);
-  expect(again.json().status).toBe("done");
+  expect((await retried(s, send.id)).status).toBe("done");
 });
 
 test("a token rejected while listing channels is reported before anything is stored", async () => {
@@ -440,7 +465,7 @@ test("uploads go as files[n] beside payload_json, with the stored names", async 
   const banner = await upload(s, "Banner Image.png");
   const notes = await upload(s, "notes.txt", Buffer.from("release notes\n"));
   expect(banner.filename).toBe("Banner_Image.png");
-  const response = await post(s, [news, schedule], {
+  const response = await sent(s, [news, schedule], {
     attachments: [banner, notes],
     embeds: [
       {
@@ -450,8 +475,7 @@ test("uploads go as files[n] beside payload_json, with the stored names", async 
       },
     ],
   });
-  expect(response.statusCode).toBe(201);
-  expect(response.json().status).toBe("done");
+  expect(response.status).toBe("done");
   for (const message of s.fake.messages) {
     expect(message.multipart).toBe(true);
     expect(message.files).toEqual([
@@ -470,10 +494,11 @@ test("uploads go as files[n] beside payload_json, with the stored names", async 
   }
   // A retry sends the files again from the server's copy.
   s.fake.fail(news, { status: 403, code: 50013 });
-  const second = (
-    await post(s, [news], { attachments: [banner], content: "again" })
-  ).json();
-  expect((await retry(s, second.id)).json().status).toBe("done");
+  const second = await sent(s, [news], {
+    attachments: [banner],
+    content: "again",
+  });
+  expect((await retried(s, second.id)).status).toBe("done");
   expect(s.fake.messages.at(-1)!.files).toHaveLength(1);
 });
 
@@ -523,7 +548,7 @@ test("a file the server no longer has blocks the send and names it, with its ima
   // A file deleted after the send blocks its retry the same way.
   const ok = await upload(s, "later.png");
   s.fake.fail(news, { status: 403, code: 50013 });
-  const send = (await post(s, [news], { attachments: [ok] })).json();
+  const send = await sent(s, [news], { attachments: [ok] });
   unlinkSync(join(s.dir, "uploads", ok.id));
   const blocked = await retry(s, send.id);
   expect(blocked.statusCode).toBe(422);
@@ -621,14 +646,14 @@ test("refuses channels that are gone, closed to the bot or forums, sending nothi
 test("a channel that vanished since the send is re-checked on retry, not posted to", async () => {
   const s = await setup();
   s.fake.fail(general, { status: 403, code: 50013 });
-  const send = (await post(s, [general, news])).json();
+  const send = await sent(s, [general, news]);
   expect(send.status).toBe("partial");
   s.fake.remove(general);
   await s.app.inject({
     url: "/api/guilds?refresh=1",
     headers: { cookie: s.headers.cookie },
   });
-  const again = (await retry(s, send.id)).json();
+  const again = await retried(s, send.id);
   expect(again.targets[0]).toMatchObject({
     status: "failed",
     error: { code: "CHANNEL_GONE" },
@@ -648,11 +673,16 @@ test("rejects a message Discord would refuse and a malformed request", async () 
   expect(long.json().issues[0].message).toContain("1 character over");
 
   for (const body of [
-    { payload: payload() },
-    { payload: payload(), channelIds: [] },
-    { payload: payload(), channelIds: [news, news] },
-    { payload: { ...payload(), pings: ["bots"] }, channelIds: [news] },
-    { channelIds: [news] },
+    { id: randomUUID(), payload: payload() },
+    { id: randomUUID(), payload: payload(), channelIds: [] },
+    { id: randomUUID(), payload: payload(), channelIds: [news, news] },
+    {
+      id: randomUUID(),
+      payload: { ...payload(), pings: ["bots"] },
+      channelIds: [news],
+    },
+    { id: "not-a-uuid", payload: payload(), channelIds: [news] },
+    { id: randomUUID(), channelIds: [news] },
   ]) {
     const response = await s.app.inject({
       method: "POST",
@@ -668,7 +698,7 @@ test("rejects a message Discord would refuse and a malformed request", async () 
 
 test("sends sit behind sign-in and the CSRF check", async () => {
   const s = await setup();
-  const body = { payload: payload(), channelIds: [news] };
+  const body = { id: randomUUID(), payload: payload(), channelIds: [news] };
   const anonymous = await s.app.inject({
     method: "POST",
     url: "/api/sends",
@@ -709,4 +739,160 @@ test("classifies failures without an answer from Discord", () => {
   });
   expect(deliveryFailure({ status: 418 }).code).toBe("INVALID_PAYLOAD");
   expect(deliveryFailure({ status: 401 })).toMatchObject({ stop: true });
+});
+
+test("answers at once with the send's id and delivers in the background, in the operator's order", async () => {
+  const s = await setup();
+  s.fake.slow(150);
+  const id = randomUUID();
+  const started = Date.now();
+  const response = await post(s, [news, results, schedule], {}, id);
+  expect(response.statusCode).toBe(202);
+  expect(response.json()).toEqual({ id });
+  expect(Date.now() - started).toBeLessThan(140);
+
+  // While it runs, the targets are on record as pending and fill in one by one.
+  const early = (await read(s, id)).json();
+  expect(early.status).toBe("sending");
+  expect(early.targets.map((t: { channelId: string }) => t.channelId)).toEqual([
+    news,
+    results,
+    schedule,
+  ]);
+  expect(early.targets[2].status).toBe("pending");
+  await expect
+    .poll(async () => {
+      const now = (await read(s, id)).json();
+      return now.targets.map((t: { status: string }) => t.status).join();
+    })
+    .toBe("sent,sent,sent");
+  expect((await read(s, id)).json().status).toBe("done");
+  // A retry can't start on a send that is still being delivered.
+  const second = randomUUID();
+  await post(s, [news, schedule], {}, second);
+  expect((await retry(s, second)).statusCode).toBe(409);
+  expect((await retry(s, second)).json().code).toBe("SEND_IN_PROGRESS");
+  await settle(s, second);
+});
+
+test("repeating a request with the same id returns that send and posts nothing more", async () => {
+  const s = await setup();
+  s.fake.slow(100);
+  const id = randomUUID();
+  await post(s, [news, schedule], {}, id);
+  // The first answer was lost: the browser asks again, even with the send still running.
+  const again = await post(s, [news, schedule], {}, id);
+  expect(again.statusCode).toBe(202);
+  expect(again.json()).toEqual({ id });
+  await settle(s, id);
+  expect((await post(s, [news], {}, id)).json()).toEqual({ id });
+  expect(s.fake.messages).toHaveLength(2);
+  expect(rows(s.dir, "SELECT id FROM sends")).toHaveLength(1);
+  expect(rows(s.dir, "SELECT id FROM send_targets")).toHaveLength(2);
+  expect((await read(s, randomUUID())).statusCode).toBe(404);
+  expect((await read(s, "not-a-uuid")).statusCode).toBe(400);
+});
+
+test("a restart marks copies that were still pending as unknown", async () => {
+  const s = await setup();
+  const done = await sent(s, [news]);
+  const db = openDatabase(s.dir);
+  db.prepare(
+    "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('cut-off', '{}', '', 'sending', 1, 1)",
+  ).run();
+  const insert = db.prepare(
+    "INSERT INTO send_targets (id, send_id, guild_id, guild_name, channel_id, channel_name, status, position) VALUES (?, 'cut-off', 'g', 'G', ?, 'c', ?, ?)",
+  );
+  insert.run("t1", "1", "sent", 0);
+  insert.run("t2", "2", "pending", 1);
+  insert.run("t3", "3", "pending", 2);
+  db.close();
+  await s.app.close();
+  const restarted = await createApp(
+    { ...s.config, dataDir: s.dir },
+    { logger: false },
+  );
+  cleanups.push(() => restarted.close());
+  expect(
+    rows(
+      s.dir,
+      "SELECT id, status, error FROM send_targets WHERE send_id = 'cut-off' ORDER BY position",
+    ),
+  ).toEqual([
+    { id: "t1", status: "sent", error: null },
+    { id: "t2", status: "unknown", error: "UNKNOWN_OUTCOME" },
+    { id: "t3", status: "unknown", error: "UNKNOWN_OUTCOME" },
+  ]);
+  expect(rows(s.dir, "SELECT status FROM sends WHERE id = 'cut-off'")).toEqual([
+    { status: "partial" },
+  ]);
+  expect(
+    rows(s.dir, `SELECT status FROM sends WHERE id = '${done.id}'`),
+  ).toEqual([{ status: "done" }]);
+});
+
+test.each([500, 504])(
+  "a %i from Discord leaves the copy unknown, since it may have been stored",
+  async (status) => {
+    const s = await setup();
+    s.fake.fail(news, { status });
+    const send = await sent(s, [news]);
+    expect(send.targets[0]).toMatchObject({
+      status: "unknown",
+      error: { code: "UNKNOWN_OUTCOME" },
+    });
+    expect((await retry(s, send.id)).statusCode).toBe(409);
+  },
+);
+
+test("a 503 from Discord is a failure that can be retried", async () => {
+  const s = await setup();
+  s.fake.fail(news, { status: 503 });
+  const send = await sent(s, [news]);
+  expect(send.targets[0]).toMatchObject({
+    status: "failed",
+    error: { code: "DISCORD_UNAVAILABLE" },
+  });
+  expect((await retried(s, send.id)).status).toBe("done");
+});
+
+test("gives up on a channel that is rate limited again and again", async () => {
+  const s = await setup();
+  s.fake.fail(news, { status: 429, retryAfter: 0.01, times: 10 });
+  const started = Date.now();
+  const send = await sent(s, [news, schedule]);
+  expect(Date.now() - started).toBeLessThan(3000);
+  expect(send.targets[0]).toMatchObject({
+    status: "failed",
+    error: { code: "RATE_LIMITED" },
+  });
+  expect(send.targets[1].status).toBe("sent");
+  // The next post to that channel starts with a clean count.
+  const again = await retried(s, send.id);
+  expect(again.targets[0].status).toBe("failed");
+  s.fake.fail(news, { status: 429, retryAfter: 0.01, times: 2 });
+  expect((await retried(s, send.id)).status).toBe("done");
+});
+
+test("repeated refusals from one server skip its remaining channels, not other servers'", async () => {
+  const s = await setup();
+  const community = ["announcements", "patch-notes", "general", "events"].map(
+    (name) => channel(1, name),
+  );
+  for (const id of community.slice(0, 3))
+    s.fake.fail(id, { status: 403, code: 50013 });
+  const modding = channel(2, "release-notes");
+  const send = await sent(s, [...community.slice(0, 3), modding, community[3]]);
+  const codes = send.targets.map(
+    (t: { error: { code: string } | null }) => t.error?.code ?? "sent",
+  );
+  expect(codes).toEqual([
+    "MISSING_PERMISSION",
+    "MISSING_PERMISSION",
+    "MISSING_PERMISSION",
+    "sent",
+    "SERVER_REFUSING",
+  ]);
+  expect(send.targets[4].error.message).toContain("several channels");
+  expect(s.fake.messages.map((m) => m.channelId)).toEqual([modding]);
 });

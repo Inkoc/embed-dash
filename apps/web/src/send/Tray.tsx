@@ -72,7 +72,8 @@ export function Tray({
   flightRef: RefObject<Flight | null>;
 }) {
   const { draft, issues } = useDraft();
-  const { busy, result, retry, dismiss } = useSending();
+  const { busy, reconnecting, result, retry, dismiss, pings, silent } =
+    useSending();
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const count = useRef<HTMLSpanElement>(null);
@@ -116,10 +117,9 @@ export function Tray({
     [],
   );
   const outcome = result ? tally(result) : null;
-  const waiting = busy
-    ? (slip: Slip) =>
-        slip.target ? !!busy.retrying?.has(slip.target.id) : !busy.retrying
-    : () => false;
+  // Copies still in flight spin; before the first answer every ticked channel does.
+  const waiting = (slip: Slip) =>
+    slip.target ? slip.target.status === "pending" : !!busy;
 
   const blocked = busy
     ? null
@@ -133,9 +133,10 @@ export function Tray({
 
   // The summary takes focus when results arrive, so they are read out and the
   // Retry button that vanished doesn't leave focus nowhere.
+  const finished = !!result && !busy;
   useEffect(() => {
-    if (result) summary.current?.focus({ preventScroll: true });
-  }, [result]);
+    if (finished) summary.current?.focus({ preventScroll: true });
+  }, [finished]);
 
   // The numeral rolls one step up or down when the count changes.
   useLayoutEffect(() => {
@@ -354,7 +355,20 @@ export function Tray({
           requestAnimationFrame(() => heading.current?.focus());
         }}
       />
-      {outcome ? (
+      {busy ? (
+        <p id="tray-note" className={styles.rising} aria-live="polite">
+          <b>
+            {reconnecting
+              ? "Lost contact with the server; still checking."
+              : outcome
+                ? outcome.sentence
+                : `Sending to ${plural(entries.length, "channel", "channels")}…`}
+          </b>{" "}
+          {reconnecting
+            ? "The send carries on there. Nothing is sent twice."
+            : `Mentions ${pings.length ? `notify ${pings.join(", ")}` : "notify nobody"}${silent ? "; sent silently" : ""}.`}
+        </p>
+      ) : outcome ? (
         <p
           ref={summary}
           id="tray-note"

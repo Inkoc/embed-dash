@@ -30,6 +30,8 @@ const cacheMs = 60_000;
 const guildConcurrency = 4;
 /** A rate limit longer than this fails that channel instead of holding the whole send. */
 const maxRateLimitWaitMs = 30_000;
+/** Rate-limit pauses one post may sit through before it is given up on. */
+const maxRateLimitReplays = 3;
 /** Uploads of up to 25 MB share this budget. */
 const postTimeoutMs = 60_000;
 
@@ -74,13 +76,20 @@ export function createDiscord(
     rejectOnRateLimit: (limit) => limit.retryAfter > 10_000,
     timeout: 5000,
   });
+  const rateLimitPauses = new Map<string, number>();
   // Posting waits out short rate limits. It never retries by itself: repeating
   // a post that timed out could put the message in the channel twice.
   const posting = new REST({
     api: config.discordApiBase,
     version: "10",
     retries: 0,
-    rejectOnRateLimit: (limit) => limit.retryAfter > maxRateLimitWaitMs,
+    rejectOnRateLimit: (limit) => {
+      if (limit.retryAfter > maxRateLimitWaitMs) return true;
+      // The major parameter of a message post is its channel, and one post per channel runs at a time.
+      const pauses = (rateLimitPauses.get(limit.majorParameter) ?? 0) + 1;
+      rateLimitPauses.set(limit.majorParameter, pauses);
+      return pauses > maxRateLimitReplays;
+    },
     timeout: postTimeoutMs,
   });
   // The REST client clears its token after a 401; retries still use startup configuration.
@@ -168,11 +177,16 @@ export function createDiscord(
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
   ) {
-    const message = (await client(posting).post(
-      Routes.channelMessages(channelId),
-      { body, files: files.map((file) => ({ ...file })) },
-    )) as RESTPostAPIChannelMessageResult;
-    return message.id;
+    rateLimitPauses.delete(channelId);
+    try {
+      const message = (await client(posting).post(
+        Routes.channelMessages(channelId),
+        { body, files: files.map((file) => ({ ...file })) },
+      )) as RESTPostAPIChannelMessageResult;
+      return message.id;
+    } finally {
+      rateLimitPauses.delete(channelId);
+    }
   }
 
   return { getBot, listGuilds, createMessage };

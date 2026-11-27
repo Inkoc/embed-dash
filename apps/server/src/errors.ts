@@ -144,6 +144,9 @@ export function deliveryFailure(error: unknown): {
     return failed("MISSING_PERMISSION");
   if (status === 404 || causeCode === unknownChannel)
     return failed("CHANNEL_GONE");
+  // A 500 or 504 can come after Discord stored the message; 502 and 503 mean it never got that far.
+  if (status === 500 || status === 504)
+    return { code: "UNKNOWN_OUTCOME", outcome: "unknown", stop: false };
   if (status !== undefined && status >= 500)
     return failed("DISCORD_UNAVAILABLE");
   if (status !== undefined) return failed("INVALID_PAYLOAD");

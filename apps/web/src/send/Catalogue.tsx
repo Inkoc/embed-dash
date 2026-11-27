@@ -63,6 +63,8 @@ interface Props {
   mainIds: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
   onToggleCollapsed: (guildId: string) => void;
+  /** A send is being delivered: the ticked channels are the ones it goes to, so they stay as they are. */
+  locked: boolean;
   onTick: (channel: GuildChannel, on: boolean, row: HTMLElement) => void;
   onTickMany: (ids: string[], on: boolean) => void;
   onLeaveTop: () => void;
@@ -80,6 +82,7 @@ export function Catalogue({
   mainIds,
   collapsed,
   onToggleCollapsed,
+  locked,
   onTick,
   onTickMany,
   onLeaveTop,
@@ -188,6 +191,7 @@ export function Catalogue({
           onExpand={() =>
             setExpanded((set) => new Set(set).add(drawer.guild.id))
           }
+          locked={locked}
           onTick={onTick}
           onTickMany={onTickMany}
         />
@@ -213,6 +217,7 @@ function Drawer({
   expanded,
   onToggleOpen,
   onExpand,
+  locked,
   onTick,
   onTickMany,
 }: {
@@ -224,6 +229,7 @@ function Drawer({
   expanded: boolean;
   onToggleOpen: () => void;
   onExpand: () => void;
+  locked: boolean;
   onTick: Props["onTick"];
   onTickMany: Props["onTickMany"];
 }) {
@@ -280,7 +286,7 @@ function Drawer({
         <button
           type="button"
           className={styles.quiet}
-          disabled={!inSearch.length}
+          disabled={!inSearch.length || locked}
           onClick={() => onTickMany(inSearch, !allTicked)}
         >
           {allTicked ? "Clear" : "Select all"}{" "}
@@ -303,6 +309,7 @@ function Drawer({
                   on={selected.has(hit.channel.id)}
                   main={mainIds.has(hit.channel.id)}
                   tabbable={tabbable === hit.channel.id}
+                  locked={locked}
                   onTick={onTick}
                 />
               ))}
@@ -330,6 +337,7 @@ const Row = memo(function Row({
   on,
   main,
   tabbable,
+  locked,
   onTick,
 }: {
   hit: ChannelHit;
@@ -337,6 +345,7 @@ const Row = memo(function Row({
   on: boolean;
   main: boolean;
   tabbable: boolean;
+  locked: boolean;
   onTick: Props["onTick"];
 }) {
   const { channel } = hit;
@@ -349,6 +358,7 @@ const Row = memo(function Row({
       className={styles.row}
       data-on={on || undefined}
       data-blocked={reason ? "" : undefined}
+      data-locked={locked || undefined}
     >
       <label className={styles.entry}>
         <input
@@ -359,9 +369,9 @@ const Row = memo(function Row({
           tabIndex={tabbable ? 0 : -1}
           aria-labelledby={`${id}-name`}
           aria-describedby={`${id}-meta`}
-          aria-disabled={reason ? true : undefined}
+          aria-disabled={reason || locked ? true : undefined}
           onChange={(event) => {
-            if (reason) return;
+            if (reason || locked) return;
             onTick(channel, event.target.checked, event.target);
           }}
         />

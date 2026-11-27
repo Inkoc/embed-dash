@@ -15,12 +15,13 @@ import {
   pingKinds,
   type Issue,
   type PingKind,
+  type SendResult,
   type SendTarget,
 } from "@embed-dash/shared";
 import type { Draft } from "../compose/draft";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useSending } from "./sending";
-import { messageSummary, plural, tally } from "./summary";
+import { messageSummary, plural, progress, tally } from "./summary";
 import type { TrayEntry } from "./Tray";
 import styles from "./SendPanel.module.css";
 
@@ -210,6 +211,14 @@ export function SlipDetail({
   return null;
 }
 
+const progressText = (
+  result: SendResult,
+  retrying: ReadonlySet<string> | null,
+) => {
+  const { done, total } = progress(result, retrying);
+  return `${done} of ${total}`;
+};
+
 /** The Send button and its confirmation, or after a send the summary and the retry. */
 export function SendControls({
   draft,
@@ -225,7 +234,8 @@ export function SendControls({
   describedBy: string;
   onDismiss: () => void;
 }) {
-  const { busy, result, problem, send, retry, pings, silent } = useSending();
+  const { busy, result, problem, prepare, send, retry, pings, silent } =
+    useSending();
   const [confirming, setConfirming] = useState(false);
   const servers = new Set(entries.map((entry) => entry.guild.id));
   const count = plural(entries.length, "channel", "channels");
@@ -242,7 +252,7 @@ export function SendControls({
     return (
       <div className={styles.controls} data-controls>
         {alert}
-        {outcome.failed > 0 && (
+        {(busy || outcome.failed > 0) && (
           <button
             type="button"
             className={styles.go}
@@ -250,7 +260,7 @@ export function SendControls({
             onClick={() => void retry()}
           >
             {busy
-              ? `Retrying ${outcome.failed}…`
+              ? `${busy.retrying ? "Retrying" : "Sending"} ${progressText(result, busy.retrying)}…`
               : `Retry ${outcome.failed} failed`}
           </button>
         )}
@@ -278,7 +288,10 @@ export function SendControls({
         className={styles.go}
         disabled={!!blocked || !!busy}
         aria-describedby={describedBy}
-        onClick={() => setConfirming(true)}
+        onClick={() => {
+          prepare();
+          setConfirming(true);
+        }}
       >
         {busy
           ? `Sending to ${count}…`

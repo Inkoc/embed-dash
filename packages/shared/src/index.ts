@@ -596,6 +596,8 @@ export const messagePayloadSchema = messageDraftSchema.extend({
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
 export const sendRequestSchema = z.object({
+  /** Chosen by the browser, so repeating a request that may have been lost can't post twice. */
+  id: z.uuid(),
   payload: messagePayloadSchema,
   channelIds: z
     .array(z.string().min(1))
@@ -630,6 +632,8 @@ export const deliveryErrors = {
   NOT_ATTEMPTED:
     "Not sent: the send stopped before reaching this channel. Retry once the cause is fixed.",
   FORUM_CHANNEL: "Forum posting isn’t available yet.",
+  SERVER_REFUSING:
+    "Not sent: the bot was refused in several channels of this server in a row, so the rest were skipped. Check the bot’s access to the server, then retry.",
 } as const;
 export type DeliveryErrorCode = keyof typeof deliveryErrors;
 export const deliveryErrorCodes = Object.keys(deliveryErrors) as [

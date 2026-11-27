@@ -557,17 +557,21 @@ describe("sending", () => {
     ).toBe(false);
   });
 
-  test("a send names its channels once each", () => {
-    const payload = { content: "Hi", embeds: [] };
-    expect(
-      sendRequestSchema.safeParse({ payload, channelIds: ["1", "2"] }).success,
-    ).toBe(true);
-    expect(
-      sendRequestSchema.safeParse({ payload, channelIds: [] }).success,
-    ).toBe(false);
-    expect(
-      sendRequestSchema.safeParse({ payload, channelIds: ["1", "1"] }).success,
-    ).toBe(false);
+  test("a send names its channels once each and carries the browser's id", () => {
+    const base = {
+      id: "6f1c1e1e-6d5e-4b8e-8f7a-0b6d2f4f9a11",
+      payload: { content: "Hi", embeds: [] },
+    };
+    const accepts = (change: object) =>
+      sendRequestSchema.safeParse({
+        ...base,
+        channelIds: ["1", "2"],
+        ...change,
+      }).success;
+    expect(accepts({})).toBe(true);
+    expect(accepts({ channelIds: [] })).toBe(false);
+    expect(accepts({ channelIds: ["1", "1"] })).toBe(false);
+    expect(accepts({ id: "send-1" })).toBe(false);
   });
 
   test("results only carry codes that have a readable reason", () => {

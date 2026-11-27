@@ -46,7 +46,19 @@ test("compose, pick two channels, confirm, and see two sent copies", async ({
   await expect(dialog).toContainText("Mentions won’t notify anyone.");
   await dialog.getByRole("button", { name: "Send to 2 channels" }).click();
 
+  // While the copies are delivered the tray shows how far it has got and the selection is locked.
+  await expect(
+    tray(page).getByRole("button", { name: /^Sending \d of 2…/ }),
+  ).toBeDisabled();
+  await expect(page.getByText(/The selection is locked/)).toBeVisible();
+  await expect(
+    drawer(page, "Lanternfall Cup EU").getByRole("checkbox", {
+      name: "match-schedule",
+    }),
+  ).toHaveAttribute("aria-disabled", "true");
+
   await expect(tray(page).getByText("Sent", { exact: true })).toHaveCount(2);
+  await expect(page.getByText(/The selection is locked/)).toHaveCount(0);
   await expect(tray(page)).toContainText("2 sent.");
   await expect(tray(page)).toContainText("Every copy arrived.");
   const links = tray(page).getByRole("link", { name: /Open in Discord/ });

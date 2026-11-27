@@ -32,6 +32,20 @@ export function messageSummary(draft: Draft): {
   return { headline, parts: parts.join(" · ") };
 }
 
+/** How many of the copies being delivered (all, or the ones being retried) have an outcome. */
+export function progress(
+  result: SendResult,
+  retrying: ReadonlySet<string> | null,
+) {
+  const copies = retrying
+    ? result.targets.filter((target) => retrying.has(target.id))
+    : result.targets;
+  return {
+    done: copies.filter((target) => target.status !== "pending").length,
+    total: copies.length,
+  };
+}
+
 /** The tally of a send, as a sentence the summary line can open with. */
 export function tally(result: SendResult) {
   const count = (status: string) =>
@@ -39,6 +53,7 @@ export function tally(result: SendResult) {
   const sent = count("sent");
   const failed = count("failed");
   const unknown = count("unknown");
+  const pending = count("pending");
   const parts = [
     `${sent} sent`,
     failed ? `${failed} failed` : null,
@@ -51,6 +66,10 @@ export function tally(result: SendResult) {
     stoppedByToken: result.targets.some(
       (t) => t.error?.code === "INVALID_TOKEN",
     ),
-    sentence: `${parts.join(", ")}.`,
+    pending,
+    // Mid-delivery the total is what matters; once done, what happened to each kind.
+    sentence: pending
+      ? `${sent} of ${result.targets.length} sent${failed ? `, ${failed} failed` : ""}.`
+      : `${parts.join(", ")}.`,
   };
 }

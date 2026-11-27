@@ -205,6 +205,7 @@ export function startFakeDiscord(port: number) {
   const forced = new Map<string, Forced>();
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
+  let postDelayMs = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     const reply = (body: unknown, status = 200) => {
@@ -291,6 +292,7 @@ export function startFakeDiscord(port: number) {
       if (!exists)
         return reply({ message: "Unknown Channel", code: 10003 }, 404);
       const body = await readBody(request);
+      if (postDelayMs) await new Promise((r) => setTimeout(r, postDelayMs));
       const type = request.headers["content-type"] ?? "";
       const multipart = type.startsWith("multipart/form-data");
       const parts = multipart ? parseMultipart(body, type) : [];
@@ -344,6 +346,8 @@ export function startFakeDiscord(port: number) {
       channelId: string,
       failure: Omit<Forced, "times"> & { times?: number },
     ) => void forced.set(channelId, { times: 1, ...failure }),
+    /** Every accepted post takes this long to answer. */
+    slow: (ms: number) => void (postDelayMs = ms),
     /** The channel vanishes from listings and posts to it get a 404. */
     remove: (channelId: string) => void removed.add(channelId),
   });
