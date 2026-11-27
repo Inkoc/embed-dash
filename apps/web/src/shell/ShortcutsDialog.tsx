@@ -30,7 +30,10 @@ export function ShortcutsDialog({ open, onClose }: Props) {
       ),
       action: "Go forward: from Compose to Send",
     },
-    { keys: <kbd>Esc</kbd>, action: "Go back: from Send to Compose" },
+    {
+      keys: <kbd>Esc</kbd>,
+      action: "Go back: Send to Compose, send details to History",
+    },
     { keys: <kbd>/</kbd>, action: "Jump to search, where a view has one" },
     { keys: <kbd>?</kbd>, action: "Show this list" },
   ];

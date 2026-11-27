@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -21,9 +21,21 @@ import { pressKey, shortcutFor } from "./shortcuts";
 import { useTheme } from "./theme";
 import styles from "./App.module.css";
 
-const order: Record<View, number> = { compose: 0, send: 1, templates: 2 };
+const HistoryView = lazy(() => import("./history/HistoryView"));
+const order: Record<View, number> = {
+  compose: 0,
+  send: 1,
+  history: 2,
+  templates: 3,
+};
 const viewFor = (path: string): View =>
-  path === "/send" ? "send" : path === "/templates" ? "templates" : "compose";
+  path.startsWith("/history")
+    ? "history"
+    : path === "/send"
+      ? "send"
+      : path === "/templates"
+        ? "templates"
+        : "compose";
 
 export function App() {
   return (
@@ -89,6 +101,14 @@ function Shell() {
         event.preventDefault();
         pressKey("back");
         void navigate("/");
+      } else if (
+        action === "back" &&
+        view === "history" &&
+        location.pathname !== "/history"
+      ) {
+        event.preventDefault();
+        pressKey("back");
+        void navigate(`/history${location.search}`);
       } else if (action === "search") {
         const search = document.querySelector<HTMLElement>(
           "[data-shortcut='search']",
@@ -105,7 +125,7 @@ function Shell() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [view, navigate, firstIssue, reveal]);
+  }, [view, navigate, firstIssue, reveal, location.pathname, location.search]);
 
   return (
     <>
@@ -129,6 +149,22 @@ function Shell() {
           <Routes>
             <Route path="/" element={<ComposeView theme={theme} />} />
             <Route path="/send" element={<SendView />} />
+            <Route
+              path="/history"
+              element={
+                <Suspense fallback={<p role="status">Loading history…</p>}>
+                  <HistoryView theme={theme} />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/history/:id"
+              element={
+                <Suspense fallback={<p role="status">Loading history…</p>}>
+                  <HistoryView theme={theme} />
+                </Suspense>
+              }
+            />
             <Route path="/templates" element={<TemplatesView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
