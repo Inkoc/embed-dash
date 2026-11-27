@@ -1,0 +1,23 @@
+{
+  "name": "@embed-dash/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@embed-dash/shared": "workspace:*",
+    "@discordjs/rest": "2.6.3",
+    "discord-api-types": "0.38.60",
+    "fastify": "5.12.8",
+    "@fastify/static": "9.3.0",
+    "better-sqlite3": "13.2.0",
+    "drizzle-orm": "0.45.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "drizzle-kit": "0.31.11"
+  }
+}

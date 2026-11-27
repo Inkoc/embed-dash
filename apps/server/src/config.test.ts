@@ -1,0 +1,60 @@
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expect, test } from "vitest";
+import { readConfig } from "./config.js";
+test("reads defaults and secret files with file precedence", () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-config-"));
+  try {
+    const file = join(dir, "token");
+    writeFileSync(file, "file-token\n");
+    expect(
+      readConfig({ BOT_TOKEN: "env-token", BOT_TOKEN_FILE: file }),
+    ).toMatchObject({
+      botToken: "file-token",
+      port: 8742,
+      dataDir: "/data",
+      discordApiBase: "https://discord.com/api",
+    });
+    expect(
+      readConfig({
+        BOT_TOKEN: "env-token",
+        PORT: "9000",
+        DATA_DIR: dir,
+        DISCORD_API_BASE: "http://localhost:9001/",
+      }),
+    ).toMatchObject({
+      botToken: "env-token",
+      port: 9000,
+      dataDir: dir,
+      discordApiBase: "http://localhost:9001",
+    });
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+test.each([
+  [{}, "BOT_TOKEN"],
+  [{ BOT_TOKEN: " " }, "BOT_TOKEN"],
+  [{ BOT_TOKEN: "two words" }, "BOT_TOKEN"],
+  [{ BOT_TOKEN_FILE: "/nonexistent-secret-file" }, "BOT_TOKEN_FILE"],
+  ...["0", "65536", "3.2", "abc", ""].map((PORT) => [
+    { BOT_TOKEN: "test", PORT },
+    "PORT",
+  ]),
+  [{ BOT_TOKEN: "test", DATA_DIR: "" }, "DATA_DIR"],
+  ...[
+    "invalid",
+    "file:///tmp/api",
+    "https://user:password@example.com",
+    "https://example.com?secret=x",
+  ].map((DISCORD_API_BASE) => [
+    { BOT_TOKEN: "test", DISCORD_API_BASE },
+    "DISCORD_API_BASE",
+  ]),
+] as [NodeJS.ProcessEnv, string][])(
+  "rejects invalid config without exposing values",
+  (env, field) => {
+    expect(() => readConfig(env)).toThrow(field);
+  },
+);

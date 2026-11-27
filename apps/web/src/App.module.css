@@ -1,0 +1,9 @@
+.main {
+  max-width: 65ch;
+  margin-inline: auto;
+}
+.identity {
+  border: var(--border);
+  padding: var(--space);
+  overflow-wrap: anywhere;
+}

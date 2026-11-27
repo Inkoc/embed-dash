@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
-# Every check for this repo runs from here. The workflow never changes; edit this file.
 set -euo pipefail
-echo "No checks yet. The forge-start baseline replaces this file."
+cd "$(dirname "$0")/.."
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm format:check
+pnpm typecheck
+pnpm test:coverage
+if [ "$(id -u)" = 0 ] || { command -v sudo >/dev/null && sudo -n true 2>/dev/null; }; then
+  pnpm exec playwright install --with-deps chromium
+else
+  echo "No passwordless sudo; using existing browser system libraries."
+  pnpm exec playwright install chromium
+fi
+pnpm e2e
+pnpm build
