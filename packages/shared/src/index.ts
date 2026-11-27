@@ -606,13 +606,19 @@ export const sendRequestSchema = z.object({
 });
 export type SendRequest = z.infer<typeof sendRequestSchema>;
 
+export const editRequestSchema = z
+  .object({ id: z.uuid(), payload: messagePayloadSchema })
+  .strict();
+
 export const retryRequestSchema = z.object({
+  id: z.uuid().optional(),
   /** Only these failed copies; omitted, every failed copy. */
   targetIds: z.array(z.string()).min(1).optional(),
 });
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  MESSAGE_DELETED: "Deleted in Discord. This copy can no longer be updated.",
   MISSING_PERMISSION:
     "The bot isn’t allowed to post in this channel. Give it View Channel, Send Messages and Embed Links there, then retry.",
   CHANNEL_GONE:
@@ -660,6 +666,8 @@ export type SendTarget = z.infer<typeof sendTargetSchema>;
 
 export const sendResultSchema = z.object({
   id: z.string(),
+  editId: z.string().nullable().optional(),
+  lastEditedAt: z.number().nullable().optional(),
   status: z.enum(["sending", "done", "partial", "failed"]),
   targets: z.array(sendTargetSchema),
 });

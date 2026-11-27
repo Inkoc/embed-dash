@@ -173,6 +173,8 @@ export function SlipDetail({
 }) {
   const name = `#${target.channelName} in ${target.guildName}`;
   if (retrying) return null;
+  if (target.error?.code === "MESSAGE_DELETED")
+    return <p className={styles.cause}>Deleted in Discord</p>;
   if (target.status === "sent" && target.messageId)
     return (
       <div className={styles.detail}>

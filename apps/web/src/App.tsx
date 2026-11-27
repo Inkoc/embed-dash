@@ -6,6 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router";
+import { EditPanel, EditGuard } from "./compose/EditPanel";
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
@@ -49,7 +50,7 @@ function Shell() {
       : "compose";
   const { theme, toggle } = useTheme();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const { issues } = useDraft();
+  const { issues, editing } = useDraft();
   const { reveal } = useEditorState();
   const firstIssue = issues[0]?.path;
 
@@ -128,9 +129,11 @@ function Shell() {
         onToggleTheme={toggle}
         onShowShortcuts={() => setShowShortcuts(true)}
       />
+      {editing && <EditGuard />}
       <main id="main">
         <h1 className="visually-hidden">embed-dash</h1>
         <BotStatus variant="notice" />
+        {editing && view !== "history" && <EditPanel />}
         <div
           key={view}
           className={styles.view}
@@ -138,7 +141,19 @@ function Shell() {
         >
           <Routes>
             <Route path="/" element={<ComposeView theme={theme} />} />
-            <Route path="/send" element={<SendView />} />
+            <Route
+              path="/send"
+              element={
+                editing ? (
+                  <p>
+                    Update the message in Compose. Channels stay fixed for this
+                    send.
+                  </p>
+                ) : (
+                  <SendView />
+                )
+              }
+            />
             <Route
               path="/history"
               element={

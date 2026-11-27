@@ -23,6 +23,8 @@ export const sends = sqliteTable(
         "cancelled",
       ],
     }).notNull(),
+    editId: text("edit_id"),
+    lastEditedAt: integer("last_edited_at"),
     scheduledAt: integer("scheduled_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -81,3 +83,10 @@ export const sendTargets = sqliteTable(
     ),
   ],
 );
+
+export const editRuns = sqliteTable("edit_runs", {
+  id: text("id").primaryKey(),
+  sendId: text("send_id")
+    .notNull()
+    .references(() => sends.id, { onDelete: "cascade" }),
+});

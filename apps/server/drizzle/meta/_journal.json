@@ -43,6 +43,13 @@
       "when": 1795783286659,
       "tag": "0005_acoustic_falcon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795818095678,
+      "tag": "0006_odd_bloodstorm",
+      "breakpoints": true
     }
   ]
 }

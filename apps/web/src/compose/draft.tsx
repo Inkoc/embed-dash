@@ -17,6 +17,7 @@ import {
   type EmbedDraft,
   type EmbedFieldDraft,
   type Issue,
+  type HistoryDetail,
   type MessageDraft,
 } from "@embed-dash/shared";
 import { useQueryClient } from "@tanstack/react-query";
@@ -308,6 +309,11 @@ function inEmbed(
 }
 
 interface DraftContextValue {
+  editing: HistoryDetail | null;
+  beginEdit: (send: HistoryDetail) => void;
+  endEdit: () => void;
+  markEdited: (message: MessageDraft) => void;
+  dirty: boolean;
   draft: Draft;
   setDraft: (change: (draft: Draft) => Draft) => void;
   issues: Issue[];
@@ -324,6 +330,28 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 /** Keeps the draft above the views, so switching to Send and back loses nothing, and saves it in the browser. */
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(loadDraft);
+  const [editing, setEditing] = useState<HistoryDetail | null>(null);
+  const [baseline, setBaseline] = useState("");
+  const previousDraft = useRef<Draft | null>(null);
+  const beginEdit = useCallback(
+    (send: HistoryDetail) => {
+      previousDraft.current = draft;
+      setEditing(send);
+      setBaseline(JSON.stringify(toMessage(withIds(send.payload))));
+      setDraft(withIds(send.payload));
+    },
+    [draft],
+  );
+  const endEdit = useCallback(() => {
+    setEditing(null);
+    setDraft(previousDraft.current ?? blankDraft());
+  }, []);
+  const markEdited = useCallback(
+    (message: MessageDraft) =>
+      setBaseline(JSON.stringify(toMessage(withIds(message)))),
+    [],
+  );
+  const dirty = !!editing && JSON.stringify(toMessage(draft)) !== baseline;
   const saved = useSyncExternalStore(subscribeToSaves, lastSave);
   const missing = useMissingUploads(draft.attachments.map((file) => file.id));
   const issues = useMemo(
@@ -332,8 +360,8 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    saveDraft(draft);
-  }, [draft]);
+    if (!editing) saveDraft(draft);
+  }, [draft, editing]);
 
   const client = useQueryClient();
   const [generation, setGeneration] = useState(0);
@@ -354,8 +382,33 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ draft, setDraft, issues, saved, clear, generation, isCurrent }),
-    [draft, issues, saved, clear, generation, isCurrent],
+    () => ({
+      draft,
+      setDraft,
+      issues,
+      saved,
+      clear,
+      generation,
+      isCurrent,
+      editing,
+      beginEdit,
+      endEdit,
+      markEdited,
+      dirty,
+    }),
+    [
+      draft,
+      issues,
+      saved,
+      clear,
+      generation,
+      isCurrent,
+      editing,
+      beginEdit,
+      endEdit,
+      markEdited,
+      dirty,
+    ],
   );
   return <DraftContext value={value}>{children}</DraftContext>;
 }

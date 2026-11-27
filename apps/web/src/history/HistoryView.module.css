@@ -312,3 +312,10 @@
     padding: var(--space-4);
   }
 }
+
+.editBody {
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  overflow-wrap: anywhere;
+}

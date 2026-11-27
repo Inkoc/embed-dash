@@ -8,6 +8,7 @@ import {
   type RESTGetAPIGuildMemberResult,
   type RESTGetAPIGuildResult,
   type RESTPostAPIChannelMessageJSONBody,
+  type RESTPatchAPIChannelMessageJSONBody,
   type RESTPostAPIChannelMessageResult,
 } from "discord-api-types/v10";
 import {
@@ -51,6 +52,12 @@ export function createDiscord(
   // Tests page through a handful of guilds instead of hundreds of rate-limited calls.
   { guildPageSize = maxGuildPageSize } = {},
 ): {
+  editMessage: (
+    channelId: string,
+    messageId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) => Promise<string>;
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
   /** Posts a message, with files as multipart `files[n]` beside `payload_json`; resolves to its ID. */
@@ -214,7 +221,55 @@ export function createDiscord(
     return turn;
   }
 
-  return { getBot, listGuilds, createMessage };
+  function editMessage(
+    channelId: string,
+    messageId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) {
+    const turn = (channelTurns.get(channelId) ?? Promise.resolve()).then(
+      async () => {
+        rateLimitPauses.delete(channelId);
+        try {
+          const route = Routes.channelMessage(channelId, messageId);
+          const api = client(posting);
+          const current = (await api.get(
+            route,
+          )) as RESTPostAPIChannelMessageResult;
+          const retained = current.attachments.filter((a) =>
+            files.some((f) => f.name === a.filename),
+          );
+          const added = files.filter(
+            (f) => !retained.some((a) => a.filename === f.name),
+          );
+          const edit: RESTPatchAPIChannelMessageJSONBody = {
+            content: body.content ?? "",
+            embeds: body.embeds ?? [],
+            allowed_mentions: body.allowed_mentions,
+            attachments: [
+              ...retained.map((a) => ({ id: a.id, filename: a.filename })),
+              ...added.map((f, id) => ({ id, filename: f.name })),
+            ],
+          };
+          await api.patch(route, {
+            body: edit,
+            files: added.map((f) => ({ ...f })),
+          });
+          return messageId;
+        } finally {
+          rateLimitPauses.delete(channelId);
+        }
+      },
+    );
+    const settled = turn.catch(() => undefined);
+    channelTurns.set(channelId, settled);
+    void settled.then(() => {
+      if (channelTurns.get(channelId) === settled)
+        channelTurns.delete(channelId);
+    });
+    return turn;
+  }
+  return { getBot, listGuilds, createMessage, editMessage };
 }
 
 async function fetchGuild(

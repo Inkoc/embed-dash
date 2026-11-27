@@ -25,3 +25,10 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Main channel of a server** is its system channel, else its first postable announcement channel, else its first postable text channel.
 - **Forum channels are listed but not selectable** until forum posting exists.
 - **`@fastify/static` upgraded to 11.0.0** to clear a path-traversal advisory found by the milestone audit. The one remaining advisory is development-only (an `esbuild` copy inside `drizzle-kit`, whose dev server this project never runs).
+
+## Milestone 2
+
+- **Edit runs have durable client IDs.** Repeated update requests return the recorded run; copies keep their original message IDs, and interrupted requests remain unconfirmed until an operator checks Discord.
+- **Attachment retention follows Discord IDs.** Before patching a copy, fetch its attachments and retain matching filenames; upload only newly added files and omit removed files from the explicit attachment list.
+- **Destinations and mention settings stay fixed during edits.** Only existing copies are patched; deleted copies are recorded permanently and excluded from retries.
+- **The editor protects unsaved work.** Route navigation and browser unload ask before discarding changes, while the ordinary composition draft stays separate.

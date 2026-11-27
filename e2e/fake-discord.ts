@@ -153,6 +153,7 @@ export const fakeGuilds: FakeGuild[] = [
 
 /** A message the fake accepted, as Discord's create-message route received it. */
 export interface FakeMessage {
+  attachments?: { id: string; filename: string }[];
   id: string;
   channelId: string;
   /** `payload_json` for a multipart request, the JSON body otherwise. */
@@ -271,7 +272,7 @@ export function startFakeDiscord(port: number) {
     }
     const [, section, guildId, sub, memberId] = path.split("/");
     if (
-      request.method === "POST" &&
+      ["POST", "PATCH", "GET"].includes(request.method ?? "") &&
       section === "channels" &&
       sub === "messages"
     ) {
@@ -294,6 +295,16 @@ export function startFakeDiscord(port: number) {
       );
       if (!exists)
         return reply({ message: "Unknown Channel", code: 10003 }, 404);
+      const existing = messages.find(
+        (m) => m.id === memberId && m.channelId === channel,
+      );
+      if (request.method !== "POST" && !existing)
+        return reply({ message: "Unknown Message", code: 10008 }, 404);
+      if (request.method === "GET")
+        return reply({
+          id: existing!.id,
+          attachments: existing!.attachments ?? [],
+        });
       const body = await readBody(request);
       if (postDelayMs) await new Promise((r) => setTimeout(r, postDelayMs));
       const type = request.headers["content-type"] ?? "";
@@ -312,11 +323,24 @@ export function startFakeDiscord(port: number) {
         }));
       const declared = (payload.attachments as unknown[] | undefined) ?? [];
       // Discord refuses an attachments list that doesn't match the uploaded parts.
-      if (declared.length !== files.length)
+      if (request.method === "POST" && declared.length !== files.length)
         return reply({ message: "Invalid Form Body", code: 50035 }, 400);
+      if (request.method === "PATCH") {
+        existing!.payload = { ...existing!.payload, ...payload };
+        existing!.attachments = payload.attachments as {
+          id: string;
+          filename: string;
+        }[];
+        return reply({ id: existing!.id });
+      }
+      const attachments = files.map((f, i) => ({
+        id: String(900000 + lastMessage * 10 + i),
+        filename: f.filename,
+      }));
       const message = {
         id: String(++lastMessage),
         channelId: channel,
+        attachments,
         payload,
         files,
         multipart,

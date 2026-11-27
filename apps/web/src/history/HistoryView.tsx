@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams, useNavigate } from "react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   historyQuerySchema,
@@ -8,7 +8,7 @@ import {
   historyResponseSchema,
   messageLink,
 } from "@embed-dash/shared";
-import { withIds } from "../compose/draft";
+import { withIds, useDraft } from "../compose/draft";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import { useBot } from "../bot";
 import type { Theme } from "../theme";
@@ -327,6 +327,8 @@ export function HistoryList() {
 function Detail({ id, theme }: { id: string; theme: Theme }) {
   const [params] = useSearchParams();
   const bot = useBot();
+  const { beginEdit } = useDraft();
+  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["history-detail", id],
     queryFn: async () =>
@@ -346,6 +348,28 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       <header className={styles.head}>
         <div>
           <h2 tabIndex={-1}>Send details</h2>
+          {query.data && (
+            <button
+              disabled={
+                query.data.status === "sending" ||
+                query.data.targets.some((t) => t.status === "unknown") ||
+                !query.data.targets.some(
+                  (t) => t.messageId && t.error?.code !== "MESSAGE_DELETED",
+                )
+              }
+              onClick={() => {
+                beginEdit(query.data);
+                void navigate("/");
+              }}
+            >
+              Edit
+            </button>
+          )}
+          {query.data?.lastEditedAt && (
+            <p>
+              Last edited {new Date(query.data.lastEditedAt).toLocaleString()}
+            </p>
+          )}
           <Link to={`/history?${params}`}>
             ← Back to history <kbd data-k="back">Esc</kbd>
           </Link>

@@ -39,7 +39,15 @@ import styles from "./ComposeView.module.css";
 const format = (n: number) => n.toLocaleString("en-GB");
 
 export function ComposeView({ theme }: { theme: Theme }) {
-  const { draft, setDraft, saved, clear: clearDraft, generation } = useDraft();
+  const {
+    draft,
+    setDraft,
+    saved,
+    clear: clearDraft,
+    generation,
+    editing,
+    dirty,
+  } = useDraft();
   const { pane, setPane, focusAfter, reset, reveal } = useEditorState();
   const bot = useBot();
   const location = useLocation();
@@ -111,7 +119,13 @@ export function ComposeView({ theme }: { theme: Theme }) {
               role="status"
               data-failed={saved ? undefined : ""}
             >
-              {saved ? (
+              {editing ? (
+                dirty ? (
+                  "Unsaved edits"
+                ) : (
+                  "No unsaved edits"
+                )
+              ) : saved ? (
                 "Saved in this browser"
               ) : (
                 <>
@@ -391,11 +405,11 @@ function NextStep() {
 
 /** While the draft has problems the action stays visible but disabled, and pressing it goes to the first one. */
 function ChooseChannels({ describedBy }: { describedBy: string }) {
-  const { issues } = useDraft();
+  const { issues, editing } = useDraft();
   const { reveal } = useEditorState();
   const content = (
     <>
-      Choose channels
+      {editing ? "Review updates" : "Choose channels"}
       <ArrowRight aria-hidden="true" />
       <ForwardKeys />
     </>

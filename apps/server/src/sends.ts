@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   historyQuerySchema,
+  editRequestSchema,
   canPost,
   canSendTo,
   deliveryErrors,
@@ -26,10 +27,16 @@ import type { Config } from "./config.js";
 import type { MessageFile } from "./discord.js";
 import { deliveryFailure, discordFailure } from "./errors.js";
 import { discordMessage, searchText } from "./payload.js";
-import { sends, sendTargets } from "./schema.js";
+import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
 type Discord = {
+  editMessage?: (
+    channelId: string,
+    messageId: string,
+    body: ReturnType<typeof discordMessage>,
+    files: readonly MessageFile[],
+  ) => Promise<string>;
   listGuilds: () => Promise<GuildsResponse>;
   createMessage: (
     channelId: string,
@@ -174,6 +181,8 @@ export async function registerSends(
       id,
       payload: messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
       createdAt: send.createdAt,
+      editId: send.editId,
+      lastEditedAt: send.lastEditedAt,
       status: send.status as SendResult["status"],
       targets: targets.map((target) => ({
         id: target.id,
@@ -233,6 +242,8 @@ export async function registerSends(
   ) {
     const channels = listed(listing);
     const body = discordMessage(payload, sentAt);
+    const editing = !!db.select().from(sends).where(eq(sends.id, sendId)).get()
+      ?.editId;
     const record = (
       target: TargetRow,
       change: Partial<typeof sendTargets.$inferInsert>,
@@ -272,12 +283,20 @@ export async function registerSends(
       // which may have arrived, from the ones never tried.
       record(target, { status: "posting" });
       try {
-        const messageId = await discord.createMessage(
-          target.channelId,
-          body,
-          files,
-        );
+        const messageId = editing
+          ? await discord.editMessage!(
+              target.channelId,
+              target.messageId!,
+              body,
+              files,
+            )
+          : await discord.createMessage(target.channelId, body, files);
         record(target, { status: "sent", messageId, error: null });
+        if (editing)
+          db.update(sends)
+            .set({ lastEditedAt: Date.now() })
+            .where(eq(sends.id, sendId))
+            .run();
         refusals.delete(target.guildId);
       } catch (error) {
         const failure = deliveryFailure(error);
@@ -518,6 +537,112 @@ export async function registerSends(
     return readSend(id);
   });
 
+  app.put("/api/sends/:id", idParams, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = editRequestSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply
+        .code(400)
+        .send(sendError("INVALID_REQUEST", "The edit request is malformed."));
+    const previous = db
+      .select()
+      .from(editRuns)
+      .where(eq(editRuns.id, parsed.data.id))
+      .get();
+    if (previous)
+      return previous.sendId === id
+        ? reply.code(202).send({ id })
+        : reply
+            .code(409)
+            .send(
+              sendError(
+                "EDIT_CONFLICT",
+                "This edit ID belongs to another send.",
+              ),
+            );
+    const send = db.select().from(sends).where(eq(sends.id, id)).get();
+    if (!send)
+      return reply
+        .code(404)
+        .send(sendError("NOT_FOUND", "That send doesn’t exist."));
+    const original = messagePayloadSchema.parse(JSON.parse(send.payloadJson));
+    const { payload, files, missing } = loadAttachments({
+      ...parsed.data.payload,
+      pings: original.pings,
+      silent: original.silent,
+    });
+    const refused = refusal(reply, payload, missing);
+    if (refused) return refused;
+    let listing: GuildsResponse;
+    try {
+      listing = await discord.listGuilds();
+    } catch (error) {
+      return listingFailed(reply, error);
+    }
+    const claim = sqlite.transaction(() => {
+      if (
+        db.select().from(editRuns).where(eq(editRuns.id, parsed.data.id)).get()
+      )
+        return "duplicate" as const;
+      const current = db.select().from(sends).where(eq(sends.id, id)).get()!;
+      const targets = db
+        .select()
+        .from(sendTargets)
+        .where(eq(sendTargets.sendId, id))
+        .orderBy(asc(sendTargets.position))
+        .all();
+      if (
+        current.status === "sending" ||
+        targets.some((t) => t.status === "unknown")
+      )
+        return "blocked" as const;
+      const copies = targets.filter(
+        (t) => t.messageId && t.error !== "MESSAGE_DELETED",
+      );
+      if (!copies.length) return "blocked" as const;
+      db.insert(editRuns).values({ id: parsed.data.id, sendId: id }).run();
+      db.update(sends)
+        .set({
+          editId: parsed.data.id,
+          payloadJson: JSON.stringify(payload),
+          searchText: searchText(payload),
+          status: "sending",
+          updatedAt: Date.now(),
+        })
+        .where(eq(sends.id, id))
+        .run();
+      db.update(sendTargets)
+        .set({ status: "pending", error: null })
+        .where(
+          inArray(
+            sendTargets.id,
+            copies.map((t) => t.id),
+          ),
+        )
+        .run();
+      return copies;
+    })();
+    if (claim === "blocked")
+      return reply
+        .code(409)
+        .send(
+          sendError(
+            "EDIT_BLOCKED",
+            "Wait for delivery to finish and resolve unconfirmed copies before editing. At least one existing copy is required.",
+          ),
+        );
+    if (claim !== "duplicate")
+      deliverInBackground(
+        id,
+        claim,
+        payload,
+        files,
+        new Date(send.createdAt),
+        listing,
+      );
+    return reply.code(202).send({ id });
+  });
+
   app.post("/api/sends/:id/retry", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = retryRequestSchema.safeParse(request.body ?? {});
@@ -531,6 +656,24 @@ export async function registerSends(
         .code(404)
         .send(sendError("NOT_FOUND", "That send doesn’t exist."));
 
+    if (send.editId && body.data.id) {
+      const previous = db
+        .select()
+        .from(editRuns)
+        .where(eq(editRuns.id, body.data.id))
+        .get();
+      if (previous)
+        return previous.sendId === id
+          ? reply.code(202).send({ id })
+          : reply
+              .code(409)
+              .send(
+                sendError(
+                  "EDIT_CONFLICT",
+                  "This retry ID belongs to another send.",
+                ),
+              );
+    }
     const { payload, files, missing } = loadAttachments(
       messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
     );
@@ -547,6 +690,12 @@ export async function registerSends(
     // so a delivery that began meanwhile is seen.
     const claimed = sqlite.transaction(() => {
       const current = db.select().from(sends).where(eq(sends.id, id)).get()!;
+      if (
+        current.editId &&
+        body.data.id &&
+        db.select().from(editRuns).where(eq(editRuns.id, body.data.id)).get()
+      )
+        return "duplicate" as const;
       if (current.status === "sending") return "in-progress" as const;
       const failed = db
         .select()
@@ -561,8 +710,14 @@ export async function registerSends(
           ),
         )
         .orderBy(asc(sendTargets.position))
-        .all();
+        .all()
+        .filter(
+          (t) =>
+            t.error !== "MESSAGE_DELETED" && (!current.editId || !!t.messageId),
+        );
       if (failed.length === 0) return failed;
+      if (current.editId && body.data.id)
+        db.insert(editRuns).values({ id: body.data.id, sendId: id }).run();
       db.update(sendTargets)
         .set({ status: "pending", error: null })
         .where(
@@ -578,6 +733,7 @@ export async function registerSends(
         .run();
       return failed;
     })();
+    if (claimed === "duplicate") return reply.code(202).send({ id });
     if (claimed === "in-progress")
       return reply
         .code(409)
