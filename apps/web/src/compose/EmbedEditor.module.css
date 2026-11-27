@@ -491,3 +491,9 @@
 .body[hidden] {
   display: none;
 }
+
+/* a link field and the picker for uploaded images that can fill it */
+.media {
+  display: grid;
+  gap: var(--space-2);
+}

@@ -135,6 +135,7 @@ describe("formatting commands", () => {
 const sample = (): Draft =>
   withIds({
     content: "",
+    attachments: [],
     embeds: ["A", "B", "C"].map((title) => ({
       ...blankDraft().embeds[0]!,
       title,

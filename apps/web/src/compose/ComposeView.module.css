@@ -43,6 +43,9 @@
 .section + .section {
   border-top: var(--rule-width) solid var(--rule);
 }
+.addSection + .section {
+  border-top: var(--rule-width) solid var(--rule);
+}
 .sectionHead {
   display: flex;
   align-items: center;

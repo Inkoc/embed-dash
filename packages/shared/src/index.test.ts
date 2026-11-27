@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  attachmentName,
   botIdentitySchema,
   countedLength,
   discordLimits,
@@ -8,7 +9,11 @@ import {
   isAcceptedLink,
   messageDraftSchema,
   messageEmbedTextLength,
+  sanitizeFilename,
+  uniqueFilename,
+  uploadProblem,
   validateMessage,
+  type AttachmentDraft,
   type EmbedDraft,
   type MessageDraft,
 } from "./index.js";
@@ -74,11 +79,16 @@ describe("the draft schema", () => {
   const draft: MessageDraft = {
     content: "Hi",
     embeds: [{ ...emptyEmbed(), title: "One" }],
+    attachments: [],
   };
 
   test("accepts a draft and rejects anything shaped differently", () => {
     expect(messageDraftSchema.parse(draft)).toEqual(draft);
     expect(messageDraftSchema.safeParse({ content: "Hi" }).success).toBe(false);
+    // Drafts saved before attachments existed still load.
+    expect(
+      messageDraftSchema.parse({ content: "Hi", embeds: draft.embeds }),
+    ).toEqual(draft);
     expect(
       messageDraftSchema.safeParse({
         content: "",
@@ -93,8 +103,19 @@ const embed = (change: Partial<EmbedDraft> = {}): EmbedDraft => ({
   title: "Title",
   ...change,
 });
+const file = (filename: string, size = 1000): AttachmentDraft => ({
+  id: `id-${filename}`,
+  filename,
+  size,
+  contentType: "image/png",
+});
 const issuesFor = (message: Partial<MessageDraft>) =>
-  validateMessage({ content: "", embeds: [embed()], ...message });
+  validateMessage({
+    content: "",
+    embeds: [embed()],
+    attachments: [file("team.png"), file("thumb.png")],
+    ...message,
+  });
 const paths = (message: Partial<MessageDraft>) =>
   issuesFor(message).map((issue) => issue.path);
 
@@ -282,7 +303,10 @@ describe("validation", () => {
         "embeds.0.image",
       ]);
     expect(
-      paths({ embeds: [embed({ image: "attachment://My_banner-2.png" })] }),
+      paths({
+        embeds: [embed({ image: "attachment://My_banner-2.png" })],
+        attachments: [file("My_banner-2.png")],
+      }),
     ).toEqual([]);
     expect(isAcceptedLink("attachment://a.png", true)).toBe(true);
     expect(isAcceptedLink("attachment://a.png", false)).toBe(false);
@@ -321,5 +345,92 @@ describe("validation", () => {
       inline: true,
     }));
     expect(paths({ embeds: [embed({ fields })] })).toEqual(["embeds.0.fields"]);
+  });
+});
+
+describe("attachments", () => {
+  test("a link to a file that isn't attached is reported", () => {
+    expect(
+      paths({
+        embeds: [embed({ thumbnail: "attachment://gone.png" })],
+        attachments: [],
+      }),
+    ).toEqual(["embeds.0.thumbnail"]);
+  });
+
+  test("count, total size and duplicate names are capped", () => {
+    const many = Array.from({ length: 11 }, (_, i) => file(`f${i}.txt`));
+    expect(paths({ attachments: many })).toEqual(["attachments"]);
+    expect(
+      paths({
+        attachments: [file("a.bin", 20 * 2 ** 20), file("b.bin", 6 * 2 ** 20)],
+      }),
+    ).toEqual(["attachments"]);
+    expect(paths({ attachments: [file("a.png"), file("a.png")] })).toEqual([
+      "attachments.1",
+    ]);
+  });
+});
+
+describe("filenames", () => {
+  test.each([
+    ["photo.png", "photo.png"],
+    ["my banner (1).png", "my_banner_1_.png"],
+    ["Café déjà vu.JPG", "Cafe_deja_vu.JPG"],
+    ["../../etc/passwd", "passwd"],
+    ["C:\\Users\\me\\a b.gif", "a_b.gif"],
+    [".hidden", "hidden"],
+    ["...", "file"],
+    ["日本語.png", "_.png"],
+    ["", "file"],
+  ])("%s becomes %s", (input, expected) => {
+    expect(sanitizeFilename(input)).toBe(expected);
+    expect(
+      isAcceptedLink(`attachment://${sanitizeFilename(input)}`, true),
+    ).toBe(true);
+  });
+
+  test("a long name keeps its extension", () => {
+    const name = sanitizeFilename(`${"a".repeat(300)}.png`);
+    expect(name).toHaveLength(100);
+    expect(name.endsWith(".png")).toBe(true);
+  });
+
+  test("taken names get a numbered suffix before the extension", () => {
+    expect(uniqueFilename("a.png", ["b.png"])).toBe("a.png");
+    expect(uniqueFilename("a.png", ["a.png", "a-2.png"])).toBe("a-3.png");
+    expect(uniqueFilename("notes", ["notes"])).toBe("notes-2");
+  });
+
+  test("attachmentName reads only attachment links", () => {
+    expect(attachmentName(" attachment://a.png ")).toBe("a.png");
+    expect(attachmentName("https://a.b/a.png")).toBeNull();
+    expect(attachmentName("attachment://a b")).toBeNull();
+  });
+});
+
+describe("upload limits", () => {
+  const mb = 1024 * 1024;
+  const limit = 10 * mb;
+  test("an empty or oversize file is refused with its name and the limit", () => {
+    expect(uploadProblem({ name: "a.txt", size: 0 }, [], limit)).toContain(
+      "empty",
+    );
+    expect(
+      uploadProblem({ name: "a.mp4", size: 11 * mb }, [], limit),
+    ).toContain("at most 10 MB");
+    expect(uploadProblem({ name: "a.mp4", size: limit }, [], limit)).toBeNull();
+  });
+
+  test("the message total and file count are checked together", () => {
+    const attached = [{ size: 10 * mb }, { size: 10 * mb }];
+    expect(
+      uploadProblem({ name: "c.bin", size: 6 * mb }, attached, limit),
+    ).toContain("25 MB");
+    expect(
+      uploadProblem({ name: "c.bin", size: 5 * mb }, attached, limit),
+    ).toBeNull();
+    const ten = Array.from({ length: 10 }, () => ({ size: 1 }));
+    expect(uploadProblem({ name: "c", size: 1 }, ten, limit)).toContain("10");
   });
 });

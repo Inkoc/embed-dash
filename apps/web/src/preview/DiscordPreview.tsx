@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { isAcceptedLink, type BotIdentity } from "@embed-dash/shared";
 import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
+import { previewSource } from "./media";
 import styles from "./DiscordPreview.module.css";
 
 interface Props {
@@ -14,8 +15,10 @@ interface Props {
 }
 
 /** Only links Discord would show; anything else also fails validation. */
-const shown = (url: string) =>
-  url.trim() && isAcceptedLink(url, true) ? url.trim() : "";
+const shown = (url: string, draft: Draft) =>
+  url.trim() && isAcceptedLink(url, true)
+    ? previewSource(url.trim(), draft.attachments)
+    : "";
 
 /** Discord writes an embed's time as "Today at 18:00" or as a date and time. */
 export function embedTime(timestamp: string, sent: string, now = new Date()) {
@@ -71,23 +74,36 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
         </p>
         {content && <p className={styles.content}>{content}</p>}
         {draft.embeds.map((embed) => (
-          <PreviewEmbed key={embed.id} embed={embed} time={time} />
+          <PreviewEmbed
+            key={embed.id}
+            embed={embed}
+            draft={draft}
+            time={time}
+          />
         ))}
       </div>
     </article>
   );
 }
 
-function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
-  const thumbnail = shown(embed.thumbnail);
-  const image = shown(embed.image);
+function PreviewEmbed({
+  embed,
+  draft,
+  time,
+}: {
+  embed: Embed;
+  draft: Draft;
+  time: string;
+}) {
+  const thumbnail = shown(embed.thumbnail, draft);
+  const image = shown(embed.image, draft);
   const rows = fieldRows(embed.fields, Boolean(thumbnail));
   const title = embed.title.trim();
   const description = embed.description.trim();
   const footer = embed.footer.text.trim();
   const author = embed.author.name.trim();
-  const authorIcon = shown(embed.author.iconUrl);
-  const footerIcon = shown(embed.footer.iconUrl);
+  const authorIcon = shown(embed.author.iconUrl, draft);
+  const footerIcon = shown(embed.footer.iconUrl, draft);
   const when = embedTime(embed.timestamp, time);
   const color = /^#[0-9a-f]{6}$/i.test(embed.color) ? embed.color : undefined;
 
