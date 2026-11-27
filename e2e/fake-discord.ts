@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 
 const botId = "123456789012345678";
 const view = 1 << 10;
@@ -132,8 +132,61 @@ export const fakeGuilds: FakeGuild[] = [
   ].map((region, i) => guild(6 + i, `Lanternfall ${region}`, [["lobby", 0]])),
 ];
 
+/** A message the fake accepted, as Discord's create-message route received it. */
+export interface FakeMessage {
+  id: string;
+  channelId: string;
+  /** `payload_json` for a multipart request, the JSON body otherwise. */
+  payload: Record<string, unknown>;
+  /** Parts named `files[n]`, with only what a test needs to tell them apart. */
+  files: { field: string; filename: string; size: number }[];
+  multipart: boolean;
+}
+
+/** One forced answer for the next posts to a channel. */
+interface Forced {
+  status: number;
+  /** Discord's JSON error code, e.g. 50013 Missing Permissions. */
+  code?: number;
+  /** A 429 answers with this `Retry-After`, in seconds. */
+  retryAfter?: number;
+  times: number;
+}
+
+async function readBody(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
+}
+
+function parseMultipart(body: Buffer, contentType: string) {
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+  const marker = Buffer.from(`--${boundary?.[1] ?? boundary?.[2] ?? ""}`);
+  const parts: { name: string; filename?: string; data: Buffer }[] = [];
+  let at = body.indexOf(marker);
+  while (at !== -1) {
+    const next = body.indexOf(marker, at + marker.length);
+    if (next === -1) break;
+    const part = body.subarray(at + marker.length + 2, next - 2);
+    const split = part.indexOf("\r\n\r\n");
+    const head = part.subarray(0, split).toString("utf8");
+    parts.push({
+      name: /name="([^"]*)"/.exec(head)?.[1] ?? "",
+      filename: /filename="([^"]*)"/.exec(head)?.[1],
+      data: part.subarray(split + 4),
+    });
+    at = next;
+  }
+  return parts;
+}
+
+/** The fake Discord, plus what tests need to steer and inspect it. */
 export function startFakeDiscord(port: number) {
-  const server = createServer((request, response) => {
+  const messages: FakeMessage[] = [];
+  const forced = new Map<string, Forced>();
+  const removed = new Set<string>();
+  let lastMessage = 9_000_000_000_000_000;
+  const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     const reply = (body: unknown, status = 200) => {
       response.statusCode = status;
@@ -160,6 +213,59 @@ export function startFakeDiscord(port: number) {
       );
     }
     const [, section, guildId, sub, memberId] = path.split("/");
+    if (
+      request.method === "POST" &&
+      section === "channels" &&
+      sub === "messages"
+    ) {
+      // Here `guildId` is the channel: the path is /channels/{id}/messages.
+      const channel = guildId;
+      const answer = forced.get(channel);
+      if (answer) {
+        if (--answer.times <= 0) forced.delete(channel);
+        // Status 0: the connection drops without an answer, so the post's fate is unknown.
+        if (answer.status === 0) return request.socket.destroy();
+        if (answer.retryAfter !== undefined)
+          response.setHeader("retry-after", String(answer.retryAfter));
+        return reply(
+          { message: "Forced failure", code: answer.code ?? 0 },
+          answer.status,
+        );
+      }
+      const exists = fakeGuilds.some((g) =>
+        g.channels.some((c) => c.id === channel && !removed.has(c.id)),
+      );
+      if (!exists)
+        return reply({ message: "Unknown Channel", code: 10003 }, 404);
+      const body = await readBody(request);
+      const type = request.headers["content-type"] ?? "";
+      const multipart = type.startsWith("multipart/form-data");
+      const parts = multipart ? parseMultipart(body, type) : [];
+      const json = multipart
+        ? parts.find((part) => part.name === "payload_json")?.data.toString()
+        : body.toString();
+      const payload = JSON.parse(json || "{}") as FakeMessage["payload"];
+      const files = parts
+        .filter((part) => part.filename !== undefined)
+        .map((part) => ({
+          field: part.name,
+          filename: part.filename!,
+          size: part.data.length,
+        }));
+      const declared = (payload.attachments as unknown[] | undefined) ?? [];
+      // Discord refuses an attachments list that doesn't match the uploaded parts.
+      if (declared.length !== files.length)
+        return reply({ message: "Invalid Form Body", code: 50035 }, 400);
+      const message = {
+        id: String(++lastMessage),
+        channelId: channel,
+        payload,
+        files,
+        multipart,
+      };
+      messages.push(message);
+      return reply({ id: message.id, channel_id: channel });
+    }
     const found = fakeGuilds.find((g) => g.id === guildId);
     if (section !== "guilds" || !found)
       return reply({ message: "Unknown Guild" }, 404);
@@ -173,8 +279,19 @@ export function startFakeDiscord(port: number) {
         roles: [{ id: found.id, permissions: posting }],
       });
     if (sub === "members" && memberId === botId) return reply({ roles: [] });
-    if (sub === "channels") return reply(found.channels);
+    if (sub === "channels")
+      return reply(found.channels.filter((c) => !removed.has(c.id)));
     reply({ message: "Not found" }, 404);
   });
-  return server.listen(port, "127.0.0.1");
+  return Object.assign(server.listen(port, "127.0.0.1"), {
+    /** Every message accepted so far, oldest first. */
+    messages,
+    /** Answers the next `times` posts to a channel with this failure. */
+    fail: (
+      channelId: string,
+      failure: Omit<Forced, "times"> & { times?: number },
+    ) => void forced.set(channelId, { times: 1, ...failure }),
+    /** The channel vanishes from listings and posts to it get a 404. */
+    remove: (channelId: string) => void removed.add(channelId),
+  });
 }

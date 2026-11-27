@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { canPost, type Guild } from "@embed-dash/shared";
+import { canSendTo, type Guild } from "@embed-dash/shared";
 import { Search } from "lucide-react";
 import { ServerMark } from "./ServerMark";
 import styles from "./ServerRail.module.css";
@@ -15,7 +15,7 @@ interface Props {
 }
 
 function counts(guild: Guild, selected: ReadonlySet<string>) {
-  const postable = guild.channels.filter(canPost);
+  const postable = guild.channels.filter(canSendTo);
   return {
     ticked: postable.filter((c) => selected.has(c.id)).length,
     postable: postable.length,

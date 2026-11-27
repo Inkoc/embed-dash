@@ -3,6 +3,7 @@ import {
   attachmentName,
   botIdentitySchema,
   canPost,
+  canSendTo,
   channelPermissions,
   countedLength,
   discordLimits,
@@ -11,10 +12,15 @@ import {
   guildsResponseSchema,
   inviteUrl,
   isAcceptedLink,
+  deliveryErrors,
   mainChannelId,
   messageDraftSchema,
+  messageLink,
+  messagePayloadSchema,
   messageEmbedTextLength,
   sanitizeFilename,
+  sendRequestSchema,
+  sendResultSchema,
   uniqueFilename,
   uploadProblem,
   validateMessage,
@@ -408,6 +414,17 @@ describe("filenames", () => {
     expect(uniqueFilename("notes", ["notes"])).toBe("notes-2");
   });
 
+  test("a numbered suffix never pushes a long name past what the server keeps", () => {
+    const long = sanitizeFilename(`${"a".repeat(300)}.png`);
+    const second = uniqueFilename(long, [long]);
+    expect(second).toHaveLength(100);
+    expect(second.endsWith("-2.png")).toBe(true);
+    // Shortened again by the server it stays what it was, so it can't collide with the first.
+    expect(sanitizeFilename(second)).toBe(second);
+    expect(second).not.toBe(long);
+    expect(uniqueFilename(long, [long, second])).toMatch(/-3\.png$/);
+  });
+
   test("attachmentName reads only attachment links", () => {
     expect(attachmentName(" attachment://a.png ")).toBe("a.png");
     expect(attachmentName("https://a.b/a.png")).toBeNull();
@@ -501,4 +518,123 @@ test("parses the guild list the server returns", () => {
       fetchedAt: "2026-11-27T10:00:00.000Z",
     }).guilds[0].channels[0].kind,
   ).toBe("forum");
+});
+
+describe("sending", () => {
+  const file = (id: string, filename: string): AttachmentDraft => ({
+    id,
+    filename,
+    size: 10,
+    contentType: "image/png",
+  });
+
+  test("forum channels can't be sent to, whatever the permissions", () => {
+    expect(canSendTo({ kind: "text", missing: [] })).toBe(true);
+    expect(canSendTo({ kind: "announcement", missing: ["attachFiles"] })).toBe(
+      true,
+    );
+    expect(canSendTo({ kind: "text", missing: ["sendMessages"] })).toBe(false);
+    expect(canSendTo({ kind: "forum", missing: [] })).toBe(false);
+  });
+
+  test("a payload defaults to no pings and a normal notification", () => {
+    const payload = messagePayloadSchema.parse({ content: "Hi", embeds: [] });
+    expect(payload).toEqual({
+      content: "Hi",
+      embeds: [],
+      attachments: [],
+      pings: [],
+      silent: false,
+    });
+    expect(
+      messagePayloadSchema.safeParse({ ...payload, pings: ["users", "users"] })
+        .success,
+    ).toBe(false);
+    expect(
+      messagePayloadSchema.safeParse({ ...payload, pings: ["bots"] }).success,
+    ).toBe(false);
+  });
+
+  test("a send names its channels once each", () => {
+    const payload = { content: "Hi", embeds: [] };
+    expect(
+      sendRequestSchema.safeParse({ payload, channelIds: ["1", "2"] }).success,
+    ).toBe(true);
+    expect(
+      sendRequestSchema.safeParse({ payload, channelIds: [] }).success,
+    ).toBe(false);
+    expect(
+      sendRequestSchema.safeParse({ payload, channelIds: ["1", "1"] }).success,
+    ).toBe(false);
+  });
+
+  test("results only carry codes that have a readable reason", () => {
+    for (const message of Object.values(deliveryErrors))
+      expect(message).toMatch(/\.$/);
+    const target = {
+      id: "t",
+      guildId: "g",
+      guildName: "Server",
+      channelId: "c",
+      channelName: "news",
+      status: "failed",
+      messageId: null,
+      error: { code: "CHANNEL_GONE", message: deliveryErrors.CHANNEL_GONE },
+    };
+    expect(
+      sendResultSchema.safeParse({
+        id: "s",
+        status: "partial",
+        targets: [target],
+      }).success,
+    ).toBe(true);
+    expect(
+      sendResultSchema.safeParse({
+        id: "s",
+        status: "partial",
+        targets: [{ ...target, error: { code: "OTHER", message: "x" } }],
+      }).success,
+    ).toBe(false);
+  });
+
+  test("links to a sent message in Discord", () => {
+    expect(messageLink({ guildId: "1", channelId: "2", messageId: "3" })).toBe(
+      "https://discord.com/channels/1/2/3",
+    );
+  });
+
+  test("files the server lost are reported on the file and on every image that uses it", () => {
+    const message: MessageDraft = {
+      content: "",
+      attachments: [file("a", "banner.png"), file("b", "kept.png")],
+      embeds: [
+        {
+          ...emptyEmbed(),
+          title: "T",
+          image: "attachment://banner.png",
+          footer: { text: "f", iconUrl: "attachment://kept.png" },
+        },
+      ],
+    };
+    expect(validateMessage(message)).toEqual([]);
+    expect(
+      validateMessage(message, { missingFiles: new Set(["a"]) }).map(
+        (issue) => issue.path,
+      ),
+    ).toEqual(["attachments.0", "embeds.0.image"]);
+  });
+
+  test("a duplicate name says which file to remove", () => {
+    const issues = validateMessage({
+      content: "Hi",
+      embeds: [],
+      attachments: [file("a", "x.png"), { ...file("b", "x.png"), size: 2048 }],
+    });
+    expect(issues).toEqual([
+      expect.objectContaining({
+        path: "attachments.1",
+        message: expect.stringContaining("Remove this 2 KB one"),
+      }),
+    ]);
+  });
 });

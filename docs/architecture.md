@@ -33,7 +33,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 - **config** — reads environment once at startup, resolves `*_FILE` secrets, fails fast with a clear message on invalid config.
 - **discord** — wraps `@discordjs/rest`: bot identity, guilds + channels (cached ~60 s, refreshable), effective permission computation, create/edit message (multipart), forum thread create, crosspost. Base URL is configurable so tests run against a fake Discord.
 - **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit.
-- **sends** — validates payload with the shared schema, stores the send and one target row per channel, delivers sequentially through the rate-limited client, records per-target result; retry and edit operate on target rows.
+- **sends** — validates payload with the shared schema, checks attachments against the stored upload records and each channel against the current guild listing, stores the send and one target row per channel, delivers sequentially through the rate-limited client (short 429s are waited out, long ones fail that channel; a 401 ends the send), records per-target result; retry and edit operate on target rows. A post that got no answer is `unknown`, not `failed`, because it may have been created.
 - **scheduler** (M3) — a timer that claims due sends in a transaction and hands them to **sends**. A target whose outcome is unknown after a crash is marked `unknown`, not retried automatically.
 - **uploads** — multipart upload to `/data/uploads/<uuid>`, streamed to disk (never buffered) and refused as soon as the declared length or the stream passes `MAX_UPLOAD_MB`; the filename is sanitised with the shared rule and the content type is sniffed from the bytes, not taken from the client. The draft references a file by id and filename; the payload says `attachment://<filename>`. The per-message limits (10 files, 25 MB together, unique names) are checked in the browser and by the shared message validation.
 
@@ -65,10 +65,10 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | `POST /api/uploads` | Upload a file (multipart) → `{id, filename, size, contentType}` |
 | `GET /api/uploads/:id`, `DELETE /api/uploads/:id` | A stored file's details (404 once gone, so the composer can mark it missing); remove it |
 | `GET /api/uploads/:id/content` | An uploaded image, for the preview after a reload; 404 for every other type |
-| `POST /api/sends` | `{payload, channelIds, scheduledAt?}` → send with per-target results |
+| `POST /api/sends` | `{payload, channelIds}` (`payload` is the message plus `pings` and `silent`) → send with per-target results once every channel has been tried. `422` when the message or a stored upload fails the checks, `409` when a channel is gone, closed to the bot or a forum; nothing is stored or sent in either case |
 | `GET /api/sends?q=&guildId=&channelId=&from=&to=&status=&cursor=` | History |
 | `GET /api/sends/:id` | One send with targets |
-| `POST /api/sends/:id/retry` | Retry failed targets |
+| `POST /api/sends/:id/retry` | `{targetIds?}` → retry the failed targets (all, or the listed ones); targets with an unknown outcome are never retried |
 | `PUT /api/sends/:id` | Edit payload; updates every sent copy (or reschedules) |
 | `DELETE /api/sends/:id` | Cancel a scheduled send |
 | `/api/templates`, `/api/channel-groups` | CRUD |

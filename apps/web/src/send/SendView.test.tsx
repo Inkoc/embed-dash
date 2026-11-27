@@ -13,6 +13,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Guild, GuildsResponse } from "@embed-dash/shared";
 import { DraftProvider } from "../compose/draft";
 import { SelectionProvider } from "./selection";
+import { SendingProvider } from "./sending";
 import { SendView } from "./SendView";
 
 const bot = { id: "42", name: "Lamplighter", avatarUrl: null };
@@ -54,7 +55,9 @@ function renderSend() {
       <MemoryRouter>
         <DraftProvider>
           <SelectionProvider>
-            <SendView />
+            <SendingProvider>
+              <SendView />
+            </SendingProvider>
           </SelectionProvider>
         </DraftProvider>
       </MemoryRouter>
@@ -75,6 +78,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -217,4 +221,63 @@ test("a full tray groups slips by server, folds the overflow, and takes slips ou
       name: "Take #story-2 (Lanternfall) out of the tray",
     }),
   ).toHaveFocus();
+});
+
+test("forum channels are listed with a reason and can't be ticked or quick-picked", async () => {
+  const forum: Guild = {
+    ...guild("1", "Lanternfall", ["general", "news"]),
+    channels: [
+      { id: "10", name: "general", kind: "text", missing: [] },
+      { id: "11", name: "help", kind: "forum", missing: [] },
+    ],
+  };
+  stub([Response.json(listing([forum]))]);
+  renderSend();
+  const help = await screen.findByRole("checkbox", { name: "help" });
+  expect(help).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByText("Forum posting isn’t available yet")).toBeVisible();
+  fireEvent.click(help);
+  expect(help).not.toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: /All postable/ }));
+  const tray = screen.getByRole("complementary", { name: "Tray" });
+  expect(tray).toHaveTextContent("1 channel in 1 server");
+  // Only the postable channel counts toward the drawer's total.
+  expect(screen.getByRole("region", { name: "Lanternfall" })).toHaveTextContent(
+    "1 of 1 ticked",
+  );
+});
+
+test("a refresh drops ticked channels the bot can no longer post in and says so", async () => {
+  stub([
+    Response.json(
+      listing([guild("1", "Lanternfall", ["general", "news", "rules"])]),
+    ),
+    Response.json(
+      listing([
+        {
+          ...guild("1", "Lanternfall", ["general", "news"]),
+          channels: [
+            { id: "10", name: "general", kind: "text", missing: [] },
+            {
+              id: "11",
+              name: "news",
+              kind: "announcement",
+              missing: ["sendMessages"],
+            },
+          ],
+        },
+      ]),
+    ),
+  ]);
+  renderSend();
+  fireEvent.click(await screen.findByRole("button", { name: /All postable/ }));
+  const tray = screen.getByRole("complementary", { name: "Tray" });
+  expect(tray).toHaveTextContent("3 channels in 1 server");
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "2 ticked channels are no longer available to the bot and were taken out of the tray.",
+  );
+  expect(tray).toHaveTextContent("1 channel in 1 server");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  expect(screen.queryByText(/no longer available to the bot/)).toBeNull();
 });

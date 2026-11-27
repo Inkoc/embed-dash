@@ -5,7 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   ArrowRight,
   CircleAlert,
@@ -47,8 +47,11 @@ const format = (n: number) => n.toLocaleString("en-GB");
 
 export function ComposeView({ theme }: { theme: Theme }) {
   const { draft, setDraft, saved } = useDraft();
-  const { pane, setPane, focusAfter, reset } = useEditorState();
+  const { pane, setPane, focusAfter, reset, reveal } = useEditorState();
   const bot = useBot();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const revealPath = (location.state as { reveal?: string } | null)?.reveal;
   const [confirmClear, setConfirmClear] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLElement>(null);
@@ -60,6 +63,13 @@ export function ComposeView({ theme }: { theme: Theme }) {
     [],
   );
   const embedCount = draft.embeds.length;
+
+  // Coming from a send problem's "Go to the field" link: open and focus that field once.
+  useEffect(() => {
+    if (!revealPath) return;
+    reveal(revealPath);
+    void navigate(location.pathname, { replace: true, state: null });
+  }, [revealPath, reveal, navigate, location.pathname]);
 
   // On phones Esc steps back from the preview pane to the editor.
   useEffect(() => {

@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { attachmentSchema, type AttachmentDraft } from "@embed-dash/shared";
 
 /** Only images are served back; they are what the preview can show. */
@@ -51,17 +52,29 @@ export const discardUpload = (id: string, csrfToken: string) =>
  * in the browser, so after a reload or a wiped data directory it can name
  * files that no longer exist.
  */
+const presence = (id: string) => ({
+  queryKey: ["upload", id],
+  retry: false,
+  staleTime: Infinity,
+  queryFn: async () => {
+    const response = await fetch(`/api/uploads/${id}`);
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error("Unable to check the file.");
+    return true;
+  },
+});
+
 export function useUploadPresent(id: string) {
-  const query = useQuery({
-    queryKey: ["upload", id],
-    retry: false,
-    staleTime: Infinity,
-    queryFn: async () => {
-      const response = await fetch(`/api/uploads/${id}`);
-      if (response.status === 404) return false;
-      if (!response.ok) throw new Error("Unable to check the file.");
-      return true;
-    },
-  });
+  const query = useQuery(presence(id));
   return query.data === false ? "missing" : "present";
+}
+
+/** Ids of the draft's files the server is known to have lost; sending finds out for the rest. */
+export function useMissingUploads(ids: readonly string[]): ReadonlySet<string> {
+  const key = useQueries({
+    queries: ids.map(presence),
+    combine: (results) =>
+      ids.filter((_, i) => results[i]?.data === false).join(","),
+  });
+  return useMemo(() => new Set(key ? key.split(",") : []), [key]);
 }

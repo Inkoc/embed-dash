@@ -92,14 +92,23 @@ export function sanitizeFilename(name: string): string {
   return cleaned.slice(0, maxFilenameLength - extension.length) + extension;
 }
 
-/** `name.png` → `name-2.png` when `name.png` is taken, so every attachment can be referenced unambiguously. */
+/**
+ * `name.png` → `name-2.png` when `name.png` is taken, so every attachment can be referenced unambiguously.
+ * The stem gives way to the suffix so the result stays within the length the
+ * server keeps; otherwise shortening it there could make two names equal again.
+ */
 export function uniqueFilename(name: string, taken: readonly string[]): string {
   if (!taken.includes(name)) return name;
   const dot = name.lastIndexOf(".");
   const stem = dot > 0 ? name.slice(0, dot) : name;
   const extension = dot > 0 ? name.slice(dot) : "";
   for (let n = 2; ; n++) {
-    const candidate = `${stem}-${n}${extension}`;
+    const suffix = `-${n}`;
+    const room = Math.max(
+      1,
+      maxFilenameLength - extension.length - suffix.length,
+    );
+    const candidate = `${stem.slice(0, room)}${suffix}${extension}`;
     if (!taken.includes(candidate)) return candidate;
   }
 }
@@ -251,8 +260,17 @@ function hasContent(embed: EmbedDraft) {
   );
 }
 
-/** Every reason Discord would reject the message, in the order the form shows the parts. */
-export function validateMessage(message: MessageDraft): Issue[] {
+/**
+ * Every reason Discord would reject the message, in the order the form shows the parts.
+ * `missingFiles` holds the ids of attachments the server no longer has; the
+ * browser learns of them from the server, which finds them again at send time.
+ */
+export function validateMessage(
+  message: MessageDraft,
+  {
+    missingFiles = new Set<string>(),
+  }: { missingFiles?: ReadonlySet<string> } = {},
+): Issue[] {
   const issues: Issue[] = [];
   const add = (path: string, label: string, text: string) =>
     issues.push({ path, label, message: text });
@@ -274,11 +292,19 @@ export function validateMessage(message: MessageDraft): Issue[] {
     const problem = linkProblem(url, media);
     if (problem) add(path, label, problem);
     const name = media ? attachmentName(url) : null;
-    if (name !== null && !message.attachments.some((a) => a.filename === name))
+    if (name === null) return;
+    const file = message.attachments.find((a) => a.filename === name);
+    if (!file)
       add(
         path,
         label,
         `No attached file is named ${name}. Upload it, or choose one of the uploaded images.`,
+      );
+    else if (missingFiles.has(file.id))
+      add(
+        path,
+        label,
+        `${name} is no longer on the server. Remove it under Files, upload it again and choose it here.`,
       );
   };
 
@@ -313,11 +339,17 @@ export function validateMessage(message: MessageDraft): Issue[] {
       `The files total ${megabytes(bytes)}; Discord's limit for one message is ${megabytes(uploadLimits.messageBytes)}.`,
     );
   files.forEach((file, i) => {
+    if (missingFiles.has(file.id))
+      add(
+        `attachments.${i}`,
+        `File ${i + 1}`,
+        `${file.filename} is no longer on the server. Remove it and upload the file again.`,
+      );
     if (files.findIndex((other) => other.filename === file.filename) !== i)
       add(
         `attachments.${i}`,
         `File ${i + 1}`,
-        `Another file is also named ${file.filename}; rename or remove one.`,
+        `Another file is also named ${file.filename}. Remove this ${megabytes(file.size)} one and upload it again; it is given a new name.`,
       );
   });
 
@@ -511,6 +543,13 @@ export function canPost(channel: Pick<GuildChannel, "missing">): boolean {
   );
 }
 
+/** Forum channels take posts, not messages, so they wait for forum posting. */
+export function canSendTo(
+  channel: Pick<GuildChannel, "missing" | "kind">,
+): boolean {
+  return channel.kind !== "forum" && canPost(channel);
+}
+
 /**
  * The server's system channel if the bot can post there, else its first
  * postable announcement channel, else its first postable text channel.
@@ -529,3 +568,104 @@ export function mainChannelId(
     )?.id ?? null
   );
 }
+
+/** Who a message may notify; none by default, so a pasted mention never pings. */
+export const pingKinds = ["users", "roles", "everyone"] as const;
+export type PingKind = (typeof pingKinds)[number];
+
+/** What is sent: the composed message plus how it is delivered. */
+export const messagePayloadSchema = messageDraftSchema.extend({
+  pings: z
+    .array(z.enum(pingKinds))
+    .refine((kinds) => new Set(kinds).size === kinds.length)
+    .default([]),
+  /** Delivered without a push or desktop notification. */
+  silent: z.boolean().default(false),
+});
+export type MessagePayload = z.infer<typeof messagePayloadSchema>;
+
+export const sendRequestSchema = z.object({
+  payload: messagePayloadSchema,
+  channelIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+export type SendRequest = z.infer<typeof sendRequestSchema>;
+
+export const retryRequestSchema = z.object({
+  /** Only these failed copies; omitted, every failed copy. */
+  targetIds: z.array(z.string()).min(1).optional(),
+});
+
+/** Why a copy did not arrive, in words for the operator. */
+export const deliveryErrors = {
+  MISSING_PERMISSION:
+    "The bot isn’t allowed to post in this channel. Give it View Channel, Send Messages and Embed Links there, then retry.",
+  CHANNEL_GONE:
+    "This channel no longer exists, or the bot can no longer see it. Refresh the channel list and pick another.",
+  INVALID_PAYLOAD:
+    "Discord rejected the message itself, for example a link it can’t use or a file that is too large. Nothing was posted here.",
+  RATE_LIMITED:
+    "Discord’s rate limit held this channel up for too long. Nothing was posted here; wait a minute, then retry.",
+  DISCORD_UNAVAILABLE:
+    "Discord had a problem on its side. Nothing was posted here; retry shortly.",
+  UNREACHABLE:
+    "The app couldn’t reach Discord. Nothing was posted here; check the connection, then retry.",
+  UNKNOWN_OUTCOME:
+    "Discord didn’t answer in time, so the message may have been posted. Open the channel and look before sending again.",
+  INVALID_TOKEN:
+    "Discord rejected the bot token, so the send stopped here. Fix the configured token and restart the app, then retry.",
+  NOT_ATTEMPTED:
+    "Not sent: the send stopped before reaching this channel. Retry once the cause is fixed.",
+  FORUM_CHANNEL: "Forum posting isn’t available yet.",
+} as const;
+export type DeliveryErrorCode = keyof typeof deliveryErrors;
+export const deliveryErrorCodes = Object.keys(deliveryErrors) as [
+  DeliveryErrorCode,
+  ...DeliveryErrorCode[],
+];
+
+const deliveryErrorSchema = z.object({
+  code: z.enum(deliveryErrorCodes),
+  message: z.string(),
+});
+
+export const sendTargetSchema = z.object({
+  id: z.string(),
+  guildId: z.string(),
+  guildName: z.string(),
+  channelId: z.string(),
+  channelName: z.string(),
+  status: z.enum(["pending", "sent", "failed", "unknown"]),
+  messageId: z.string().nullable(),
+  error: deliveryErrorSchema.nullable(),
+});
+export type SendTarget = z.infer<typeof sendTargetSchema>;
+
+export const sendResultSchema = z.object({
+  id: z.string(),
+  status: z.enum(["sending", "done", "partial", "failed"]),
+  targets: z.array(sendTargetSchema),
+});
+export type SendResult = z.infer<typeof sendResultSchema>;
+
+/** Channels a send was refused for, with nothing sent anywhere. */
+export const channelsUnavailableSchema = z.object({
+  code: z.literal("CHANNELS_UNAVAILABLE"),
+  error: z.string(),
+  channels: z.array(
+    z.object({
+      id: z.string(),
+      reason: z.enum(["gone", "permission", "forum"]),
+    }),
+  ),
+});
+
+/** Where a sent message can be opened in Discord. */
+export const messageLink = (target: {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+}) =>
+  `https://discord.com/channels/${target.guildId}/${target.channelId}/${target.messageId}`;

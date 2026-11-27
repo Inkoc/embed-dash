@@ -81,8 +81,8 @@
   scrollbar-color: var(--tray-line) var(--tray);
 }
 .head,
-.go,
-.note {
+.note,
+.rising {
   flex: none;
 }
 .slips ul {
@@ -185,24 +185,35 @@
 .folded:hover {
   color: var(--tray-ink);
 }
-.go {
-  min-height: 3.25rem;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--tray-accent);
-  color: var(--tray-on-accent);
-  font-size: var(--text-body);
-  font-weight: var(--weight-section);
-}
-.go:disabled {
-  border: var(--rule-width) dashed var(--tray-line);
-  background: var(--tray-2);
-  color: var(--tray-soft);
-  cursor: not-allowed;
-}
-.note {
+.note,
+.rising {
   font-size: var(--text-meta);
   color: var(--tray-soft);
+}
+.rising {
+  font-size: var(--text-label);
+  animation: rise var(--dur-move) var(--ease-out);
+}
+.rising b {
+  color: var(--tray-ink);
+  font-weight: var(--weight-strong);
+}
+@keyframes rise {
+  from {
+    transform: translateY(var(--space-2));
+    opacity: 0;
+  }
+}
+
+/* a finished slip: name and verdict on one line, the cause or link under it */
+.slip[data-result] {
+  padding: var(--space-2) var(--space-3);
+  row-gap: var(--space-2);
+}
+.slip[data-result="failed"] {
+  box-shadow:
+    var(--tray-edge),
+    inset var(--space-1) 0 0 var(--tray-danger);
 }
 
 /* the filing slip in flight */
@@ -282,7 +293,7 @@
     transform: none;
   }
   .tray:not([data-open]) .slips,
-  .tray:not([data-open]) .note {
+  .tray:not([data-open]) .note:not([data-reason]) {
     display: none;
   }
   /* nothing ticked: a slim bar, so the list isn't covered for nothing */
@@ -291,7 +302,7 @@
       calc(var(--space-2) + env(safe-area-inset-bottom));
   }
   .tray[data-empty] .expand,
-  .tray[data-empty] .go,
+  .tray[data-empty] [data-controls],
   .tray[data-empty] .slips,
   .tray[data-empty] .note {
     display: none;
@@ -300,7 +311,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tray,
-  .slip {
+  .slip,
+  .rising {
     animation: none;
   }
   .remove,

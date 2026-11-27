@@ -17,6 +17,7 @@ import {
   type Issue,
   type MessageDraft,
 } from "@embed-dash/shared";
+import { useMissingUploads } from "./uploads";
 
 /** Ids keep React keys, open rows and focus attached to an embed or field while it moves. */
 export interface EmbedField extends EmbedFieldDraft {
@@ -44,6 +45,22 @@ export const withIds = (message: MessageDraft): Draft => ({
     ...embed,
     id: newId(),
     fields: embed.fields.map((field) => ({ ...field, id: newId() })),
+  })),
+});
+
+const withoutId = <T extends { id: string }>(value: T): Omit<T, "id"> => {
+  const copy: Partial<T> = { ...value };
+  delete copy.id;
+  return copy as Omit<T, "id">;
+};
+
+/** The message without the editor's row ids, as the server takes it. */
+export const toMessage = (draft: Draft): MessageDraft => ({
+  content: draft.content,
+  attachments: draft.attachments,
+  embeds: draft.embeds.map((embed) => ({
+    ...withoutId(embed),
+    fields: embed.fields.map(withoutId),
   })),
 });
 
@@ -299,7 +316,11 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(loadDraft);
   const saved = useSyncExternalStore(subscribeToSaves, lastSave);
-  const issues = useMemo(() => validateMessage(draft), [draft]);
+  const missing = useMissingUploads(draft.attachments.map((file) => file.id));
+  const issues = useMemo(
+    () => validateMessage(draft, { missingFiles: missing }),
+    [draft, missing],
+  );
 
   useEffect(() => {
     saveDraft(draft);

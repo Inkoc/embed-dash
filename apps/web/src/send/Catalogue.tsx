@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
-  canPost,
+  canSendTo,
   channelPermissions,
   type Guild,
   type GuildChannel,
@@ -42,7 +42,15 @@ const kindIcon = {
 export const drawerId = (guildId: string) => `drawer-${guildId}`;
 
 function blockedReason(channel: GuildChannel): string | null {
-  if (canPost(channel)) return null;
+  if (canSendTo(channel)) return null;
+  // Forum posts are new threads, which sending doesn't do yet.
+  if (
+    channel.kind === "forum" &&
+    !channelPermissions.some(
+      (p) => p.required && channel.missing.includes(p.key),
+    )
+  )
+    return "Forum posting isn’t available yet";
   const labels = channelPermissions
     .filter((p) => p.required && channel.missing.includes(p.key))
     .map((p) => p.label);
@@ -220,11 +228,11 @@ function Drawer({
   onTickMany: Props["onTickMany"];
 }) {
   const { guild } = drawer;
-  const postable = guild.channels.filter(canPost);
+  const postable = guild.channels.filter(canSendTo);
   const ticked = postable.filter((c) => selected.has(c.id)).length;
   const inSearch = drawer.channels
     .map((h) => h.channel)
-    .filter(canPost)
+    .filter(canSendTo)
     .map((c) => c.id);
   const allTicked =
     inSearch.length > 0 && inSearch.every((id) => selected.has(id));

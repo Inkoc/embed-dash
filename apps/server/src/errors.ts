@@ -1,4 +1,5 @@
 import { RateLimitError } from "@discordjs/rest";
+import type { DeliveryErrorCode } from "@embed-dash/shared";
 
 const safeCodes = new Set([
   "EADDRINUSE",
@@ -102,6 +103,53 @@ export function discordFailure(error: unknown) {
     message:
       "Discord rejected the request. Check the bot configuration, then retry.",
   };
+}
+
+/** Discord's JSON error codes that say which of the two 4xx families a refusal is. */
+const missingAccess = 50001;
+const missingPermissions = 50013;
+const unknownChannel = 10003;
+/** Failures that happen before anything leaves this machine, so nothing can have been posted. */
+const neverSent = new Set<string | number>([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
+
+/**
+ * What a failed post means for one copy. Without an answer from Discord the
+ * message may still have been created, so that outcome is `unknown` and not
+ * retried unseen; `stop` ends the whole send, since every later post would be
+ * refused the same way.
+ */
+export function deliveryFailure(error: unknown): {
+  code: DeliveryErrorCode;
+  outcome: "failed" | "unknown";
+  stop: boolean;
+} {
+  const { status, causeCode } = safeErrorDetails(error);
+  const failed = (code: DeliveryErrorCode, stop = false) => ({
+    code,
+    outcome: "failed" as const,
+    stop,
+  });
+  if (error instanceof RateLimitError || status === 429)
+    return failed("RATE_LIMITED");
+  if (status === 401) return failed("INVALID_TOKEN", true);
+  if (
+    status === 403 ||
+    causeCode === missingPermissions ||
+    causeCode === missingAccess
+  )
+    return failed("MISSING_PERMISSION");
+  if (status === 404 || causeCode === unknownChannel)
+    return failed("CHANNEL_GONE");
+  if (status !== undefined && status >= 500)
+    return failed("DISCORD_UNAVAILABLE");
+  if (status !== undefined) return failed("INVALID_PAYLOAD");
+  if (causeCode !== undefined && neverSent.has(causeCode))
+    return failed("UNREACHABLE");
+  return { code: "UNKNOWN_OUTCOME", outcome: "unknown", stop: false };
 }
 
 export class StartupError extends Error {
