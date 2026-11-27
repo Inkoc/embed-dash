@@ -1,8 +1,10 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -17,7 +19,9 @@ import {
   type Issue,
   type MessageDraft,
 } from "@embed-dash/shared";
-import { useMissingUploads } from "./uploads";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Session } from "../shell/SessionGate";
+import { discardUpload, useMissingUploads } from "./uploads";
 
 /** Ids keep React keys, open rows and focus attached to an embed or field while it moves. */
 export interface EmbedField extends EmbedFieldDraft {
@@ -309,6 +313,11 @@ interface DraftContextValue {
   issues: Issue[];
   /** False when the latest change couldn't be written to browser storage. */
   saved: boolean;
+  /** Starts a blank draft and deletes the cleared draft's files from the server. */
+  clear: () => void;
+  /** Counts clears, so work started for an earlier draft can tell it is stale. */
+  generation: number;
+  isCurrent: (generation: number) => boolean;
 }
 const DraftContext = createContext<DraftContextValue | null>(null);
 
@@ -326,9 +335,27 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     saveDraft(draft);
   }, [draft]);
 
+  const client = useQueryClient();
+  const [generation, setGeneration] = useState(0);
+  // Read by upload callbacks that finish after a render, so they see the latest clear.
+  const latest = useRef(0);
+  const clear = useCallback(() => {
+    const csrfToken =
+      client.getQueryData<Session>(["session"])?.csrfToken ?? "";
+    for (const file of draft.attachments)
+      void discardUpload(file.id, csrfToken);
+    latest.current += 1;
+    setGeneration(latest.current);
+    setDraft(blankDraft());
+  }, [client, draft.attachments]);
+  const isCurrent = useCallback(
+    (value: number) => value === latest.current,
+    [],
+  );
+
   const value = useMemo(
-    () => ({ draft, setDraft, issues, saved }),
-    [draft, issues, saved],
+    () => ({ draft, setDraft, issues, saved, clear, generation, isCurrent }),
+    [draft, issues, saved, clear, generation, isCurrent],
   );
   return <DraftContext value={value}>{children}</DraftContext>;
 }

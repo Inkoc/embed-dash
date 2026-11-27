@@ -19,7 +19,7 @@ const stored = {
   contentType: "image/png",
 };
 let present = true;
-let uploadResponse: (body: FormData) => Response;
+let uploadResponse: (body: FormData) => Response | Promise<Response>;
 
 beforeEach(() => {
   localStorage.clear();
@@ -140,6 +140,52 @@ test("a server refusal shows on the file's row", async () => {
   choose(png());
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Files can be at most 1 MB.",
+  );
+});
+
+const deleted = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([, init]) => init?.method === "DELETE")
+    .map(([url]) => url);
+const clearDraft = async () => {
+  fireEvent.click(screen.getByRole("button", { name: /^Clear/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Clear draft" }));
+};
+
+test("clearing the draft deletes its files from the server", async () => {
+  renderApp();
+  choose(png());
+  await screen.findByRole("list", { name: "Attached files" });
+  await clearDraft();
+  expect(deleted()).toEqual([`/api/uploads/${stored.id}`]);
+  expect(screen.queryByRole("list", { name: "Attached files" })).toBeNull();
+});
+
+test("an upload that finishes after a clear is deleted, not attached to the new draft", async () => {
+  let finish!: () => void;
+  uploadResponse = () =>
+    new Promise((resolve) => {
+      finish = () => resolve(Response.json(stored, { status: 201 }));
+    });
+  renderApp();
+  choose(png());
+  expect(await screen.findByText(/Uploading/)).toBeTruthy();
+  await clearDraft();
+  expect(screen.queryByText(/Uploading/)).toBeNull();
+  finish();
+  await waitFor(() => expect(deleted()).toEqual([`/api/uploads/${stored.id}`]));
+  expect(screen.queryByRole("list", { name: "Attached files" })).toBeNull();
+  expect(localStorage.getItem("embed-dash:draft")).not.toContain(stored.id);
+});
+
+test("a generic server refusal is replaced by the reason its status gives", async () => {
+  uploadResponse = () =>
+    Response.json({ error: "Request failed" }, { status: 415 });
+  renderApp();
+  choose(png());
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "The server refused the upload's format.",
   );
 });
 

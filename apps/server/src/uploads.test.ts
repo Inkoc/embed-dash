@@ -1,11 +1,23 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "./app.js";
 import { openDatabase } from "./db.js";
-import { sniffContentType } from "./uploads.js";
+import {
+  sniffContentType,
+  sweepUploads,
+  unreferencedUploadMs,
+} from "./uploads.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -137,6 +149,7 @@ test("rejects a file over the limit before it is kept", async () => {
     Buffer.alloc(1024 * 1024 + 10),
   );
   expect(streamed.statusCode).toBe(413);
+  expect(streamed.json().error).toBe("Files can be at most 1 MB.");
   expect(
     existsSync(join(dir, "uploads")) ? readdirSync(join(dir, "uploads")) : [],
   ).toEqual([]);
@@ -149,6 +162,31 @@ test("rejects a file over the limit before it is kept", async () => {
     (await upload(app, headers, "ok.bin", Buffer.alloc(1024 * 1024)))
       .statusCode,
   ).toBe(201);
+});
+
+test("says why a malformed upload is refused", async () => {
+  const { app } = await fixture();
+  const headers = await login(app);
+  const boundary = "----fixtureboundary";
+  const field = await app.inject({
+    method: "POST",
+    url: "/api/uploads",
+    headers: {
+      ...headers,
+      "content-type": `multipart/form-data; boundary=${boundary}`,
+    },
+    payload: `--${boundary}\r\nContent-Disposition: form-data; name="note"\r\n\r\nhello\r\n--${boundary}--\r\n`,
+  });
+  expect(field.statusCode).toBe(413);
+  expect(field.json().error).toBe("Send one file per upload.");
+  const json = await app.inject({
+    method: "POST",
+    url: "/api/uploads",
+    headers,
+    payload: { file: "a.png" },
+  });
+  expect(json.statusCode).toBe(415);
+  expect(json.json().error).toBe("Uploads must be sent as a file form.");
 });
 
 test("rejects empty files", async () => {
@@ -242,6 +280,48 @@ test("deleting removes the row and the file", async () => {
   });
   expect(response.statusCode).toBe(204);
   expect(readdirSync(join(dir, "uploads"))).toEqual([]);
+});
+
+test("the sweep removes day-old files no send refers to, and keeps the rest", () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-sweep-"));
+  const db = openDatabase(dir);
+  try {
+    const now = Date.now();
+    const old = now - unreferencedUploadMs - 1;
+    const uploads = join(dir, "uploads");
+    mkdirSync(uploads);
+    const add = (id: string, createdAt: number) => {
+      writeFileSync(join(uploads, id), png);
+      db.prepare(
+        "INSERT INTO uploads (id, filename, content_type, size, created_at) VALUES (?, 'a.png', 'image/png', 1, ?)",
+      ).run(id, createdAt);
+    };
+    add("old-unused", old);
+    add("old-sent", old);
+    add("recent", now - 1000);
+    db.prepare(
+      "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('s', ?, '', 'done', 1, 1)",
+    ).run(JSON.stringify({ attachments: [{ id: "old-sent" }] }));
+    // Left by an interrupted upload: a file with no record.
+    writeFileSync(join(uploads, "stray-old"), png);
+    utimesSync(join(uploads, "stray-old"), old / 1000, old / 1000);
+    writeFileSync(join(uploads, "stray-new"), png);
+
+    sweepUploads(dir, db, now);
+
+    expect(readdirSync(uploads).sort()).toEqual([
+      "old-sent",
+      "recent",
+      "stray-new",
+    ]);
+    expect(db.prepare("SELECT id FROM uploads ORDER BY id").all()).toEqual([
+      { id: "old-sent" },
+      { id: "recent" },
+    ]);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true });
+  }
 });
 
 test("recognises image types by their first bytes", () => {
