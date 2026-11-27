@@ -15,9 +15,6 @@
     background var(--dur-base),
     color var(--dur-base);
 }
-.message p {
-  margin: 0;
-}
 .message ::selection {
   background: var(--dc-selection);
 }
@@ -110,7 +107,8 @@
   font-size: var(--dc-text-sm);
   font-weight: var(--dc-weight-strong);
 }
-.author img {
+.authorIcon {
+  flex: none;
   width: var(--dc-author-icon);
   height: var(--dc-author-icon);
   margin-right: var(--space-2);
@@ -154,9 +152,10 @@
 }
 .image {
   display: block;
-  width: var(--dc-image-max);
-  max-width: 100%;
+  width: auto;
+  max-width: min(var(--dc-image-max), 100%);
   height: auto;
+  max-height: var(--dc-image-h);
   margin-top: var(--space-4);
   border-radius: var(--dc-radius);
 }
@@ -179,7 +178,8 @@
   line-height: var(--dc-leading-xs);
   font-weight: var(--dc-weight-name);
 }
-.footer img {
+.footerIcon {
+  flex: none;
   width: var(--dc-footer-icon);
   height: var(--dc-footer-icon);
   margin-right: var(--space-2);
@@ -187,4 +187,23 @@
 }
 .dot {
   margin: 0 var(--space-1);
+}
+/* A link that didn't load: Discord's grey box, at the size the picture would take. */
+.broken {
+  display: grid;
+  place-items: center;
+  background: var(--dc-placeholder);
+  color: var(--dc-muted);
+}
+.broken svg {
+  width: var(--dc-broken-icon);
+  height: var(--dc-broken-icon);
+}
+.image.broken {
+  width: min(var(--dc-image-max), 100%);
+  aspect-ratio: 2;
+}
+.authorIcon.broken,
+.footerIcon.broken {
+  display: inline-block;
 }

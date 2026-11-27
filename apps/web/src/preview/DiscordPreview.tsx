@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
-import { isAcceptedLink, type BotIdentity } from "@embed-dash/shared";
+import type { BotIdentity } from "@embed-dash/shared";
 import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
+import { Markdown } from "./Markdown";
+import { Media, mediaUrl } from "./Media";
 import styles from "./DiscordPreview.module.css";
 
 interface Props {
@@ -12,10 +14,6 @@ interface Props {
   /** When the message is shown as sent, such as "Today at 18:00". */
   time: string;
 }
-
-/** Only links Discord would show; anything else also fails validation. */
-const shown = (url: string) =>
-  url.trim() && isAcceptedLink(url, true) ? url.trim() : "";
 
 /** Discord writes an embed's time as "Today at 18:00" or as a date and time. */
 export function embedTime(timestamp: string, sent: string, now = new Date()) {
@@ -31,8 +29,8 @@ export function embedTime(timestamp: string, sent: string, now = new Date()) {
 }
 
 /**
- * One message as Discord's chat shows it. Text is rendered as plain text for
- * now; Discord markdown arrives with the full preview.
+ * One message as Discord's chat shows it, each part with the formatting
+ * Discord gives that part (see docs/preview-fidelity.md).
  */
 export function DiscordPreview({ draft, bot, botPending, time }: Props) {
   const content = draft.content.trim();
@@ -69,7 +67,11 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
           <span className={styles.app}>App</span>
           <time className={styles.time}>{time}</time>
         </p>
-        {content && <p className={styles.content}>{content}</p>}
+        {content && (
+          <div className={styles.content}>
+            <Markdown text={content} surface="rich" />
+          </div>
+        )}
         {draft.embeds.map((embed) => (
           <PreviewEmbed key={embed.id} embed={embed} time={time} />
         ))}
@@ -79,15 +81,12 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
 }
 
 function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
-  const thumbnail = shown(embed.thumbnail);
-  const image = shown(embed.image);
-  const rows = fieldRows(embed.fields, Boolean(thumbnail));
+  const hasThumbnail = Boolean(mediaUrl(embed.thumbnail));
+  const rows = fieldRows(embed.fields, hasThumbnail);
   const title = embed.title.trim();
   const description = embed.description.trim();
   const footer = embed.footer.text.trim();
   const author = embed.author.name.trim();
-  const authorIcon = shown(embed.author.iconUrl);
-  const footerIcon = shown(embed.footer.iconUrl);
   const when = embedTime(embed.timestamp, time);
   const color = /^#[0-9a-f]{6}$/i.test(embed.color) ? embed.color : undefined;
 
@@ -96,29 +95,33 @@ function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
       className={styles.embed}
       style={color ? ({ "--embed-color": color } as CSSProperties) : undefined}
       data-testid="preview-embed"
+      data-embed=""
     >
       <span className={styles.bar} aria-hidden="true" />
-      <div className={styles.grid} data-thumbnail={thumbnail ? "" : undefined}>
+      <div
+        className={styles.grid}
+        data-thumbnail={hasThumbnail ? "" : undefined}
+      >
         {author && (
           <p className={styles.author}>
-            {authorIcon && (
-              <img src={authorIcon} alt="" width="24" height="24" />
-            )}
+            <Media url={embed.author.iconUrl} kind="authorIcon" />
             <span data-link={embed.author.url.trim() ? "" : undefined}>
-              {author}
+              <Markdown text={author} surface="plain" />
             </span>
           </p>
         )}
         {title && (
           <p className={styles.title}>
-            {embed.url.trim() ? (
-              <span className={styles.link}>{title}</span>
-            ) : (
-              title
-            )}
+            <span className={embed.url.trim() ? styles.link : undefined}>
+              <Markdown text={title} surface="inline" />
+            </span>
           </p>
         )}
-        {description && <p className={styles.description}>{description}</p>}
+        {description && (
+          <div className={styles.description}>
+            <Markdown text={description} surface="rich" />
+          </div>
+        )}
         {rows.length > 0 && (
           <div className={styles.fields}>
             {rows.flat().map(({ field, start, end }) => (
@@ -127,38 +130,23 @@ function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
                 className={styles.field}
                 style={{ gridColumn: `${start} / ${end}` }}
               >
-                <p className={styles.fieldName}>{field.name.trim()}</p>
-                <p className={styles.fieldValue}>{field.value.trim()}</p>
+                <p className={styles.fieldName}>
+                  <Markdown text={field.name.trim()} surface="inline" />
+                </p>
+                <div className={styles.fieldValue}>
+                  <Markdown text={field.value.trim()} surface="rich" />
+                </div>
               </div>
             ))}
           </div>
         )}
-        {image && (
-          <img
-            className={styles.image}
-            src={image}
-            alt="Embed image"
-            width="400"
-            height="200"
-            loading="lazy"
-          />
-        )}
-        {thumbnail && (
-          <img
-            className={styles.thumbnail}
-            src={thumbnail}
-            alt="Embed thumbnail"
-            width="80"
-            height="80"
-          />
-        )}
+        <Media url={embed.image} kind="image" />
+        <Media url={embed.thumbnail} kind="thumbnail" />
         {(footer || when) && (
           <p className={styles.footer}>
-            {footer && footerIcon && (
-              <img src={footerIcon} alt="" width="20" height="20" />
-            )}
+            {footer && <Media url={embed.footer.iconUrl} kind="footerIcon" />}
             <span>
-              {footer}
+              <Markdown text={footer} surface="plain" />
               {footer && when && (
                 <span className={styles.dot} aria-hidden="true">
                   •

@@ -1,0 +1,115 @@
+/* Discord's message markup, in Discord's own colours and metrics (the --dc-* group). */
+.code {
+  padding: 0 var(--dc-chip-pad);
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-code-bg);
+  font-family: var(--font-preview-code);
+  font-size: var(--dc-code-inline);
+  line-height: var(--dc-leading-sm);
+  white-space: pre-wrap;
+}
+.codeBlock {
+  max-width: var(--dc-code-max);
+  margin: var(--space-1) 0 0;
+  padding: var(--dc-code-pad);
+  border: var(--rule-width) solid var(--dc-code-line);
+  border-radius: var(--dc-radius);
+  background: var(--dc-code-bg);
+  font-family: var(--font-preview-code);
+  font-size: var(--dc-text-code);
+  line-height: var(--dc-leading-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Inside an embed, code sits one step darker so it still stands off the embed. */
+[data-embed] .code,
+[data-embed] .codeBlock {
+  background: var(--dc-code-bg-embed);
+}
+.quote {
+  margin: 0;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-left: var(--dc-quote-bar) solid var(--dc-quote);
+  border-radius: var(--dc-tag-radius);
+}
+.heading {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--dc-head);
+  font-weight: var(--dc-weight-heading);
+  line-height: var(--dc-heading-leading);
+}
+.heading[data-level="1"] {
+  font-size: var(--dc-h1);
+}
+.heading[data-level="2"] {
+  font-size: var(--dc-h2);
+}
+.heading[data-level="3"] {
+  font-size: var(--dc-h3);
+}
+.heading:first-child {
+  margin-top: var(--space-1);
+}
+.subtext {
+  display: block;
+  color: var(--dc-muted);
+  font-size: var(--dc-text-sub);
+  line-height: var(--dc-leading-sub);
+}
+.list {
+  margin: var(--space-1) 0 0 var(--dc-list-indent);
+  padding: 0;
+  list-style: disc outside;
+}
+ol.list {
+  list-style-type: decimal;
+}
+.list .list {
+  margin-top: 0;
+  list-style-type: circle;
+}
+/*
+ * Discord underlines links only on hover; here they always are, because the
+ * link colour alone doesn't stand far enough off body text to be the only cue.
+ */
+.link {
+  color: var(--dc-link);
+  text-decoration-thickness: var(--rule-width);
+  text-underline-offset: var(--dc-underline-offset);
+}
+.mention {
+  padding: 0 var(--dc-chip-pad);
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-mention-bg);
+  color: var(--dc-mention);
+  font-weight: var(--dc-weight-name);
+}
+.timestamp {
+  padding: 0 var(--dc-chip-pad);
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-stamp-bg);
+}
+.emoji {
+  width: var(--dc-emoji);
+  height: var(--dc-emoji);
+  margin: 0 var(--dc-emoji-gap);
+  object-fit: contain;
+  vertical-align: bottom;
+}
+.spoiler {
+  padding: 0;
+  border: 0;
+  border-radius: var(--dc-tag-radius);
+  background: var(--dc-spoiler-shown);
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+button.spoiler {
+  background: var(--dc-spoiler);
+  cursor: pointer;
+}
+/* Hidden text keeps its width, like Discord's, but none of it shows. */
+button.spoiler > span {
+  opacity: 0;
+}

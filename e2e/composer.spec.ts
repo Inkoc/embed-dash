@@ -57,6 +57,41 @@ test("editing title, description and colour updates the preview live", async ({
   expect(errors).toEqual([]);
 });
 
+test("markdown in the description renders formatted in the preview", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByLabel("Title", { exact: true }).fill("Patch notes");
+  await page
+    .getByLabel("Description", { exact: true })
+    .fill(
+      "## What's new\n**Faster** saves, __fewer__ crashes.\n- Tidal caves\n- A new [map](https://example.com/map)\n> Back up first\n||Secret boss||",
+    );
+  const embed = preview(page);
+  await expect(embed.getByText("What's new")).toHaveCSS("font-weight", "700");
+  await expect(embed.locator("strong", { hasText: "Faster" })).toBeVisible();
+  await expect(embed.locator("u", { hasText: "fewer" })).toBeVisible();
+  await expect(embed.getByRole("listitem")).toHaveText([
+    "Tidal caves",
+    "A new map",
+  ]);
+  await expect(embed.getByRole("link", { name: "map" })).toHaveAttribute(
+    "href",
+    "https://example.com/map",
+  );
+  await expect(embed.locator("blockquote")).toHaveText("Back up first");
+  const spoiler = embed.getByRole("button", {
+    name: "Spoiler, select to show",
+  });
+  await spoiler.click();
+  await expect(spoiler).toBeHidden();
+  await expect(embed.getByText("Secret boss")).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test("the theme switch is remembered and applied before first paint", async ({
   page,
 }) => {
