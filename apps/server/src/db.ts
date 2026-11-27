@@ -4,9 +4,15 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { StartupError } from "./errors.js";
 export function openDatabase(dataDir: string) {
-  mkdirSync(dataDir, { recursive: true });
-  const sqlite = new Database(join(dataDir, "embed-dash.db"));
+  let sqlite: Database.Database;
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    sqlite = new Database(join(dataDir, "embed-dash.db"));
+  } catch (error) {
+    throw new StartupError("database", error);
+  }
   try {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");
@@ -17,6 +23,6 @@ export function openDatabase(dataDir: string) {
     return sqlite;
   } catch (error) {
     sqlite.close();
-    throw error;
+    throw new StartupError("migration", error);
   }
 }

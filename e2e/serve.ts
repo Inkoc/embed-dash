@@ -10,6 +10,7 @@ await once(fake, "listening");
 const app = await createApp(
   {
     botToken: "e2e-test-token",
+    host: "127.0.0.1",
     port: 18742,
     dataDir,
     discordApiBase: "http://127.0.0.1:18743/api",

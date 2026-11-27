@@ -12,10 +12,13 @@ export function createDiscord(config: Config): {
     api: config.discordApiBase,
     version: "10",
     retries: 0,
+    rejectOnRateLimit: () => true,
     timeout: 5000,
   }).setToken(config.botToken);
   return {
     async getBot() {
+      // The REST client clears its token after a 401; retries still use startup configuration.
+      rest.setToken(config.botToken);
       const user = (await rest.get(
         Routes.user(),
       )) as RESTGetAPICurrentUserResult;

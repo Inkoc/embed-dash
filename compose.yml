@@ -7,6 +7,7 @@ services:
       BOT_TOKEN_FILE: /run/secrets/bot_token
       DATA_DIR: /data
       PORT: "8742"
+      HOST: "0.0.0.0"
     secrets:
       - bot_token
     volumes:

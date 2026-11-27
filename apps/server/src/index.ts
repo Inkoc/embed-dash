@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
 import { readConfig } from "./config.js";
+import { StartupError, startupFailure } from "./errors.js";
 async function main() {
   const config = (() => {
     try {
@@ -22,11 +23,14 @@ async function main() {
     process.once(signal, () => {
       void app.close();
     });
-  await app.listen({ port: config.port, host: "0.0.0.0" });
+  try {
+    await app.listen({ port: config.port, host: config.host });
+  } catch (error) {
+    await app.close();
+    throw new StartupError("listen", error);
+  }
 }
-main().catch(() => {
-  console.error(
-    "Startup failed. Check configuration, secret file, data directory and port.",
-  );
+main().catch((error: unknown) => {
+  console.error(JSON.stringify(startupFailure(error)));
   process.exitCode = 1;
 });

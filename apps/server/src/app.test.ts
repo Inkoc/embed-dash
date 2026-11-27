@@ -9,17 +9,18 @@ import { createApp } from "./app.js";
 import { openDatabase } from "./db.js";
 test("health, real Discord REST identity, safe failures and SPA fallback", async () => {
   const token = "test-private-token";
-  let fail = false;
+  let failureStatus = 0;
   let avatar: string | null = "avatar-hash";
   const upstream = createServer((req, res) => {
     expect(req.url).toBe("/api/v10/users/@me");
     expect(req.headers.authorization).toBe(`Bot ${token}`);
     res.setHeader("content-type", "application/json");
-    res.statusCode = fail ? 401 : 200;
+    res.statusCode = failureStatus || 200;
+    if (failureStatus === 429) res.setHeader("retry-after", "0.1");
     res.end(
       JSON.stringify(
-        fail
-          ? { message: token, code: 0 }
+        failureStatus
+          ? { message: token, code: 0, retry_after: 0.1, global: false }
           : { id: "123", username: "Test bot", avatar },
       ),
     );
@@ -41,6 +42,7 @@ test("health, real Discord REST identity, safe failures and SPA fallback", async
   const app = await createApp(
     {
       botToken: token,
+      host: "127.0.0.1",
       port: 8742,
       dataDir: dir,
       discordApiBase: `http://127.0.0.1:${address.port}/api`,
@@ -56,11 +58,26 @@ test("health, real Discord REST identity, safe failures and SPA fallback", async
     });
     avatar = null;
     expect((await app.inject("/api/bot")).json().avatarUrl).toBeNull();
-    fail = true;
-    const response = await app.inject("/api/bot");
-    expect(response.statusCode).toBe(502);
-    expect(response.body).not.toContain(token);
-    expect(logs).not.toContain(token);
+    for (const [status, code, responseStatus] of [
+      [401, "DISCORD_INVALID_TOKEN", 502],
+      [403, "DISCORD_REQUEST_FAILED", 502],
+      [503, "DISCORD_UNAVAILABLE", 502],
+      [429, "DISCORD_RATE_LIMITED", 503],
+    ] as const) {
+      failureStatus = status;
+      const response = await app.inject("/api/bot");
+      expect(response.statusCode).toBe(responseStatus);
+      expect(response.json().code).toBe(code);
+      expect(logs).toContain(code);
+      expect(response.body).not.toContain(token);
+      expect(logs).not.toContain(token);
+    }
+    const health = await app.inject("/health");
+    expect(health.headers["x-content-type-options"]).toBe("nosniff");
+    expect(health.headers["referrer-policy"]).toBe("no-referrer");
+    expect(health.headers["content-security-policy"]).toContain(
+      "frame-ancestors 'none'",
+    );
     expect((await app.inject("/")).body).toContain("SPA");
     expect((await app.inject("/unknown")).body).toContain("SPA");
     expect((await app.inject("/api/missing")).statusCode).toBe(404);
@@ -80,6 +97,13 @@ test("startup migrations are persistent and repeatable", () => {
     expect(
       db.prepare("SELECT name FROM sqlite_master WHERE name = 'sends'").get(),
     ).toEqual({ name: "sends" });
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO sends VALUES ('id', '{}', '', 'invalid', NULL, 0, 0)",
+        )
+        .run(),
+    ).toThrow(/CHECK/);
     db.close();
     db = openDatabase(dir);
     expect(db.prepare("SELECT count(*) AS count FROM sends").get()).toEqual({
@@ -87,6 +111,79 @@ test("startup migrations are persistent and repeatable", () => {
     });
     db.close();
   } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("client parsing errors keep their HTTP status", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-client-errors-"));
+  const app = await createApp(
+    {
+      botToken: "fixture-token",
+      port: 8742,
+      host: "127.0.0.1",
+      dataDir: dir,
+      discordApiBase: "http://127.0.0.1:1/api",
+    },
+    { logger: false },
+  );
+  app.post("/test", async (request) => request.body);
+  try {
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: { "content-type": "application/json" },
+      payload: "{",
+    });
+    expect(malformed.statusCode).toBe(400);
+    const unsupported = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: { "content-type": "application/unsupported" },
+      payload: "test",
+    });
+    expect(unsupported.statusCode).toBe(415);
+    expect(unsupported.json()).toEqual({ error: "Request failed" });
+    expect(unsupported.headers["x-frame-options"]).toBe("DENY");
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("unreachable Discord is diagnosed without exposing the token", async () => {
+  const upstream = createServer();
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  if (!address || typeof address === "string")
+    throw new Error("Missing address");
+  await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  const dir = mkdtempSync(join(tmpdir(), "embed-offline-"));
+  let logs = "";
+  const stream = new Writable({
+    write(chunk, _encoding, done) {
+      logs += String(chunk);
+      done();
+    },
+  });
+  const app = await createApp(
+    {
+      botToken: "offline-private-token",
+      port: 8742,
+      host: "127.0.0.1",
+      dataDir: dir,
+      discordApiBase: `http://127.0.0.1:${address.port}/api`,
+    },
+    { logger: { stream } },
+  );
+  try {
+    const response = await app.inject("/api/bot");
+    expect(response.json().code).toBe("DISCORD_UNREACHABLE");
+    expect(logs).toContain("ECONNREFUSED");
+    expect(logs + response.body).not.toContain("offline-private-token");
+  } finally {
+    await app.close();
     rmSync(dir, { recursive: true });
   }
 });

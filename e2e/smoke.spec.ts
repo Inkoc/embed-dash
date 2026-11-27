@@ -1,7 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { homedir } from "node:os";
-import { join } from "node:path";
 test("shows the connected bot from Discord through the real server", async ({
   page,
   request,
@@ -37,12 +35,6 @@ test("shows the connected bot from Discord through the real server", async ({
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBeTruthy();
-    await page.screenshot({
-      path: join(
-        homedir(),
-        `forge-artifacts/embed-dash/scaffold/bot-${width}.png`,
-      ),
-    });
   }
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(errors).toEqual([]);

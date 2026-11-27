@@ -43,6 +43,7 @@ test.each([
     "PORT",
   ]),
   [{ BOT_TOKEN: "test", DATA_DIR: "" }, "DATA_DIR"],
+  [{ BOT_TOKEN: "test", HOST: "invalid" }, "HOST"],
   ...[
     "invalid",
     "file:///tmp/api",
@@ -58,3 +59,19 @@ test.each([
     expect(() => readConfig(env)).toThrow(field);
   },
 );
+
+test("resolves workspace-relative paths from the invoking directory", () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-workspace-"));
+  try {
+    writeFileSync(join(dir, "token"), "fixture-token");
+    expect(
+      readConfig({ INIT_CWD: dir, BOT_TOKEN_FILE: "token", DATA_DIR: "data" }),
+    ).toMatchObject({
+      botToken: "fixture-token",
+      dataDir: join(dir, "data"),
+      host: "127.0.0.1",
+    });
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});

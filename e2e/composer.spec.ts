@@ -1,11 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-const shots = join(homedir(), "forge-artifacts/embed-dash/baseline");
-mkdirSync(shots, { recursive: true });
 
 const preview = (page: Page) => page.getByTestId("preview-embed");
 const heading = (page: Page, name: string) =>
@@ -158,9 +152,6 @@ test("the preview resizes by drag, keys and presets", async ({ page }) => {
     "true",
   );
   await page.waitForTimeout(400);
-  await page.screenshot({
-    path: join(shots, "compose-phone-preset-1280-light.png"),
-  });
   await handle.focus();
   await page.keyboard.press("ArrowLeft");
   await expect(handle).toHaveAttribute("aria-valuenow", "376");
@@ -220,33 +211,20 @@ for (const theme of ["light", "dark"] as const)
             () => document.documentElement.scrollWidth <= innerWidth,
           ),
         ).toBe(true);
-        await page.screenshot({
-          path: join(shots, `${name.toLowerCase()}-${width}-${theme}.png`),
-        });
         expect(await axe(page)).toEqual([]);
       }
       if (width < 861) {
         await page.goto("/");
         await page.getByRole("tab", { name: "Preview" }).click();
         await page.waitForTimeout(400);
-        await page.screenshot({
-          path: join(shots, `compose-preview-${width}-${theme}.png`),
-        });
         expect(await axe(page)).toEqual([]);
       }
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await page.screenshot({
-      path: join(shots, `compose-1280-${theme}-full.png`),
-      fullPage: true,
-    });
-    await page.keyboard.press("?");
+    await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.waitForTimeout(300);
-    await page.screenshot({
-      path: join(shots, `shortcuts-1280-${theme}.png`),
-    });
     expect(await axe(page)).toEqual([]);
     expect(errors).toEqual([]);
   });
