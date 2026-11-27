@@ -12,7 +12,7 @@
     "@discordjs/rest": "2.6.3",
     "@embed-dash/shared": "workspace:*",
     "@fastify/cookie": "11.1.5",
-    "@fastify/multipart": "^10.1.9",
+    "@fastify/multipart": "10.1.9",
     "@fastify/rate-limit": "11.3.0",
     "@fastify/static": "9.3.0",
     "@node-rs/argon2": "2.2.2",

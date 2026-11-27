@@ -252,7 +252,7 @@ importers:
         specifier: 11.1.5
         version: 11.1.5
       '@fastify/multipart':
-        specifier: ^10.1.9
+        specifier: 10.1.9
         version: 10.1.9
       '@fastify/rate-limit':
         specifier: 11.3.0

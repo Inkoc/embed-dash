@@ -50,7 +50,7 @@ async function setup(
     port: 8742,
     host: "127.0.0.1",
     dataDir: dir,
-    maxUploadMb: options.maxUploadMb,
+    maxUploadMb: options.maxUploadMb ?? 10,
     discordApiBase: `http://127.0.0.1:${address.port}/api`,
   };
   const app = await createApp(config, { logger: false });

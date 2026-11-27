@@ -18,7 +18,7 @@ export interface Config {
   host: string;
   dataDir: string;
   /** Per-file upload limit; the request as a whole is capped by the shared message total. */
-  maxUploadMb?: number;
+  maxUploadMb: number;
   discordApiBase: string;
 }
 /** An IP address, or a CIDR range such as `172.18.0.0/16` for a proxy on a Docker network. */

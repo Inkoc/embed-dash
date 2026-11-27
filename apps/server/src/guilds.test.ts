@@ -121,6 +121,7 @@ async function config(authMode: Config["authMode"] = "none"): Promise<Config> {
     botToken: token,
     authMode,
     adminPassword: "guilds-test-password",
+    maxUploadMb: 10,
     host: "127.0.0.1",
     port: 8742,
     dataDir,

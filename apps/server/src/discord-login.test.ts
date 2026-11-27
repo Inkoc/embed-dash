@@ -105,6 +105,7 @@ async function fixture(
   });
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "discord",
       botToken: "fixture-token",
       port: 8742,
@@ -503,6 +504,7 @@ test("the Discord routes only exist in Discord mode", async () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-discord-off-"));
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",

@@ -41,6 +41,7 @@ test("health, real Discord REST identity, safe failures and SPA fallback", async
   });
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "none",
       botToken: token,
       host: "127.0.0.1",
@@ -120,6 +121,7 @@ test("client parsing errors keep their HTTP status", async () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-client-errors-"));
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "none",
       botToken: "fixture-token",
       port: 8742,
@@ -171,6 +173,7 @@ test("unreachable Discord is diagnosed without exposing the token", async () => 
   });
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "none",
       botToken: "offline-private-token",
       port: 8742,
@@ -202,6 +205,7 @@ test("local mode warns when bound beyond loopback", async () => {
   });
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "none",
       botToken: "fixture",
       port: 8742,

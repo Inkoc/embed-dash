@@ -24,7 +24,7 @@ export interface Session {
   csrfToken: string;
   user: SessionUser | null;
   deniedUserId: string | null;
-  maxUploadMb?: number;
+  maxUploadMb: number;
 }
 
 const AccessContext = createContext<{

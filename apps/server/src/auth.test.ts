@@ -16,6 +16,7 @@ async function fixture(overrides: Partial<Config> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "embed-auth-"));
   const app = await createApp(
     {
+      maxUploadMb: 10,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",
