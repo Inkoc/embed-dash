@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 const port = Number(process.env.E2E_PORT ?? 28742);
@@ -8,11 +7,8 @@ export default defineConfig({
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   reporter: [["list"]],
   use: {
-    storageState: join(
-      homedir(),
-      "forge-artifacts/embed-dash/issue-8",
-      `e2e-auth-${port}.json`,
-    ),
+    // Kept beside other ignored test output so runs leave nothing outside the repo.
+    storageState: join("test-results", `e2e-auth-${port}.json`),
     baseURL: `http://127.0.0.1:${port}`,
     browserName: "chromium",
   },
