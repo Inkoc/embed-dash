@@ -39,6 +39,7 @@ import {
   type MentionKind,
   type TimestampStyle,
 } from "./markdown";
+import { formatTimestamp } from "../preview/timestamp";
 import styles from "./FormatEditor.module.css";
 
 type Panel = "mention" | "timestamp";
@@ -407,16 +408,6 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export const localInputValue = (date: Date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
-const samples: Record<TimestampStyle, Intl.DateTimeFormatOptions | null> = {
-  R: null,
-  t: { timeStyle: "short" },
-  T: { timeStyle: "medium" },
-  d: { dateStyle: "short" },
-  D: { dateStyle: "long" },
-  f: { dateStyle: "long", timeStyle: "short" },
-  F: { dateStyle: "full", timeStyle: "short" },
-};
-
 function TimestampPanel({ onDone }: PanelProps) {
   const [when, setWhen] = useState(() => localInputValue(new Date()));
   const [style, setStyle] = useState<TimestampStyle>("f");
@@ -425,23 +416,6 @@ function TimestampPanel({ onDone }: PanelProps) {
   const revealed = useRevealed();
   const date = new Date(when);
   const valid = !Number.isNaN(date.getTime());
-  const sample = (key: TimestampStyle) => {
-    if (!valid) return "";
-    const options = samples[key];
-    if (options)
-      return new Intl.DateTimeFormat(undefined, options).format(date);
-    const minutes = Math.round((date.getTime() - opened) / 60000);
-    const [amount, unit] =
-      Math.abs(minutes) < 60
-        ? [minutes, "minute" as const]
-        : Math.abs(minutes) < 60 * 24
-          ? [Math.round(minutes / 60), "hour" as const]
-          : [Math.round(minutes / (60 * 24)), "day" as const];
-    return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-      amount,
-      unit,
-    );
-  };
   const insert = () => valid && onDone(timestamp(date, style));
   return (
     <div
@@ -471,7 +445,9 @@ function TimestampPanel({ onDone }: PanelProps) {
           {(Object.keys(timestampStyles) as TimestampStyle[]).map((key) => (
             <option key={key} value={key}>
               {timestampStyles[key]}
-              {valid ? ` · ${sample(key)}` : ""}
+              {valid
+                ? ` · ${formatTimestamp(date, key, new Date(opened))}`
+                : ""}
             </option>
           ))}
         </select>

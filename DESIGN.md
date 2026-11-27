@@ -204,7 +204,7 @@ A cool, nearly neutral desk with a single committed teal; status colours appear 
 
 ### Discord preview (fixed, not themable)
 
-`--dc-*` tokens reproduce Discord's chat: dark `#313338` / embed `#2b2d31`, light `#ffffff` / embed `#f2f3f5`, text, header, muted and link colours, and the blurple "APP" tag. In light the link is darkened to `#0063d3` so it passes AA on the embed.
+`--dc-*` tokens reproduce Discord's chat: dark `#313338` / embed `#2b2d31`, light `#ffffff` / embed `#f2f3f5`, text, header, muted and link colours, and the blurple "APP" tag. In light the link is darkened to `#0063d3` so it passes AA on the embed, and the mention ink likewise to `#4752c4`. The message markup (code, quotes, headings, subtext, lists, mention and timestamp chips, spoilers) has its own `--dc-*` colours and metrics, and code uses Discord's system monospace stack (`--font-preview-code`); nothing is bundled for it. In a linked title, chips (timestamp, code, revealed spoiler) take the lighter `--dc-link-tint` so link-coloured text keeps AA contrast. Links in the preview are always underlined, not only on hover as in Discord, so colour is never the only cue. `docs/preview-fidelity.md` lists what each part of a message renders and every known difference from Discord.
 
 ### Sample content
 

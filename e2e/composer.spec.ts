@@ -57,6 +57,41 @@ test("editing title, description and colour updates the preview live", async ({
   expect(errors).toEqual([]);
 });
 
+test("markdown in the description renders formatted in the preview", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByLabel("Title", { exact: true }).fill("Patch notes");
+  await page
+    .getByLabel("Description", { exact: true })
+    .fill(
+      "## What's new\n**Faster** saves, __fewer__ crashes.\n- Tidal caves\n- A new [map](https://example.com/map)\n> Back up first\n||Secret boss||",
+    );
+  const embed = preview(page);
+  await expect(embed.getByText("What's new")).toHaveCSS("font-weight", "700");
+  await expect(embed.locator("strong", { hasText: "Faster" })).toBeVisible();
+  await expect(embed.locator("u", { hasText: "fewer" })).toBeVisible();
+  await expect(embed.getByRole("listitem")).toHaveText([
+    "Tidal caves",
+    "A new map",
+  ]);
+  await expect(embed.getByRole("link", { name: "map" })).toHaveAttribute(
+    "href",
+    "https://example.com/map",
+  );
+  await expect(embed.locator("blockquote")).toHaveText("Back up first");
+  const spoiler = embed.getByRole("button", {
+    name: "Spoiler, select to show",
+  });
+  await spoiler.click();
+  await expect(spoiler).toBeHidden();
+  await expect(embed.getByText("Secret boss")).toBeVisible();
+  expect(await axe(page)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test("the theme switch is remembered and applied before first paint", async ({
   page,
 }) => {
@@ -192,6 +227,61 @@ test("the composer passes axe and loads cleanly under the CSP", async ({
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await axe(page)).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test("at 360 px long field names wrap beside a thumbnail, and a linked title stays legible", async ({
+  page,
+}) => {
+  const word = "Antidisestablishmentarianism";
+  const embed = {
+    color: "#e8a33d",
+    title: "Opens `v2` <t:1700000000:R> ||soon||",
+    url: "https://example.com/notes",
+    description: "",
+    author: { name: "", url: "", iconUrl: "" },
+    // A file that isn't attached: the thumbnail placeholder takes the right
+    // edge without any network request.
+    thumbnail: "attachment://missing.png",
+    image: "",
+    fields: [
+      { name: word, value: `${word}${word}`, inline: true },
+      { name: word, value: "Two", inline: true },
+      { name: `${word}${word}`, value: "Full", inline: false },
+    ],
+    footer: { text: word.repeat(3), iconUrl: "" },
+    timestamp: "",
+  };
+  await page.addInitScript(
+    (draft) => localStorage.setItem("embed-dash:draft", JSON.stringify(draft)),
+    { content: "", attachments: [], embeds: [embed] },
+  );
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  await page
+    .getByRole("group", { name: "Show" })
+    .getByRole("button", { name: "Preview" })
+    .click();
+  await expect(preview(page)).toBeVisible();
+  await preview(page)
+    .getByRole("button", { name: "Spoiler, select to show" })
+    .click();
+  const overflowing = () =>
+    preview(page).evaluate((root) =>
+      [...root.querySelectorAll("[style*='grid-column'] > *, p")]
+        .filter((el) => el.scrollWidth > el.clientWidth)
+        .map((el) => el.textContent),
+    );
+  expect(await overflowing()).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(await axe(page)).toEqual([]);
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await axe(page)).toEqual([]);
 });
 
 test("at 360 px the composer stacks without horizontal scroll", async ({
