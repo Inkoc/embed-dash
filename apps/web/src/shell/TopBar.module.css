@@ -39,6 +39,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
+  white-space: nowrap;
+}
+.end > :not(:first-child) {
+  flex-shrink: 0;
 }
 .quiet {
   display: inline-flex;
@@ -87,7 +92,7 @@
   color: var(--ink);
 }
 .track {
-  --track-width: 3.25rem;
+  --track-width: var(--switch-track);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -109,25 +114,34 @@
 }
 .knob {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 1.375rem;
-  height: 1.375rem;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: var(--switch-knob);
+  height: var(--switch-knob);
   border-radius: 50%;
   background: var(--ink);
   transition: transform var(--dur-move) var(--ease-out);
 }
 .theme[aria-checked="true"] .knob {
-  /* the track's inner width (less its 1px borders), less the knob and a 2px inset at each end */
-  transform: translateX(calc(var(--track-width) - 1.375rem - 4px - 2px));
+  /* the track's inner width (less its borders), less the knob and its inset at each end */
+  transform: translateX(
+    calc(
+      var(--track-width) - 2 * var(--rule-width) - var(--switch-knob) - 2 *
+        var(--switch-inset)
+    )
+  );
 }
 .theme[aria-checked="false"] .sun,
 .theme[aria-checked="true"] .moon {
   color: var(--ground);
 }
 
-/* Below desktop the Shortcuts button keeps only its key cap. */
-@media (max-width: 1100px) {
+/*
+ * The right cluster sheds words before the bot's name shortens: Shortcuts
+ * keeps its key cap below wide desktop, and the theme switch its track below
+ * desktop (Sign out its icon, in SessionGate). Each keeps its accessible name.
+ */
+@media (max-width: 1400px) {
   .shortcutsLabel {
     position: absolute;
     width: 1px;
@@ -136,15 +150,10 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+}
+@media (max-width: 1100px) {
   .end {
     gap: var(--space-2);
-  }
-}
-@media (max-width: 860px) {
-  .bar {
-    grid-template-columns: auto 1fr auto;
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
   }
   .themeLabel {
     position: absolute;
@@ -156,6 +165,13 @@
   }
   .theme {
     padding: 0 var(--space-1);
+  }
+}
+@media (max-width: 860px) {
+  .bar {
+    grid-template-columns: auto 1fr auto;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
   }
 }
 @media (max-width: 640px) {

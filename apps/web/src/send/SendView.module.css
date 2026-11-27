@@ -1,5 +1,5 @@
 .send {
-  max-width: 92rem;
+  max-width: var(--send-max);
   margin: 0 auto;
   padding: 0 var(--space-6) var(--space-7);
 }
