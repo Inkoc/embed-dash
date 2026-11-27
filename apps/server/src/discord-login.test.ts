@@ -33,6 +33,8 @@ interface Provider {
   tokenStatus: number;
   tokenBody: Record<string, unknown>;
   userStatus: number;
+  revokeStatus: number;
+  revokeRequests: URLSearchParams[];
   tokenRequests: URLSearchParams[];
   userAuthorization: (string | undefined)[];
 }
@@ -49,6 +51,8 @@ async function provider() {
       scope: "identify",
     },
     userStatus: 200,
+    revokeStatus: 200,
+    revokeRequests: [],
     tokenRequests: [],
     userAuthorization: [],
   };
@@ -60,6 +64,15 @@ async function provider() {
       state.tokenRequests.push(new URLSearchParams(body));
       response.statusCode = state.tokenStatus;
       response.end(JSON.stringify(state.tokenBody));
+    } else if (
+      request.url === "/api/oauth2/token/revoke" &&
+      request.method === "POST"
+    ) {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      state.revokeRequests.push(new URLSearchParams(body));
+      response.statusCode = state.revokeStatus;
+      response.end("{}");
     } else if (request.url === "/api/v10/users/@me") {
       state.userAuthorization.push(request.headers.authorization);
       response.statusCode = state.userStatus;
@@ -106,7 +119,6 @@ async function fixture(
           allowedUser.id,
           "333333333333333333",
         ],
-        authorizeUrl: "https://discord.example/oauth2/authorize",
       },
       ...overrides,
     },
@@ -117,7 +129,7 @@ async function fixture(
     await app.close();
     if (!options.dir) rmSync(dir, { recursive: true });
   });
-  return { app, dir, logs, fake: fake.state };
+  return { app, dir, logs, fake: fake.state, port: fake.port };
 }
 
 const cookiesOf = (response: { cookies: { name: string; value: string }[] }) =>
@@ -166,10 +178,10 @@ async function sessionOf(app: FastifyInstance, cookie: string) {
 }
 
 test("starts the authorization code flow with the identify scope only", async () => {
-  const { app } = await fixture();
+  const { app, port } = await fixture();
   const { location, response, state } = await begin(app);
   expect(location.origin + location.pathname).toBe(
-    "https://discord.example/oauth2/authorize",
+    `http://127.0.0.1:${port}/oauth2/authorize`,
   );
   expect(Object.fromEntries(location.searchParams)).toEqual({
     response_type: "code",
@@ -268,7 +280,7 @@ test("an account outside the allowlist gets no session and sees its ID", async (
   const { response, state: oauthState } = await signIn(app);
   expect(response.statusCode).toBe(302);
   expect(response.headers.location).toBe("/login");
-  expect(response.cookies.map((c) => c.name)).not.toContain("embed_session");
+  expect(sessionCookie(response)).toBe("embed_session=");
   const denied = cookiesOf({
     cookies: response.cookies.filter((c) => c.name === "embed_denied"),
   });
@@ -516,4 +528,122 @@ test("incomplete Discord config is rejected", async () => {
   await expect(fixture({ publicUrl: undefined })).rejects.toThrow(
     "Discord login",
   );
+});
+
+const revokedAccessToken = (fake: Provider) =>
+  fake.revokeRequests.map((form) => Object.fromEntries(form));
+const expectedRevoke = {
+  token: accessToken,
+  token_type_hint: "access_token",
+  client_id: "999999999999999999",
+  client_secret: clientSecret,
+};
+
+test("the authorization is revoked at Discord after an approved sign-in", async () => {
+  const { app, fake } = await fixture();
+  expect((await signIn(app)).response.headers.location).toBe("/");
+  expect(revokedAccessToken(fake)).toEqual([expectedRevoke]);
+});
+
+test("the authorization is revoked for an account that is refused", async () => {
+  const { app, fake } = await fixture();
+  fake.user = blockedUser;
+  expect((await signIn(app)).response.headers.location).toBe("/login");
+  expect(revokedAccessToken(fake)).toEqual([expectedRevoke]);
+});
+
+test.each([
+  ["the user lookup fails", (p: Provider) => (p.userStatus = 500)],
+  ["the user is unreadable", (p: Provider) => (p.user = undefined)],
+  [
+    "a broader scope than requested comes back",
+    (p: Provider) => (p.tokenBody = { ...p.tokenBody, scope: "guilds" }),
+  ],
+])("the authorization is revoked when %s", async (_name, break_) => {
+  const { app, fake } = await fixture();
+  break_(fake);
+  expect((await signIn(app)).response.headers.location).toBe(
+    "/login?auth=failed",
+  );
+  expect(revokedAccessToken(fake)).toEqual([expectedRevoke]);
+});
+
+test("nothing is revoked when Discord issued no token", async () => {
+  const { app, fake } = await fixture();
+  fake.tokenStatus = 400;
+  await signIn(app);
+  expect(fake.revokeRequests).toHaveLength(0);
+});
+
+test("the refresh token is revoked when no access token came back", async () => {
+  const { app, fake } = await fixture();
+  fake.tokenBody = { refresh_token: refreshToken, scope: "identify" };
+  await signIn(app);
+  expect(revokedAccessToken(fake)).toEqual([
+    {
+      ...expectedRevoke,
+      token: refreshToken,
+      token_type_hint: "refresh_token",
+    },
+  ]);
+});
+
+test("a failed revoke does not block sign-in and is logged without secrets", async () => {
+  const { app, fake, logs } = await fixture();
+  fake.revokeStatus = 500;
+  const { response } = await signIn(app);
+  expect(response.headers.location).toBe("/");
+  expect(sessionCookie(response)).toMatch(/^embed_session=/);
+  const output = logs.join("");
+  expect(output).toContain("Discord token revoke failed");
+  expect(output).toContain('"stage":"revoke"');
+  expect(output).toContain('"status":500');
+  for (const secret of [accessToken, refreshToken, clientSecret, code])
+    expect(output).not.toContain(secret);
+});
+
+test("an unreachable revoke endpoint is only logged", async () => {
+  const { app, logs } = await fixture();
+  const { state, cookie } = await begin(app);
+  // The lookup works, then Discord goes away before the revoke.
+  const real = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    String(input).endsWith("/revoke")
+      ? Promise.reject(new TypeError("fetch failed"))
+      : real(input, init),
+  );
+  cleanups.push(() => void vi.restoreAllMocks());
+  const response = await callback(app, { code, state }, cookie);
+  expect(response.headers.location).toBe("/");
+  expect(logs.join("")).toContain("Discord token revoke failed");
+  expect(logs.join("")).not.toContain(accessToken);
+});
+
+test.each([
+  ["callback", 10, () => "/api/auth/discord/callback?code=x&state=y"],
+  ["start", 20, () => "/api/auth/discord"],
+])(
+  "the %s sends a rate-limited browser to the login screen",
+  async (_name, limit, url) => {
+    const { app } = await fixture();
+    for (let i = 0; i < limit; i++) await app.inject(url());
+    const response = await app.inject(url());
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("/login?auth=busy");
+  },
+);
+
+test("a refused account ends the session that was already open", async () => {
+  const { app, fake } = await fixture();
+  const first = await signIn(app);
+  const open = sessionCookie(first.response);
+  expect((await sessionOf(app, open)).body.authenticated).toBe(true);
+  fake.user = blockedUser;
+  const { state, cookie } = await begin(app);
+  const response = await callback(app, { code, state }, cookie + "; " + open);
+  expect(response.headers.location).toBe("/login");
+  expect(String(response.headers["set-cookie"])).toMatch(/embed_session=;/);
+  const after = await sessionOf(app, open);
+  expect(after.body).toMatchObject({ authenticated: false, user: null });
+  expect((await app_status(app, open)).statusCode).toBe(401);
 });

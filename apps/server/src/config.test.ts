@@ -161,7 +161,6 @@ test("reads Discord login settings, with the secret file taking precedence", () 
       clientId: "999999999999999999",
       clientSecret: "fixture-secret",
       allowedUserIds: ["111111111111111111", "222222222222222222"],
-      authorizeUrl: "https://discord.com/oauth2/authorize",
     },
   });
   const dir = mkdtempSync(join(tmpdir(), "embed-discord-config-"));
@@ -172,12 +171,8 @@ test("reads Discord login settings, with the secret file taking precedence", () 
         ...discordEnv,
         INIT_CWD: dir,
         DISCORD_CLIENT_SECRET_FILE: "secret",
-        DISCORD_AUTHORIZE_URL: "http://127.0.0.1:9000/oauth2/authorize",
       }).discordLogin,
-    ).toMatchObject({
-      clientSecret: "file-secret",
-      authorizeUrl: "http://127.0.0.1:9000/oauth2/authorize",
-    });
+    ).toMatchObject({ clientSecret: "file-secret" });
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -207,11 +202,6 @@ test.each([
   [{ ALLOWED_USER_IDS: " , " }, "ALLOWED_USER_IDS"],
   [{ ALLOWED_USER_IDS: "111111111111111111,someone" }, "ALLOWED_USER_IDS"],
   [{ ALLOWED_USER_IDS: "@someone" }, "ALLOWED_USER_IDS"],
-  [{ DISCORD_AUTHORIZE_URL: "file:///tmp/authorize" }, "DISCORD_AUTHORIZE_URL"],
-  [
-    { DISCORD_AUTHORIZE_URL: "https://user:x@example.com/a" },
-    "DISCORD_AUTHORIZE_URL",
-  ],
 ] as [Record<string, string | undefined>, string][])(
   "fails startup for invalid Discord login settings %j",
   (override, field) => {

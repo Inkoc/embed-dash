@@ -152,13 +152,16 @@ change anything on their account.
 
 The instance keeps only the user ID, display name and avatar address for the
 12-hour session. Discord's access and refresh tokens are used once, during
-sign-in, to read the profile; they are then dropped, never written to the
-database or logs. They are not revoked, though, so they stay valid at Discord
-until they expire (about a week). A person can end that sooner under Discord's
-**User Settings → Authorized Apps**. Anyone who runs an instance (or modifies
-its code) could capture the token while it is valid, so sign in only to
-instances run by people you trust; with `identify`, the most that token can do
-is read the same profile.
+sign-in, to read the profile; they are never written to the database or logs.
+Right after the profile is read, the server asks Discord to revoke them, which
+ends the whole authorization, so the account no longer lists the app under
+**User Settings → Authorized Apps**. This also happens for accounts that are
+refused. The revoke is best-effort: if Discord cannot be reached the sign-in
+still completes, the failure is logged (status only, never the token), and the
+person can remove the app from Authorized Apps themselves. Anyone who runs an
+instance (or modifies its code) could capture the token during the moment it is
+valid, so sign in only to instances run by people you trust; with `identify`,
+the most that token can do is read the same profile.
 
 Each sign-in attempt carries a random `state` that is bound to the browser that
 started it, works once and expires after 10 minutes, so a callback link opened

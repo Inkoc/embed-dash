@@ -14,20 +14,8 @@ if (!address || typeof address === "string")
   throw new Error("No fake API address");
 const discordApiBase = `http://127.0.0.1:${address.port}/api`;
 const spaRoot = resolve("apps/web/dist");
-const app = await createApp(
-  {
-    botToken: "e2e-test-token",
-    authMode: process.env.E2E_AUTH_MODE === "none" ? "none" : "password",
-    adminPassword: "e2e-password",
-    host: "127.0.0.1",
-    port,
-    dataDir,
-    discordApiBase,
-  },
-  { spaRoot, logger: false },
-);
-await app.listen({ port, host: "127.0.0.1" });
 // A second instance in Discord login mode, one port above, for the sign-in specs.
+// It listens first so the main instance's health check covers both.
 const discordPort = port + 1;
 const discordApp = await createApp(
   {
@@ -42,12 +30,24 @@ const discordApp = await createApp(
       clientId: fakeOAuth.clientId,
       clientSecret: fakeOAuth.secret,
       allowedUserIds: ["111111111111111111"],
-      authorizeUrl: `http://127.0.0.1:${address.port}/oauth2/authorize`,
     },
   },
   { spaRoot, logger: false },
 );
 await discordApp.listen({ port: discordPort, host: "127.0.0.1" });
+const app = await createApp(
+  {
+    botToken: "e2e-test-token",
+    authMode: process.env.E2E_AUTH_MODE === "none" ? "none" : "password",
+    adminPassword: "e2e-password",
+    host: "127.0.0.1",
+    port,
+    dataDir,
+    discordApiBase,
+  },
+  { spaRoot, logger: false },
+);
+await app.listen({ port, host: "127.0.0.1" });
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {
     void Promise.all([app.close(), discordApp.close()]).then(() => {

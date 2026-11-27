@@ -5,7 +5,12 @@ import { Algorithm, hash, verify } from "@node-rs/argon2";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq, lte } from "drizzle-orm";
 import type Database from "better-sqlite3";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type {
+  FastifyError,
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+} from "fastify";
 import { snowflakeSchema, type SessionUser } from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import { authorizeUrl, fetchDiscordUser, OAuthError } from "./discord-oauth.js";
@@ -233,9 +238,31 @@ export async function registerAuth(
     });
     const retry = (reply: FastifyReply, reason: string) =>
       reply.redirect(`/login?auth=${reason}`);
+    // These routes are browser navigations, so hitting the limit lands on the
+    // login screen with an explanation rather than a raw JSON error.
+    const busy = async (
+      error: FastifyError,
+      _request: FastifyRequest,
+      reply: FastifyReply,
+    ) => {
+      if (error.statusCode !== 429) throw error;
+      return retry(reply, "busy");
+    };
+    const logFailure = (message: string, error: unknown) =>
+      app.log.warn(
+        {
+          stage: error instanceof OAuthError ? error.stage : undefined,
+          status: error instanceof OAuthError ? error.status : undefined,
+          ...safeErrorDetails(error instanceof Error ? error.cause : error),
+        },
+        message,
+      );
     app.get(
       discordPath,
-      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      {
+        config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+        errorHandler: busy,
+      },
       async (request, reply) => {
         const now = Date.now();
         for (const [state, expiresAt] of pending)
@@ -245,14 +272,19 @@ export async function registerAuth(
         pending.set(state, now + stateLifetime);
         reply.setCookie(stateCookieName, state, stateCookie(request));
         reply.clearCookie(deniedCookieName, { path: "/" });
-        return reply.redirect(authorizeUrl(login, publicUrl, state));
+        return reply.redirect(
+          authorizeUrl({ ...config, discordLogin: login, publicUrl }, state),
+        );
       },
     );
     // Discord sends the browser here with a GET, so the origin and CSRF checks
     // for writes cannot apply; the state bound to this browser takes their place.
     app.get(
       `${discordPath}/callback`,
-      { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+      {
+        config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+        errorHandler: busy,
+      },
       async (request, reply) => {
         const query = request.query as Record<string, unknown>;
         const bound = request.cookies[stateCookieName];
@@ -272,19 +304,16 @@ export async function registerAuth(
           user = await fetchDiscordUser(
             { ...config, discordLogin: login, publicUrl },
             code,
+            (error) => logFailure("Discord token revoke failed", error),
           );
         } catch (error) {
-          app.log.warn(
-            {
-              stage: error instanceof OAuthError ? error.stage : undefined,
-              status: error instanceof OAuthError ? error.status : undefined,
-              ...safeErrorDetails(error instanceof Error ? error.cause : error),
-            },
-            "Discord sign-in failed",
-          );
+          logFailure("Discord sign-in failed", error);
           return retry(reply, "failed");
         }
         if (!allowed.has(user.id)) {
+          // Otherwise the old identity would stay signed in behind this refusal.
+          remove(request);
+          reply.clearCookie(cookieName, { path: "/" });
           reply.setCookie(deniedCookieName, user.id, {
             ...cookieOptions(request),
             maxAge: stateLifetime / 1000,

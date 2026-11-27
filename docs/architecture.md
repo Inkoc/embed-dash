@@ -32,7 +32,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 
 - **config** — reads environment once at startup, resolves `*_FILE` secrets, fails fast with a clear message on invalid config.
 - **discord** — wraps `@discordjs/rest`: bot identity, guilds + channels (cached ~60 s, refreshable), effective permission computation, create/edit message (multipart), forum thread create, crosspost. Base URL is configurable so tests run against a fake Discord.
-- **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit. Discord mode runs the OAuth authorization-code flow (`identify` only, `state` bound to the browser by a cookie, single-use, 10-minute expiry), checks the user ID against the allowlist, then discards the Discord tokens; only the ID, display name and avatar address are kept in the session. The callback is a GET navigation, so `state` replaces the origin/CSRF checks there.
+- **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit. Discord mode runs the OAuth authorization-code flow (`identify` only, `state` bound to the browser by a cookie, single-use, 10-minute expiry), checks the user ID against the allowlist, then revokes the Discord tokens at Discord and discards them; only the ID, display name and avatar address are kept in the session. The callback is a GET navigation, so `state` replaces the origin/CSRF checks there.
 - **sends** — validates payload with the shared schema, stores the send and one target row per channel, delivers sequentially through the rate-limited client, records per-target result; retry and edit operate on target rows.
 - **scheduler** (M3) — a timer that claims due sends in a transaction and hands them to **sends**. A target whose outcome is unknown after a crash is marked `unknown`, not retried automatically.
 - **uploads** — multipart upload to `/data/uploads/<uuid>`, size limit from config; referenced from payloads by id.
@@ -84,10 +84,9 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 | `BOT_TOKEN_FILE` (or `BOT_TOKEN`) | — | Required |
 | `ADMIN_PASSWORD_FILE` (or `ADMIN_PASSWORD`) | — | Required for `password` |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET_FILE` (or `DISCORD_CLIENT_SECRET`), `PUBLIC_URL`, `ALLOWED_USER_IDS` | — | Required for `discord`; the redirect URI is `<PUBLIC_URL>/api/auth/discord/callback` |
-| `DISCORD_AUTHORIZE_URL` | Discord's | Tests only |
 | `DATA_DIR` | `/data` | SQLite file and uploads |
 | `MAX_UPLOAD_MB` | `10` | Per file; total request capped at 25 MB |
-| `DISCORD_API_BASE` | Discord's | Tests only; also serves the OAuth token and user requests |
+| `DISCORD_API_BASE` | Discord's | Tests only; also serves the OAuth token, revoke and user requests, and the consent page is derived from its host |
 
 ## Key decisions
 

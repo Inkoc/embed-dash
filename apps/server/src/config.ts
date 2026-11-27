@@ -6,7 +6,6 @@ export interface DiscordLoginConfig {
   clientId: string;
   clientSecret: string;
   allowedUserIds: string[];
-  authorizeUrl: string;
 }
 export interface Config {
   botToken: string;
@@ -177,27 +176,9 @@ function readDiscordLogin(
     throw new Error(
       "ALLOWED_USER_IDS must be a comma-separated list of Discord user IDs",
     );
-  const authorizeUrl =
-    env.DISCORD_AUTHORIZE_URL ?? "https://discord.com/oauth2/authorize";
-  try {
-    const url = new URL(authorizeUrl);
-    if (
-      !["http:", "https:"].includes(url.protocol) ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash
-    )
-      throw new Error();
-  } catch {
-    throw new Error(
-      "DISCORD_AUTHORIZE_URL must be an HTTP(S) URL without credentials, query or fragment",
-    );
-  }
   return {
     clientId,
     clientSecret,
     allowedUserIds: [...new Set(allowedUserIds)],
-    authorizeUrl,
   };
 }
