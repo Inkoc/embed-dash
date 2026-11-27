@@ -7,7 +7,9 @@ import {
   useNavigate,
 } from "react-router";
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
-import { DraftProvider } from "./compose/draft";
+import { DraftProvider, useDraft } from "./compose/draft";
+import { EditorStateProvider, useEditorState } from "./compose/editorState";
+import { SelectionProvider } from "./send/selection";
 import { SendView } from "./send/SendView";
 import { SessionGate } from "./shell/SessionGate";
 import { BotStatus } from "./shell/BotStatus";
@@ -23,7 +25,11 @@ export function App() {
   return (
     <SessionGate>
       <DraftProvider>
-        <Shell />
+        <EditorStateProvider>
+          <SelectionProvider>
+            <Shell />
+          </SelectionProvider>
+        </EditorStateProvider>
       </DraftProvider>
     </SessionGate>
   );
@@ -35,6 +41,9 @@ function Shell() {
   const view: View = location.pathname === "/send" ? "send" : "compose";
   const { theme, toggle } = useTheme();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const { issues } = useDraft();
+  const { reveal } = useEditorState();
+  const firstIssue = issues[0]?.path;
 
   // The incoming view slides in from the side of its tab. Nothing waits for the
   // outgoing view, so a click or key always lands on the new view at once.
@@ -64,7 +73,9 @@ function Shell() {
       if (action === "forward" && view === "compose") {
         event.preventDefault();
         pressKey("forward");
-        void navigate("/send");
+        // A draft Discord would reject doesn't go forward; the shortcut shows the first problem instead.
+        if (firstIssue) reveal(firstIssue);
+        else void navigate("/send");
       } else if (action === "back" && view === "send") {
         event.preventDefault();
         pressKey("back");
@@ -85,7 +96,7 @@ function Shell() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [view, navigate]);
+  }, [view, navigate, firstIssue, reveal]);
 
   return (
     <>

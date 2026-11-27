@@ -1,0 +1,71 @@
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--bleed);
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.head:hover,
+.disclosure[data-open] > .head {
+  background: var(--sheet-2);
+}
+.head:focus-visible {
+  outline-offset: calc(var(--ring-width) * -1);
+}
+/* the open/closed cue: a chevron that turns over when the row opens */
+.chevron {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-left: auto;
+  color: var(--ink-2);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.disclosure[data-open] > .head .chevron {
+  transform: rotate(180deg);
+}
+.fix {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-strong);
+  color: var(--danger);
+}
+.fix svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.fix + .chevron {
+  margin-left: 0;
+}
+
+/* the body opens with the row; closed, it is out of the tab order and the accessibility tree */
+.body {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--dur-move) var(--ease-out),
+    visibility 0s linear var(--dur-move);
+}
+.disclosure[data-open] > .body {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--dur-move) var(--ease-out),
+    visibility 0s;
+}
+.inner {
+  min-height: 0;
+  overflow: hidden;
+}
