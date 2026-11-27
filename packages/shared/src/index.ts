@@ -736,3 +736,9 @@ export const historyDetailSchema = sendResultSchema.extend({
   createdAt: z.number(),
 });
 export type HistoryDetail = z.infer<typeof historyDetailSchema>;
+
+export {
+  importMessageJson,
+  exportMessageJson,
+  type JsonImportResult,
+} from "./messageJson.js";

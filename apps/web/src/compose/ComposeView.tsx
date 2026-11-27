@@ -27,6 +27,7 @@ import type { Theme } from "../theme";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
+import { MessageJson } from "./MessageJson";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
@@ -53,6 +54,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
   const location = useLocation();
   const navigate = useNavigate();
   const revealPath = (location.state as { reveal?: string } | null)?.reveal;
+  const [importNotices, setImportNotices] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLElement>(null);
@@ -143,7 +145,31 @@ export function ComposeView({ theme }: { theme: Theme }) {
               Clear
             </button>
           </div>
+          <div className={styles.draftState}>
+            <MessageJson onImported={setImportNotices} />
+          </div>
         </div>
+
+        {importNotices !== null && (
+          <div
+            id="json-result"
+            className={styles.importResult}
+            role="status"
+            tabIndex={-1}
+          >
+            <p>Message imported. The preview has been updated.</p>
+            {importNotices.length > 0 && (
+              <>
+                <b>Compatibility notice</b>
+                <ul>
+                  {importNotices.map((notice) => (
+                    <li key={notice}>{notice}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
 
         {!saved && (
           <p className={styles.saveFailed} role="alert">

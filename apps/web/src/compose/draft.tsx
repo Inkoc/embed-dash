@@ -321,6 +321,7 @@ interface DraftContextValue {
   saved: boolean;
   /** Starts a blank draft and deletes the cleared draft's files from the server. */
   clear: () => void;
+  replace: (draft: Draft) => void;
   /** Counts clears, so work started for an earlier draft can tell it is stale. */
   generation: number;
   isCurrent: (generation: number) => boolean;
@@ -330,12 +331,18 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 /** Keeps the draft above the views, so switching to Send and back loses nothing, and saves it in the browser. */
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(loadDraft);
+  const [generation, setGeneration] = useState(0);
+  // Read by upload callbacks that finish after a render, so they see the latest clear.
+  const latest = useRef(0);
+
   const [editing, setEditing] = useState<HistoryDetail | null>(null);
   const [baseline, setBaseline] = useState("");
   const previousDraft = useRef<Draft | null>(null);
   const beginEdit = useCallback(
     (send: HistoryDetail) => {
       previousDraft.current = draft;
+      latest.current += 1;
+      setGeneration(latest.current);
       setEditing(send);
       setBaseline(JSON.stringify(toMessage(withIds(send.payload))));
       setDraft(withIds(send.payload));
@@ -343,6 +350,8 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     [draft],
   );
   const endEdit = useCallback(() => {
+    latest.current += 1;
+    setGeneration(latest.current);
     setEditing(null);
     setDraft(previousDraft.current ?? blankDraft());
   }, []);
@@ -364,18 +373,19 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   }, [draft, editing]);
 
   const client = useQueryClient();
-  const [generation, setGeneration] = useState(0);
-  // Read by upload callbacks that finish after a render, so they see the latest clear.
-  const latest = useRef(0);
-  const clear = useCallback(() => {
-    const csrfToken =
-      client.getQueryData<Session>(["session"])?.csrfToken ?? "";
-    for (const file of draft.attachments)
-      void discardUpload(file.id, csrfToken);
-    latest.current += 1;
-    setGeneration(latest.current);
-    setDraft(blankDraft());
-  }, [client, draft.attachments]);
+  const replace = useCallback(
+    (next: Draft) => {
+      const csrfToken =
+        client.getQueryData<Session>(["session"])?.csrfToken ?? "";
+      for (const file of draft.attachments)
+        void discardUpload(file.id, csrfToken);
+      latest.current += 1;
+      setGeneration(latest.current);
+      setDraft(next);
+    },
+    [client, draft.attachments],
+  );
+  const clear = useCallback(() => replace(blankDraft()), [replace]);
   const isCurrent = useCallback(
     (value: number) => value === latest.current,
     [],
@@ -388,6 +398,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       issues,
       saved,
       clear,
+      replace,
       generation,
       isCurrent,
       editing,
@@ -401,6 +412,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       issues,
       saved,
       clear,
+      replace,
       generation,
       isCurrent,
       editing,

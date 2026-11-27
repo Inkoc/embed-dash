@@ -31,7 +31,7 @@ import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
 type Discord = {
-  editMessage?: (
+  editMessage: (
     channelId: string,
     messageId: string,
     body: ReturnType<typeof discordMessage>,
@@ -284,7 +284,7 @@ export async function registerSends(
       record(target, { status: "posting" });
       try {
         const messageId = editing
-          ? await discord.editMessage!(
+          ? await discord.editMessage(
               target.channelId,
               target.messageId!,
               body,
