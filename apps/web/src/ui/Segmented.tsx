@@ -33,7 +33,19 @@ export function Segmented({ activeKey, children, className, ...aria }: Props) {
     place();
     requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(place);
+    // A resize (the bar reflowing onto two rows) moves the thumb with its item
+    // at once; only choosing another item slides it. The observer also reports
+    // once on observe, which must not cut short a slide that has just started.
+    let first = true;
+    const observer = new ResizeObserver(() => {
+      if (first) {
+        first = false;
+        return;
+      }
+      delete thumbEl.dataset.ready;
+      place();
+      requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));
+    });
     observer.observe(trackEl);
     return () => observer.disconnect();
   }, [activeKey]);

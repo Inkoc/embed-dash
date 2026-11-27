@@ -81,3 +81,10 @@ export const sendTargets = sqliteTable(
     ),
   ],
 );
+
+export const templates = sqliteTable("templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

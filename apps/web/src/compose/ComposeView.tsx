@@ -20,10 +20,13 @@ import {
   discordLimits,
   messageEmbedTextLength,
   uploadLimits,
+  type Template,
 } from "@embed-dash/shared";
 import { useBot } from "../bot";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import type { Theme } from "../theme";
+import { SavedNote, SaveTemplate } from "../templates/SaveTemplate";
+import type { StartedFrom } from "../templates/TemplatesView";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
@@ -45,9 +48,17 @@ export function ComposeView({ theme }: { theme: Theme }) {
   const bot = useBot();
   const location = useLocation();
   const navigate = useNavigate();
-  const revealPath = (location.state as { reveal?: string } | null)?.reveal;
+  const arrivalState = location.state as {
+    reveal?: string;
+    started?: StartedFrom;
+  } | null;
+  const revealPath = arrivalState?.reveal;
+  // Read once on arrival (each view arrives fresh); the history entry's state is
+  // then cleared so a reload doesn't repeat the note.
+  const [started] = useState(arrivalState?.started);
   const [importNotices, setImportNotices] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [savedTemplate, setSavedTemplate] = useState<Template | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLElement>(null);
   const editor = useRef<HTMLDivElement>(null);
@@ -65,6 +76,11 @@ export function ComposeView({ theme }: { theme: Theme }) {
     reveal(revealPath);
     void navigate(location.pathname, { replace: true, state: null });
   }, [revealPath, reveal, navigate, location.pathname]);
+
+  useEffect(() => {
+    if (!arrivalState?.started) return;
+    void navigate(location.pathname, { replace: true, state: null });
+  }, [arrivalState?.started, navigate, location.pathname]);
 
   // On phones Esc steps back from the preview pane to the editor.
   useEffect(() => {
@@ -122,6 +138,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
                 </>
               )}
             </p>
+            <SaveTemplate className={styles.quiet} onSaved={setSavedTemplate} />
             <button
               type="button"
               className={styles.quiet}
@@ -136,6 +153,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
           </div>
         </div>
 
+        <SavedNote saved={savedTemplate} />
+        {started && <StartedNote started={started} />}
         {importNotices !== null && (
           <div
             id="json-result"
@@ -360,6 +379,33 @@ export function ComposeView({ theme }: { theme: Theme }) {
         </p>
       </ConfirmDialog>
     </section>
+  );
+}
+
+/** Which template the message came from and, if any of its files are gone, which. */
+function StartedNote({ started }: { started: StartedFrom }) {
+  const missing = started.missing.length;
+  return (
+    <p
+      className={styles.started}
+      role={missing ? "alert" : "status"}
+      data-missing={missing || undefined}
+    >
+      {missing > 0 && <CircleAlert aria-hidden="true" />}
+      <span>
+        Started from template <b>{started.name}</b>.
+        {missing > 0 && (
+          <>
+            {" "}
+            {missing === 1
+              ? "1 of its files is no longer on the server: "
+              : `${missing} of its files are no longer on the server: `}
+            <b>{started.missing.join(", ")}</b>. Remove or replace{" "}
+            {missing === 1 ? "it" : "them"} under Files before sending.
+          </>
+        )}
+      </span>
+    </p>
   );
 }
 
