@@ -182,6 +182,7 @@ export function Tray({
       className={styles.tray}
       aria-labelledby="tray-title"
       data-open={open || undefined}
+      data-empty={entries.length === 0 || undefined}
     >
       <div className={styles.head}>
         <h3 id="tray-title" ref={heading} tabIndex={-1}>

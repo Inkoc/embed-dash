@@ -1,11 +1,13 @@
 /* The tray: deep ink, a rolling count, slips grouped by server. */
+/* A column whose slips scroll on their own, so the Send action never leaves view. */
 .tray {
   position: sticky;
   top: calc(var(--bar-height) + var(--space-4));
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
   max-height: calc(100dvh - var(--bar-height) - var(--space-6));
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-5);
   border-radius: var(--radius-lg);
   background: var(--tray);
@@ -68,7 +70,20 @@
 
 .slips {
   display: grid;
+  flex: 0 1 auto;
+  align-content: start;
   gap: var(--space-3);
+  min-height: 0;
+  overflow: auto;
+  /* room for focus rings on the slips' buttons */
+  margin: calc(var(--space-1) * -1);
+  padding: var(--space-1);
+  scrollbar-color: var(--tray-line) var(--tray);
+}
+.head,
+.go,
+.note {
+  flex: none;
 }
 .slips ul {
   display: grid;
@@ -268,6 +283,17 @@
   }
   .tray:not([data-open]) .slips,
   .tray:not([data-open]) .note {
+    display: none;
+  }
+  /* nothing ticked: a slim bar, so the list isn't covered for nothing */
+  .tray[data-empty] {
+    padding-block: var(--space-2)
+      calc(var(--space-2) + env(safe-area-inset-bottom));
+  }
+  .tray[data-empty] .expand,
+  .tray[data-empty] .go,
+  .tray[data-empty] .slips,
+  .tray[data-empty] .note {
     display: none;
   }
 }

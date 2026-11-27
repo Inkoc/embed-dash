@@ -120,6 +120,16 @@ export const fakeGuilds: FakeGuild[] = [
       0,
     ]),
   ),
+  // Enough servers that the rail gets its filter and the phone strip has to scroll.
+  ...[
+    "DE",
+    "FR",
+    "NA",
+    "Speedruns",
+    "Tidal Caves",
+    "Oil Economy",
+    "Archive",
+  ].map((region, i) => guild(6 + i, `Lanternfall ${region}`, [["lobby", 0]])),
 ];
 
 export function startFakeDiscord(port: number) {

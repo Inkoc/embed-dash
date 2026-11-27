@@ -21,7 +21,7 @@ test("finds channels by server name and by ID, and ticks two into the tray", asy
   await page.setViewportSize({ width: 1280, height: 900 });
   const errors = collectErrors(page);
   await page.goto("/send");
-  await expect(drawers(page)).toHaveCount(5);
+  await expect(drawers(page)).toHaveCount(12);
 
   // / focuses the search from anywhere on the page.
   await page.locator("body").click({ position: { x: 5, y: 300 } });
@@ -94,7 +94,7 @@ test("finds channels by server name and by ID, and ticks two into the tray", asy
   await page
     .getByRole("button", { name: /Main channel of each server/ })
     .click();
-  await expect(tray(page)).toContainText("6 channels in 5 servers");
+  await expect(tray(page)).toContainText("13 channels in 12 servers");
   await page.getByRole("button", { name: /^Clear \d/ }).click();
   await expect(tray(page)).toContainText("Nothing ticked yet");
 
@@ -105,30 +105,42 @@ test("finds channels by server name and by ID, and ticks two into the tray", asy
   expect(errors).toEqual([]);
 });
 
-test("the picker fits a 360 px phone, with the tray as a bottom sheet", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 360, height: 780 });
-  await page.goto("/send");
-  const general = drawer(page, "Lanternfall Community").getByRole("checkbox", {
-    name: "general",
+for (const width of [360, 768])
+  test(`the picker fits ${width} px without sideways scrolling`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 780 });
+    await page.goto("/send");
+    const sheet = tray(page);
+    await expect(sheet).toContainText("Nothing ticked yet");
+    // The server strip scrolls inside itself; the page never scrolls sideways.
+    await expect(
+      page.getByRole("navigation", { name: "Servers" }).getByRole("button"),
+    ).toHaveCount(12);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    // An empty tray is a slim bar; the first tick brings the Send action.
+    await expect(sheet.getByRole("button", { name: "Send" })).toBeHidden();
+    await drawer(page, "Lanternfall Community")
+      .getByRole("checkbox", { name: "general" })
+      .check();
+    await expect(sheet).toContainText("1 channel in 1 server");
+    // The sheet rises into place, then sits on the bottom edge.
+    await expect
+      .poll(async () => {
+        const box = (await sheet.boundingBox())!;
+        return Math.round(box.y + box.height);
+      })
+      .toBe(780);
+    await expect(sheet.getByRole("listitem")).toBeHidden();
+    await sheet.getByRole("button", { name: "Show ticked channels" }).click();
+    await expect(sheet.getByRole("listitem")).toContainText("#general");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   });
-  await general.check();
-  const sheet = tray(page);
-  await expect(sheet).toContainText("1 channel in 1 server");
-  // The sheet rises into place, then sits on the bottom edge.
-  await expect
-    .poll(async () => {
-      const box = (await sheet.boundingBox())!;
-      return Math.round(box.y + box.height);
-    })
-    .toBe(780);
-  await expect(sheet.getByRole("listitem")).toBeHidden();
-  await sheet.getByRole("button", { name: "Show ticked channels" }).click();
-  await expect(sheet.getByRole("listitem")).toContainText("#general");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-});
