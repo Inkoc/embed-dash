@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
+  historyQuerySchema,
   canPost,
   canSendTo,
   deliveryErrors,
@@ -161,7 +162,7 @@ export async function registerSends(
       );
   }
 
-  const readSend = (id: string): SendResult => {
+  const readSend = (id: string) => {
     const send = db.select().from(sends).where(eq(sends.id, id)).get()!;
     const targets = db
       .select()
@@ -171,6 +172,8 @@ export async function registerSends(
       .all();
     return {
       id,
+      payload: messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
+      createdAt: send.createdAt,
       status: send.status as SendResult["status"],
       targets: targets.map((target) => ({
         id: target.id,
@@ -409,6 +412,90 @@ export async function registerSends(
       listing,
     );
     return reply.code(202).send({ id: sendId });
+  });
+
+  app.get("/api/sends", async (request, reply) => {
+    const parsed = historyQuerySchema.safeParse(request.query);
+    if (!parsed.success)
+      return reply
+        .code(400)
+        .send(sendError("INVALID_REQUEST", "The history filters are invalid."));
+    const query = parsed.data;
+    const conditions = ["s.status IN ('sending', 'done', 'partial', 'failed')"];
+    const params: (string | number)[] = [];
+    if (query.status) {
+      conditions.push("s.status = ?");
+      params.push(query.status);
+    }
+    if (query.from) {
+      conditions.push("s.created_at >= ?");
+      params.push(Date.parse(query.from));
+    }
+    if (query.to) {
+      conditions.push("s.created_at < ?");
+      params.push(Date.parse(query.to) + 86400000);
+    }
+    if (query.guildId || query.channelId) {
+      const targetConditions = ["t.send_id = s.id"];
+      if (query.guildId) {
+        targetConditions.push("t.guild_id = ?");
+        params.push(query.guildId);
+      }
+      if (query.channelId) {
+        targetConditions.push("t.channel_id = ?");
+        params.push(query.channelId);
+      }
+      conditions.push(
+        `EXISTS (SELECT 1 FROM send_targets t WHERE ${targetConditions.join(" AND ")})`,
+      );
+    }
+    if (query.q) {
+      // Escape LIKE metacharacters so an operator searches literal message text.
+      const pattern = `%${query.q.replace(/[!%_]/g, "!$&")}%`;
+      conditions.push(
+        "(s.search_text LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (t.guild_name LIKE ? ESCAPE '!' OR t.channel_name LIKE ? ESCAPE '!' OR t.guild_id LIKE ? ESCAPE '!' OR t.channel_id LIKE ? ESCAPE '!')))",
+      );
+      params.push(pattern, pattern, pattern, pattern, pattern);
+    }
+    const rows = sqlite
+      .prepare(
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
+      id: string;
+      payload_json: string;
+      created_at: number;
+      status: string;
+      channel_count: number;
+    }[];
+    const destinations = sqlite
+      .prepare(
+        "SELECT DISTINCT t.guild_id AS guildId, t.guild_name AS guildName, t.channel_id AS channelId, t.channel_name AS channelName FROM send_targets t JOIN sends s ON s.id = t.send_id WHERE s.status IN ('sending', 'done', 'partial', 'failed') ORDER BY t.guild_name, t.channel_name",
+      )
+      .all();
+    return {
+      entries: rows.slice(0, query.limit).map((row) => {
+        const payload = messagePayloadSchema.parse(
+          JSON.parse(row.payload_json),
+        );
+        return {
+          id: row.id,
+          title:
+            payload.embeds.find((embed) => embed.title.trim())?.title ||
+            payload.content.split("\n").find((line) => line.trim()) ||
+            payload.embeds
+              .find((embed) => embed.description.trim())
+              ?.description.split("\n")[0] ||
+            "Untitled message",
+          color: payload.embeds[0]?.color ?? "",
+          createdAt: row.created_at,
+          channelCount: row.channel_count,
+          status: row.status,
+        };
+      }),
+      hasMore: rows.length > query.limit,
+      destinations,
+    };
   });
 
   const idParams = {

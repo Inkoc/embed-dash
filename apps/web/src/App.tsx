@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -20,7 +20,8 @@ import { pressKey, shortcutFor } from "./shortcuts";
 import { useTheme } from "./theme";
 import styles from "./App.module.css";
 
-const order: Record<View, number> = { compose: 0, send: 1 };
+const HistoryView = lazy(() => import("./history/HistoryView"));
+const order: Record<View, number> = { compose: 0, send: 1, history: 2 };
 
 export function App() {
   return (
@@ -41,7 +42,11 @@ export function App() {
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
-  const view: View = location.pathname === "/send" ? "send" : "compose";
+  const view: View = location.pathname.startsWith("/history")
+    ? "history"
+    : location.pathname === "/send"
+      ? "send"
+      : "compose";
   const { theme, toggle } = useTheme();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const { issues } = useDraft();
@@ -86,6 +91,14 @@ function Shell() {
         event.preventDefault();
         pressKey("back");
         void navigate("/");
+      } else if (
+        action === "back" &&
+        view === "history" &&
+        location.pathname !== "/history"
+      ) {
+        event.preventDefault();
+        pressKey("back");
+        void navigate(`/history${location.search}`);
       } else if (action === "search") {
         const search = document.querySelector<HTMLElement>(
           "[data-shortcut='search']",
@@ -102,7 +115,7 @@ function Shell() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [view, navigate, firstIssue, reveal]);
+  }, [view, navigate, firstIssue, reveal, location.pathname, location.search]);
 
   return (
     <>
@@ -126,6 +139,22 @@ function Shell() {
           <Routes>
             <Route path="/" element={<ComposeView theme={theme} />} />
             <Route path="/send" element={<SendView />} />
+            <Route
+              path="/history"
+              element={
+                <Suspense fallback={<p role="status">Loading history…</p>}>
+                  <HistoryView theme={theme} />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/history/:id"
+              element={
+                <Suspense fallback={<p role="status">Loading history…</p>}>
+                  <HistoryView theme={theme} />
+                </Suspense>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
