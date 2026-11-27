@@ -30,6 +30,7 @@ const guild = (id: string, name: string, channels: string[]): Guild => ({
 });
 const listing = (guilds: Guild[]): GuildsResponse => ({
   guilds,
+  unavailable: [],
   fetchedAt: "2026-11-27T10:00:00.000Z",
 });
 

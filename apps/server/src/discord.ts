@@ -18,10 +18,11 @@ import {
   type GuildsResponse,
 } from "@embed-dash/shared";
 import type { Config } from "./config.js";
+import { safeErrorDetails } from "./errors.js";
 import { missingPermissions } from "./permissions.js";
 
 /** Discord's maximum page size for the current user's guilds. */
-const guildPageSize = 200;
+const maxGuildPageSize = 200;
 const cacheMs = 60_000;
 /** Guilds fetched at once; the REST client still queues per rate-limit bucket. */
 const guildConcurrency = 4;
@@ -32,7 +33,11 @@ const kinds: Partial<Record<ChannelType, ChannelKind>> = {
   [ChannelType.GuildForum]: "forum",
 };
 
-export function createDiscord(config: Config): {
+export function createDiscord(
+  config: Config,
+  // Tests page through a handful of guilds instead of hundreds of rate-limited calls.
+  { guildPageSize = maxGuildPageSize } = {},
+): {
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
 } {
@@ -82,30 +87,54 @@ export function createDiscord(config: Config): {
       if (page.length < guildPageSize) break;
       after = page.at(-1)!.id;
     }
-    const guilds: Guild[] = new Array(partials.length);
+    const guilds: (Guild | undefined)[] = new Array(partials.length);
+    const unavailable: GuildsResponse["unavailable"] = [];
     let next = 0;
+    let failed = false;
     const worker = async () => {
-      while (next < partials.length) {
+      // After a fatal failure the listing is lost, so the others stop spending rate limit on it.
+      while (!failed && next < partials.length) {
         const index = next++;
-        guilds[index] = await fetchGuild(api, partials[index].id, bot.id);
+        const partial = partials[index];
+        try {
+          guilds[index] = await fetchGuild(api, partial.id, bot.id);
+        } catch (error) {
+          // The bot was removed or lost access mid-listing: list the rest.
+          const { status } = safeErrorDetails(error);
+          if (status === 403 || status === 404)
+            unavailable.push({ id: partial.id, name: partial.name });
+          else {
+            failed = true;
+            throw error;
+          }
+        }
       }
     };
     await Promise.all(Array.from({ length: guildConcurrency }, worker));
-    return { guilds, fetchedAt: new Date().toISOString() };
+    return {
+      guilds: guilds.filter((guild) => guild !== undefined),
+      unavailable,
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
-  let cache: { at: number; value: Promise<GuildsResponse> } | undefined;
+  // One listing at a time, shared by every caller, refresh or not. The cached
+  // result is kept when a refresh fails and expires a minute after it arrived.
+  let cached: { at: number; value: GuildsResponse } | undefined;
+  let inFlight: Promise<GuildsResponse> | undefined;
   function listGuilds({ refresh = false } = {}) {
-    if (!cache || refresh || Date.now() - cache.at > cacheMs) {
-      const value = fetchGuilds();
-      const entry = { at: Date.now(), value };
-      cache = entry;
-      // A failure is reported once and never served from the cache.
-      value.catch(() => {
-        if (cache === entry) cache = undefined;
+    if (inFlight) return inFlight;
+    if (cached && !refresh && Date.now() - cached.at <= cacheMs)
+      return Promise.resolve(cached.value);
+    inFlight = fetchGuilds()
+      .then((value) => {
+        cached = { at: Date.now(), value };
+        return value;
+      })
+      .finally(() => {
+        inFlight = undefined;
       });
-    }
-    return cache.value;
+    return inFlight;
   }
 
   return { getBot, listGuilds };

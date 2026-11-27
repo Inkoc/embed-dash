@@ -55,12 +55,7 @@ interface Props {
   mainIds: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
   onToggleCollapsed: (guildId: string) => void;
-  onTick: (
-    channel: GuildChannel,
-    guild: Guild,
-    on: boolean,
-    row: HTMLElement,
-  ) => void;
+  onTick: (channel: GuildChannel, on: boolean, row: HTMLElement) => void;
   onTickMany: (ids: string[], on: boolean) => void;
   onLeaveTop: () => void;
   onInView: (guildId: string) => void;
@@ -359,7 +354,7 @@ const Row = memo(function Row({
           aria-disabled={reason ? true : undefined}
           onChange={(event) => {
             if (reason) return;
-            onTick(channel, guild, event.target.checked, event.target);
+            onTick(channel, event.target.checked, event.target);
           }}
         />
         <span className={styles.box} aria-hidden="true">

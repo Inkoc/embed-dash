@@ -1,4 +1,4 @@
-import { canPost, type Guild, type GuildChannel } from "@embed-dash/shared";
+import type { Guild, GuildChannel } from "@embed-dash/shared";
 
 /** Half-open [start, end) character ranges to mark as search hits. */
 export type Ranges = readonly (readonly [number, number])[];
@@ -121,8 +121,6 @@ export function initials(name: string): string {
   const letters = second ? head(first, 1) + head(second, 1) : head(first, 2);
   return letters.toUpperCase();
 }
-
-export const postable = (guild: Guild) => guild.channels.filter(canPost);
 
 export const kindLabel: Record<GuildChannel["kind"], string> = {
   text: "Text",

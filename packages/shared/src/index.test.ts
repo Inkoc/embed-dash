@@ -103,6 +103,7 @@ test("parses the guild list the server returns", () => {
           channels: [{ id: "2", name: "news", kind: "forum", missing: [] }],
         },
       ],
+      unavailable: [],
       fetchedAt: "2026-11-27T10:00:00.000Z",
     }).guilds[0].channels[0].kind,
   ).toBe("forum");

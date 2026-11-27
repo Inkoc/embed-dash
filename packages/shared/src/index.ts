@@ -102,6 +102,8 @@ export type Guild = z.infer<typeof guildSchema>;
 
 export const guildsResponseSchema = z.object({
   guilds: z.array(guildSchema),
+  /** Servers the bot is listed in but couldn't read (removed or lost access mid-listing). */
+  unavailable: z.array(z.object({ id: z.string(), name: z.string() })),
   fetchedAt: z.iso.datetime(),
 });
 export type GuildsResponse = z.infer<typeof guildsResponseSchema>;

@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   ExternalLink,
   ListChecks,
+  Lock,
   RefreshCw,
   Search,
   Star,
@@ -104,6 +105,20 @@ export function SendView() {
           {new Date(data.fetchedAt).toLocaleTimeString()}.
         </p>
       )}
+      {data && data.unavailable.length > 0 && (
+        <p className={styles.unavailable}>
+          <Lock aria-hidden="true" />
+          <span>
+            Couldn’t read{" "}
+            {data.unavailable.length === 1
+              ? "1 server"
+              : `${data.unavailable.length} servers`}{" "}
+            the bot is listed in:{" "}
+            <b>{data.unavailable.map((g) => g.name).join(", ")}</b>. The bot may
+            have been removed or lost access; refresh to try again.
+          </span>
+        </p>
+      )}
       {body}
     </section>
   );
@@ -140,7 +155,7 @@ function Picker({ guilds }: { guilds: Guild[] }) {
   const hits = drawers.reduce((n, d) => n + d.channels.length, 0);
 
   const onTick = useCallback(
-    (channel: GuildChannel, _guild: Guild, on: boolean, row: HTMLElement) => {
+    (channel: GuildChannel, on: boolean, row: HTMLElement) => {
       if (on)
         flight.current = {
           id: channel.id,

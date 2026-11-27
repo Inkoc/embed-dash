@@ -55,6 +55,23 @@
   color: var(--danger);
 }
 
+.unavailable {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.unavailable svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  translate: 0 0.15em;
+}
+.unavailable b {
+  color: var(--ink);
+}
+
 .quiet {
   display: inline-flex;
   align-items: center;
@@ -447,6 +464,12 @@
 }
 @media (min-width: 1101px) {
   .lookup > nav {
+    display: none;
+  }
+}
+/* the picks' own label gives way so all three fit one row beside the rail and tray */
+@media (max-width: 1400px) {
+  .picks > span {
     display: none;
   }
 }
