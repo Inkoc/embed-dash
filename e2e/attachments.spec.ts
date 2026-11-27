@@ -72,9 +72,10 @@ test("files can be added with the keyboard and a refused file says why", async (
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Choose files" }).focus();
+  const choose = page.getByRole("button", { name: "Choose files" });
   const chooser = page.waitForEvent("filechooser");
-  await page.keyboard.press("Enter");
+  // Focus and key press in one step: the app may still move focus while it settles.
+  await choose.press("Enter");
   await (
     await chooser
   ).setFiles({
