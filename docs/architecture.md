@@ -97,4 +97,4 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 - **Edit is per send, not per message.** One send to N channels is one history entry; editing updates all copies and shows per-copy results.
 - **Mentions suppressed by default** (`allowed_mentions.parse = []` on create and edit); the composer can opt in per send.
 - **Delivery is sequential per send** through the client's rate limiter; parallelism is not needed for tens of channels.
-- **Licence: MIT.**
+- **Licence: AGPL-3.0.** Copies run as a network service with modifications must share their source, which suits a self-hosted server app.

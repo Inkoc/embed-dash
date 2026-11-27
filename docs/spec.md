@@ -24,7 +24,7 @@ embed-dash is a self-hosted web app for composing Discord messages with rich emb
 
 ### M0 — Baseline
 - App runs with `docker compose up` on port 8742, reads the bot token from a Compose secret and shows which bot it is connected to.
-- The composer screen exists in the chosen visual direction.
+- The composer screen exists in the chosen visual direction, with dark and light themes (system preference by default, switchable and remembered).
 
 ### M1 — Compose, preview, pick, send (core actions)
 - Embed editor covering every embed property, multiple embeds, live limit counters and validation.
