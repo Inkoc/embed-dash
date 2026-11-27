@@ -185,6 +185,9 @@ test("the composer passes axe and loads cleanly under the CSP", async ({
     await page.evaluate(() => document.fonts.check("1rem 'Atkinson Next'")),
   ).toBe(true);
   expect(await axe(page)).toEqual([]);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(await axe(page)).toEqual([]);
   expect(errors).toEqual([]);
 });
 
