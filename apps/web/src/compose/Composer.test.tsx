@@ -39,8 +39,16 @@ afterEach(() => {
 });
 
 function renderApp({ example = true } = {}) {
+  // Signed in already: the session gate is covered by the app's own tests.
+  const client = new QueryClient();
+  client.setQueryDefaults(["session"], { staleTime: Infinity });
+  client.setQueryData(["session"], {
+    authenticated: true,
+    insecure: false,
+    csrfToken: "fixture",
+  });
   const view = render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <MemoryRouter>
         <App />
       </MemoryRouter>

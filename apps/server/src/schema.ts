@@ -28,3 +28,10 @@ export const sends = sqliteTable(
     ),
   ],
 );
+
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(),
+  subject: text("subject").notNull(),
+  csrfToken: text("csrf_token").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});

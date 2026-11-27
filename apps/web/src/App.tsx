@@ -10,6 +10,7 @@ import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
 import { SendView } from "./send/SendView";
+import { SessionGate } from "./shell/SessionGate";
 import { BotStatus } from "./shell/BotStatus";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
 import { TopBar, type View } from "./shell/TopBar";
@@ -21,11 +22,13 @@ const order: Record<View, number> = { compose: 0, send: 1 };
 
 export function App() {
   return (
-    <DraftProvider>
-      <EditorStateProvider>
-        <Shell />
-      </EditorStateProvider>
-    </DraftProvider>
+    <SessionGate>
+      <DraftProvider>
+        <EditorStateProvider>
+          <Shell />
+        </EditorStateProvider>
+      </DraftProvider>
+    </SessionGate>
   );
 }
 
