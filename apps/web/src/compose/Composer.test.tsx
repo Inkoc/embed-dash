@@ -354,3 +354,83 @@ test("with several embeds each folds to one line, and problems unfold it", () =>
     )!.textContent,
   ).toMatch(/This embed is empty/);
 });
+
+test("JSON import errors leave the draft and stored draft untouched; success lists unsupported fields", () => {
+  renderApp();
+  const original = localStorage.getItem("embed-dash:draft");
+  fireEvent.click(button("Import JSON"));
+  const dialog = screen.getByRole("dialog", { name: "Import message JSON" });
+  const input = within(dialog).getByLabelText("Message JSON");
+  const submit = within(dialog).getByRole("button", { name: "Replace draft" });
+  for (const value of [
+    "{",
+    '{"content":3}',
+    JSON.stringify({ content: "x".repeat(2001) }),
+  ]) {
+    fireEvent.change(input, { target: { value } });
+    fireEvent.click(submit);
+    expect(within(dialog).getByRole("alert").textContent).toBeTruthy();
+    expect(localStorage.getItem("embed-dash:draft")).toBe(original);
+  }
+  fireEvent.change(input, {
+    target: {
+      value: JSON.stringify({
+        content: "Imported announcement",
+        components: [],
+      }),
+    },
+  });
+  fireEvent.click(submit);
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  expect(
+    within(dialog).getByText("Unsupported field: components."),
+  ).toBeTruthy();
+  expect(within(dialog).getByText(/Message imported/)).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  expect(field(/^Message text/).value).toBe("Imported announcement");
+  expect(preview().textContent).toContain("Imported announcement");
+});
+
+test("JSON file import reads locally and export provides copy feedback and a download", async () => {
+  renderApp();
+  fireEvent.click(button("Import JSON"));
+  const file = new File(['{"content":"From file"}'], "message.json", {
+    type: "application/json",
+  });
+  Object.defineProperty(file, "text", {
+    value: async () => '{"content":"From file"}',
+  });
+  fireEvent.change(screen.getByLabelText("JSON file"), {
+    target: { files: [file] },
+  });
+  await screen.findByText("File ready to import.");
+  fireEvent.click(button("Replace draft"));
+  fireEvent.click(button("Close"));
+  fireEvent.click(button("Export JSON"));
+  expect(
+    (screen.getByLabelText("Message JSON") as HTMLTextAreaElement).value,
+  ).toContain('"content": "From file"');
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  fireEvent.click(button("Copy JSON"));
+  await screen.findByText("JSON copied.");
+  expect(writeText).toHaveBeenCalledWith(expect.stringContaining("From file"));
+  writeText.mockRejectedValue(new Error("denied"));
+  fireEvent.click(button("Copy JSON"));
+  await screen.findByText(/Could not copy JSON/);
+  const create = vi.fn(() => "blob:test");
+  vi.stubGlobal(
+    "URL",
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }),
+  );
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  fireEvent.click(button("Download JSON"));
+  expect(create).toHaveBeenCalled();
+  expect(click).toHaveBeenCalled();
+  click.mockRestore();
+});

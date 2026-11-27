@@ -684,3 +684,9 @@ export const messageLink = (target: {
   messageId: string;
 }) =>
   `https://discord.com/channels/${target.guildId}/${target.channelId}/${target.messageId}`;
+
+export {
+  importMessageJson,
+  exportMessageJson,
+  type JsonImportResult,
+} from "./messageJson.js";

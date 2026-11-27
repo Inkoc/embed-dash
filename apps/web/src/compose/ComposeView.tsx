@@ -27,6 +27,7 @@ import type { Theme } from "../theme";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
+import { MessageJson } from "./MessageJson";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
@@ -128,6 +129,9 @@ export function ComposeView({ theme }: { theme: Theme }) {
               <Eraser aria-hidden="true" />
               Clear
             </button>
+          </div>
+          <div className={styles.draftState}>
+            <MessageJson />
           </div>
         </div>
 
