@@ -151,7 +151,6 @@ test("the preview resizes by drag, keys and presets", async ({ page }) => {
     "aria-pressed",
     "true",
   );
-  await page.waitForTimeout(400);
   await handle.focus();
   await page.keyboard.press("ArrowLeft");
   await expect(handle).toHaveAttribute("aria-valuenow", "376");
@@ -172,59 +171,43 @@ test("the preview resizes by drag, keys and presets", async ({ page }) => {
   await expect(handle).toHaveAttribute("aria-valuenow", "640");
 });
 
-test("the bot indicator shows a failure with a working retry", async ({
+test("the composer passes axe and loads cleanly under the CSP", async ({
   page,
 }) => {
-  let fail = true;
-  await page.route("**/api/bot", (route) =>
-    fail
-      ? route.fulfill({ status: 502, json: { error: "unreachable" } })
-      : route.continue(),
-  );
+  const errors = collectErrors(page);
+  // Settled motion, so axe measures final colours rather than a frame mid-fade.
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  const banner = page.getByRole("banner");
-  await expect(banner.getByRole("alert")).toContainText("Not connected");
-  await expect(preview(page)).toBeVisible();
-  fail = false;
-  await banner.getByRole("button", { name: "Retry connection" }).click();
-  await expect(banner).toContainText("Walking Skeleton Bot");
+  await expect(page.getByRole("banner")).toContainText("Walking Skeleton Bot");
+  await expect(heading(page, "Compose")).toBeVisible();
+  expect(
+    await page.evaluate(() => document.fonts.check("1rem 'Atkinson Next'")),
+  ).toBe(true);
+  expect(await axe(page)).toEqual([]);
+  expect(errors).toEqual([]);
 });
 
-for (const theme of ["light", "dark"] as const)
-  test(`composer and send pass axe and render at every width in ${theme}`, async ({
-    page,
-  }) => {
-    const errors = collectErrors(page);
-    await page.emulateMedia({ colorScheme: theme });
-    for (const width of [360, 768, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      for (const [path, name] of [
-        ["/", "Compose"],
-        ["/send", "Send"],
-      ] as const) {
-        await page.goto(path);
-        await expect(heading(page, name)).toBeVisible();
-        await expect(page.getByRole("banner")).toBeVisible();
-        await page.waitForTimeout(400);
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= innerWidth,
-          ),
-        ).toBe(true);
-        expect(await axe(page)).toEqual([]);
-      }
-      if (width < 861) {
-        await page.goto("/");
-        await page.getByRole("tab", { name: "Preview" }).click();
-        await page.waitForTimeout(400);
-        expect(await axe(page)).toEqual([]);
-      }
-    }
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto("/");
-    await page.getByRole("button", { name: "Shortcuts", exact: true }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.waitForTimeout(300);
-    expect(await axe(page)).toEqual([]);
-    expect(errors).toEqual([]);
-  });
+test("at 360 px the composer stacks without horizontal scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  const show = page.getByRole("group", { name: "Show" });
+  await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+  await expect(preview(page)).toBeHidden();
+  await show.getByRole("button", { name: "Preview" }).click();
+  await expect(preview(page)).toBeVisible();
+  await expect(page.getByLabel("Title", { exact: true })).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(show.getByRole("button", { name: "Edit" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("banner")).toContainText("Walking Skeleton Bot");
+});

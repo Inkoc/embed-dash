@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from "vitest";
 import { countLevel } from "./compose/TextControl";
+import { previewMax } from "./compose/usePreviewWidth";
 import { fieldRows } from "./preview/fieldRows";
 import { isTypingTarget, pressKey, shortcutFor } from "./shortcuts";
 
@@ -95,4 +96,15 @@ test("pressing a shortcut presses its printed key caps briefly", () => {
   expect(back!.hasAttribute("data-pressed")).toBe(false);
   vi.advanceTimersByTime(200);
   expect(forward!.hasAttribute("data-pressed")).toBe(false);
+});
+
+test("the preview may take the editor's spare width, within its limits", () => {
+  expect(previewMax(null, false)).toBe(760);
+  // 400 plus the 148 px the editor has above its 352 px minimum
+  expect(previewMax({ column: 400, editor: 500 }, false)).toBe(548);
+  expect(previewMax({ column: 400, editor: 300 }, false)).toBe(400);
+  expect(previewMax({ column: 600, editor: 900 }, false)).toBe(760);
+  // stacked, the editor is elsewhere and the column is the limit
+  expect(previewMax({ column: 336, editor: 0 }, true)).toBe(336);
+  expect(previewMax({ column: 200, editor: 0 }, true)).toBe(320);
 });
