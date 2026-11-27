@@ -195,7 +195,8 @@
     --track-width: var(--tap);
   }
 }
-@media (max-width: 400px) {
+/* Below 720px the brand is its mark alone, so four views still fit on one row at 640px. */
+@media (max-width: 719.98px) {
   .brandName {
     position: absolute;
     width: 1px;
