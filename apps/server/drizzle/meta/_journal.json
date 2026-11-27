@@ -19,8 +19,15 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1795763762666,
-      "tag": "0002_tricky_hobgoblin",
+      "when": 1795764709940,
+      "tag": "0002_demonic_tempest",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795779485595,
+      "tag": "0003_brave_stellaris",
       "breakpoints": true
     }
   ]

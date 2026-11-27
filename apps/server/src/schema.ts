@@ -37,3 +37,11 @@ export const sessions = sqliteTable("sessions", {
   csrfToken: text("csrf_token").notNull(),
   expiresAt: integer("expires_at").notNull(),
 });
+
+export const uploads = sqliteTable("uploads", {
+  id: text("id").primaryKey(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: integer("created_at").notNull(),
+});

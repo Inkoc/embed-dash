@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f0200cd4-c5bd-43ce-96ed-24c1d14ffb2f",
+  "id": "4cf97b0e-8ecd-43a4-bbb7-e810ed02c3dd",
   "prevId": "1495c2fd-0451-4a17-ac90-cde7da820dc3",
   "tables": {
     "sends": {
@@ -85,20 +85,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "user_name": {
-          "name": "user_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_avatar_url": {
-          "name": "user_avatar_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "csrf_token": {
           "name": "csrf_token",
           "type": "text",
@@ -108,6 +94,51 @@
         },
         "expires_at": {
           "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "uploads": {
+      "name": "uploads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

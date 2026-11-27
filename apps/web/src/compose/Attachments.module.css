@@ -1,0 +1,175 @@
+.attachments {
+  display: grid;
+  gap: var(--space-3);
+}
+/* the drop zone is a ruled slip: a real button inside, so dragging is never the only way in */
+.zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--line-strong) dashed var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet-2);
+  transition:
+    border-color var(--dur-fast),
+    background var(--dur-fast);
+}
+.zone[data-dragging] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.choose {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.choose:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.choose svg,
+.quiet svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.drop {
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.limits {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.used {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.list {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-min);
+  padding: var(--space-2) 0;
+  border-bottom: var(--rule-width) solid var(--rule);
+}
+.thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--sheet-2);
+  color: var(--ink-2);
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumb svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+.text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-label);
+}
+.meta {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+/* a failed or missing file is marked by an icon and words, never colour alone */
+.row[data-state="failed"] .thumb,
+.row[data-state="missing"] .thumb,
+.row[data-state="failed"] .meta,
+.row[data-state="missing"] .meta {
+  color: var(--danger);
+}
+.row[data-state="failed"] .thumb,
+.row[data-state="missing"] .thumb {
+  background: var(--danger-wash);
+}
+.spin {
+  animation: spin var(--dur-pulse) linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.quiet {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+.quiet:hover {
+  background: var(--sheet-2);
+  color: var(--ink);
+}
+
+/* the picker sits under a link field and is the same width */
+.picker {
+  display: grid;
+  gap: var(--space-2);
+}
+.picker label {
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.picker select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+}
+.picker select:hover:not(:disabled) {
+  border-color: var(--ink-2);
+}
+.picker select:disabled {
+  color: var(--ink-2);
+  background: var(--sheet-2);
+}

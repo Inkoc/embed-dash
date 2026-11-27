@@ -11,6 +11,7 @@ import { createDiscord } from "./discord.js";
 import { openDatabase } from "./db.js";
 import { discordFailure } from "./errors.js";
 import { securityHeaders } from "./security.js";
+import { registerUploads } from "./uploads.js";
 export async function createApp(
   config: Config,
   options: { spaRoot?: string; logger?: FastifyServerOptions["logger"] } = {},
@@ -34,6 +35,7 @@ export async function createApp(
     database.close();
   });
   await registerAuth(app, config, database);
+  await registerUploads(app, config, database);
   app.get("/health", async () => ({ status: "ok" }));
   const fromDiscord =
     <T>(what: string, load: (request: FastifyRequest) => Promise<T>) =>

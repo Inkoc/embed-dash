@@ -35,7 +35,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 - **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit. Discord mode runs the OAuth authorization-code flow (`identify` only, `state` bound to the browser by a cookie, single-use, 10-minute expiry), checks the user ID against the allowlist, then revokes the Discord tokens at Discord and discards them; only the ID, display name and avatar address are kept in the session. The callback is a GET navigation, so `state` replaces the origin/CSRF checks there.
 - **sends** — validates payload with the shared schema, stores the send and one target row per channel, delivers sequentially through the rate-limited client, records per-target result; retry and edit operate on target rows.
 - **scheduler** (M3) — a timer that claims due sends in a transaction and hands them to **sends**. A target whose outcome is unknown after a crash is marked `unknown`, not retried automatically.
-- **uploads** — multipart upload to `/data/uploads/<uuid>`, size limit from config; referenced from payloads by id.
+- **uploads** — multipart upload to `/data/uploads/<uuid>`, streamed to disk (never buffered) and refused as soon as the declared length or the stream passes `MAX_UPLOAD_MB`; the filename is sanitised with the shared rule and the content type is sniffed from the bytes, not taken from the client. The draft references a file by id and filename; the payload says `attachment://<filename>`. The per-message limits (10 files, 25 MB together, unique names) are checked in the browser and by the shared message validation.
 
 ## Data model
 
@@ -62,7 +62,9 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | `GET /api/auth/discord`, `GET /api/auth/discord/callback` | Discord OAuth (`identify`, state check, allowlist) |
 | `GET /api/bot` | Bot identity |
 | `GET /api/guilds?refresh=1` | Guilds with text/announcement/forum channels and `canSend` flags |
-| `POST /api/uploads` | Upload a file → `{id, filename, size}` |
+| `POST /api/uploads` | Upload a file (multipart) → `{id, filename, size, contentType}` |
+| `GET /api/uploads/:id`, `DELETE /api/uploads/:id` | A stored file's details (404 once gone, so the composer can mark it missing); remove it |
+| `GET /api/uploads/:id/content` | An uploaded image, for the preview after a reload; 404 for every other type |
 | `POST /api/sends` | `{payload, channelIds, scheduledAt?}` → send with per-target results |
 | `GET /api/sends?q=&guildId=&channelId=&from=&to=&status=&cursor=` | History |
 | `GET /api/sends/:id` | One send with targets |
@@ -95,6 +97,7 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 - **Server never fetches media URLs.** Discord fetches them; avoids SSRF entirely.
 - **Draft lives in the browser** (localStorage autosave) until sent or saved as a template; no drafts table.
 - **Edit is per send, not per message.** One send to N channels is one history entry; editing updates all copies and shows per-copy results.
+- **Uploads are untrusted.** They are stored under generated names and only images (PNG, JPEG, GIF, WebP, recognised by their first bytes; never SVG) are served back, behind the session, with `nosniff` and the sniffed type. The preview needs them after a reload, so a fresh object URL per session would not do. Nothing else is ever returned by the app origin.
 - **Mentions suppressed by default** (`allowed_mentions.parse = []` on create and edit); the composer can opt in per send.
 - **Delivery is sequential per send** through the client's rate limiter; parallelism is not needed for tens of channels.
 - **Licence: AGPL-3.0.** Copies run as a network service with modifications must share their source, which suits a self-hosted server app.

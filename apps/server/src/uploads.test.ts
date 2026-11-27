@@ -1,0 +1,260 @@
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, test } from "vitest";
+import type { FastifyInstance } from "fastify";
+import { createApp } from "./app.js";
+import { openDatabase } from "./db.js";
+import { sniffContentType } from "./uploads.js";
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+async function fixture() {
+  const dir = mkdtempSync(join(tmpdir(), "embed-uploads-"));
+  const app = await createApp(
+    {
+      authMode: "password",
+      adminPassword: "fixture-password",
+      botToken: "fixture-token",
+      port: 8742,
+      host: "127.0.0.1",
+      dataDir: dir,
+      maxUploadMb: 1,
+      discordApiBase: "http://127.0.0.1:1/api",
+    },
+    { logger: false },
+  );
+  cleanups.push(async () => {
+    await app.close();
+    rmSync(dir, { recursive: true });
+  });
+  return { app, dir };
+}
+
+async function login(app: FastifyInstance) {
+  const first = await app.inject("/api/session");
+  const pre = first.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  const headers = {
+    cookie: pre,
+    "x-csrf-token": first.json().csrfToken as string,
+    origin: "http://localhost",
+    host: "localhost",
+  };
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    headers,
+    payload: { password: "fixture-password" },
+  });
+  const cookie = response.cookies.find((c) => c.name === "embed_session")!;
+  const cookieHeader = `${cookie.name}=${cookie.value}`;
+  const next = await app.inject({
+    url: "/api/session",
+    headers: { cookie: cookieHeader },
+  });
+  return {
+    ...headers,
+    cookie: cookieHeader,
+    "x-csrf-token": next.json().csrfToken as string,
+  };
+}
+
+const png = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.alloc(32),
+]);
+
+function multipartBody(filename: string, content: Buffer) {
+  const boundary = "----fixtureboundary";
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    content,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  return {
+    payload: body,
+    "content-type": `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
+const upload = (
+  app: FastifyInstance,
+  headers: Record<string, string>,
+  filename: string,
+  content: Buffer,
+) => {
+  const { payload, ...type } = multipartBody(filename, content);
+  return app.inject({
+    method: "POST",
+    url: "/api/uploads",
+    headers: { ...headers, ...type },
+    payload,
+  });
+};
+
+test("stores an upload under a generated name with a sanitised filename", async () => {
+  const { app, dir } = await fixture();
+  const headers = await login(app);
+  const response = await upload(app, headers, "My Banner (1).png", png);
+  expect(response.statusCode).toBe(201);
+  const body = response.json();
+  expect(body).toMatchObject({
+    filename: "My_Banner_1_.png",
+    size: png.length,
+    contentType: "image/png",
+  });
+  expect(readdirSync(join(dir, "uploads"))).toEqual([body.id]);
+  expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
+  const db = openDatabase(dir);
+  expect(db.prepare("SELECT filename, size FROM uploads").all()).toEqual([
+    { filename: "My_Banner_1_.png", size: png.length },
+  ]);
+  db.close();
+});
+
+test("rejects a file over the limit before it is kept", async () => {
+  const { app, dir } = await fixture();
+  const headers = await login(app);
+  // Declared length alone is enough to refuse.
+  const declared = await upload(
+    app,
+    headers,
+    "big.bin",
+    Buffer.alloc(1024 * 1024 + 70_000),
+  );
+  expect(declared.statusCode).toBe(413);
+  expect(declared.json().error).toContain("1 MB");
+  // Just over the limit passes the declared check and is cut off while streaming.
+  const streamed = await upload(
+    app,
+    headers,
+    "big.bin",
+    Buffer.alloc(1024 * 1024 + 10),
+  );
+  expect(streamed.statusCode).toBe(413);
+  expect(
+    existsSync(join(dir, "uploads")) ? readdirSync(join(dir, "uploads")) : [],
+  ).toEqual([]);
+  const db = openDatabase(dir);
+  expect(db.prepare("SELECT count(*) AS n FROM uploads").get()).toEqual({
+    n: 0,
+  });
+  db.close();
+  expect(
+    (await upload(app, headers, "ok.bin", Buffer.alloc(1024 * 1024)))
+      .statusCode,
+  ).toBe(201);
+});
+
+test("rejects empty files", async () => {
+  const { app } = await fixture();
+  const headers = await login(app);
+  expect(
+    (await upload(app, headers, "a.txt", Buffer.alloc(0))).statusCode,
+  ).toBe(400);
+});
+
+test("requires a session, the CSRF token and a same-origin request", async () => {
+  const { app, dir } = await fixture();
+  const headers = await login(app);
+  const without = (change: Record<string, string>) =>
+    upload(app, { ...headers, ...change }, "a.png", png);
+  expect((await without({ cookie: "" })).statusCode).toBe(401);
+  expect((await without({ "x-csrf-token": "" })).statusCode).toBe(403);
+  expect((await without({ origin: "http://evil.example" })).statusCode).toBe(
+    403,
+  );
+  expect(existsSync(join(dir, "uploads"))).toBe(false);
+});
+
+test("serves only images, from sniffed bytes, and reports missing files", async () => {
+  const { app, dir } = await fixture();
+  const headers = await login(app);
+  const image = (await upload(app, headers, "a.png", png)).json();
+  const html = (
+    await upload(
+      app,
+      headers,
+      "page.png",
+      Buffer.from("<script>alert(1)</script>"),
+    )
+  ).json();
+  expect(html.contentType).toBe("application/octet-stream");
+
+  const served = await app.inject({
+    url: `/api/uploads/${image.id}/content`,
+    headers: { cookie: headers.cookie },
+  });
+  expect(served.statusCode).toBe(200);
+  expect(served.headers["content-type"]).toBe("image/png");
+  expect(served.headers["x-content-type-options"]).toBe("nosniff");
+  expect(served.rawPayload.equals(png)).toBe(true);
+  expect(
+    (
+      await app.inject({
+        url: `/api/uploads/${html.id}/content`,
+        headers: { cookie: headers.cookie },
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (await app.inject({ url: `/api/uploads/${image.id}/content` })).statusCode,
+  ).toBe(401);
+
+  const meta = await app.inject({
+    url: `/api/uploads/${html.id}`,
+    headers: { cookie: headers.cookie },
+  });
+  expect(meta.json()).toMatchObject({ id: html.id, filename: "page.png" });
+
+  rmSync(join(dir, "uploads", image.id));
+  expect(
+    (
+      await app.inject({
+        url: `/api/uploads/${image.id}`,
+        headers: { cookie: headers.cookie },
+      })
+    ).statusCode,
+  ).toBe(404);
+  expect(
+    (
+      await app.inject({
+        url: "/api/uploads/not-an-id",
+        headers: { cookie: headers.cookie },
+      })
+    ).statusCode,
+  ).toBe(400);
+});
+
+test("deleting removes the row and the file", async () => {
+  const { app, dir } = await fixture();
+  const headers = await login(app);
+  const { id } = (await upload(app, headers, "a.png", png)).json();
+  const response = await app.inject({
+    method: "DELETE",
+    url: `/api/uploads/${id}`,
+    headers,
+  });
+  expect(response.statusCode).toBe(204);
+  expect(readdirSync(join(dir, "uploads"))).toEqual([]);
+});
+
+test("recognises image types by their first bytes", () => {
+  const pad = (bytes: number[]) =>
+    Buffer.from([...bytes, ...Array(16).fill(0)]);
+  expect(sniffContentType(pad([0xff, 0xd8, 0xff]))).toBe("image/jpeg");
+  expect(sniffContentType(Buffer.from("GIF89a" + "\0".repeat(10)))).toBe(
+    "image/gif",
+  );
+  expect(sniffContentType(Buffer.from("RIFF\0\0\0\0WEBPVP8 "))).toBe(
+    "image/webp",
+  );
+  expect(
+    sniffContentType(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')),
+  ).toBe("application/octet-stream");
+});

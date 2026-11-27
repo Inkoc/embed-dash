@@ -56,13 +56,95 @@ export const embedDraftSchema = z.object({
   /** Empty for none, `now` for the moment of sending, or an ISO 8601 date-time. */
   timestamp: z.string(),
 });
+/** A file already stored on the server, referenced by id; `filename` is what `attachment://` points at. */
+export const attachmentSchema = z.object({
+  id: z.string().min(1),
+  filename: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  contentType: z.string(),
+});
 export const messageDraftSchema = z.object({
   content: z.string(),
   embeds: z.array(embedDraftSchema),
+  attachments: z.array(attachmentSchema).default([]),
 });
+export type AttachmentDraft = z.infer<typeof attachmentSchema>;
 export type EmbedFieldDraft = z.infer<typeof embedFieldSchema>;
 export type EmbedDraft = z.infer<typeof embedDraftSchema>;
 export type MessageDraft = z.infer<typeof messageDraftSchema>;
+
+export const uploadLimits = {
+  attachmentsPerMessage: 10,
+  /** All files of one message together. */
+  messageBytes: 25 * 1024 * 1024,
+  defaultFileMb: 10,
+  maxFileMb: 25,
+} as const;
+
+const maxFilenameLength = 100;
+
+/**
+ * Turns whatever the browser reports into a name Discord's `attachment://`
+ * matching accepts: ASCII letters, digits, dots, dashes and underscores. The
+ * extension survives truncation, and a leading dot is dropped so the file is
+ * never hidden or made only of dots.
+ */
+export function sanitizeFilename(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? "";
+  const cleaned = base
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/^\.+/, "");
+  if (!cleaned || /^[._-]+$/.test(cleaned)) return "file";
+  if (cleaned.length <= maxFilenameLength) return cleaned;
+  const dot = cleaned.lastIndexOf(".");
+  const extension = dot > 0 ? cleaned.slice(dot).slice(0, 16) : "";
+  return cleaned.slice(0, maxFilenameLength - extension.length) + extension;
+}
+
+/** `name.png` → `name-2.png` when `name.png` is taken, so every attachment can be referenced unambiguously. */
+export function uniqueFilename(name: string, taken: readonly string[]): string {
+  if (!taken.includes(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : "";
+  for (let n = 2; ; n++) {
+    const candidate = `${stem}-${n}${extension}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
+/** The filename an `attachment://` link points at, or null for any other link. */
+export function attachmentName(url: string): string | null {
+  const value = url.trim();
+  return attachmentReference.test(value)
+    ? value.slice("attachment://".length)
+    : null;
+}
+
+/** A size for people: kilobytes below a megabyte, so a small file never reads as 0 MB. */
+export const megabytes = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / (1024 * 1024)).toLocaleString("en-GB", { maximumFractionDigits: 1 })} MB`;
+
+/** Why a file can't be added, or null; the server enforces the same limits. */
+export function uploadProblem(
+  file: { name: string; size: number },
+  attached: readonly { size: number }[],
+  maxFileBytes: number,
+): string | null {
+  if (file.size === 0) return `${file.name} is empty.`;
+  if (file.size > maxFileBytes)
+    return `${file.name} is ${megabytes(file.size)}; each file can be at most ${megabytes(maxFileBytes)}.`;
+  if (attached.length >= uploadLimits.attachmentsPerMessage)
+    return `A message holds at most ${uploadLimits.attachmentsPerMessage} files.`;
+  const total = attached.reduce((sum, item) => sum + item.size, 0) + file.size;
+  if (total > uploadLimits.messageBytes)
+    return `Adding ${file.name} would pass the ${megabytes(uploadLimits.messageBytes)} limit for one message.`;
+  return null;
+}
 
 /** Discord counts Unicode characters, so an emoji is one character, not two UTF-16 units. */
 export function textLength(text: string): number {
@@ -202,6 +284,13 @@ export function validateMessage(message: MessageDraft): Issue[] {
   const link = (path: string, label: string, url: string, media: boolean) => {
     const problem = linkProblem(url, media);
     if (problem) add(path, label, problem);
+    const name = media ? attachmentName(url) : null;
+    if (name !== null && !message.attachments.some((a) => a.filename === name))
+      add(
+        path,
+        label,
+        `No attached file is named ${name}. Upload it, or choose one of the uploaded images.`,
+      );
   };
 
   if (!message.content.trim() && message.embeds.length === 0)
@@ -219,6 +308,29 @@ export function validateMessage(message: MessageDraft): Issue[] {
       "Embeds",
       `A message holds at most ${discordLimits.embedsPerMessage} embeds; remove ${message.embeds.length - discordLimits.embedsPerMessage}.`,
     );
+
+  const files = message.attachments;
+  if (files.length > uploadLimits.attachmentsPerMessage)
+    add(
+      "attachments",
+      "Files",
+      `A message holds at most ${uploadLimits.attachmentsPerMessage} files; remove ${files.length - uploadLimits.attachmentsPerMessage}.`,
+    );
+  const bytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (bytes > uploadLimits.messageBytes)
+    add(
+      "attachments",
+      "Files",
+      `The files total ${megabytes(bytes)}; Discord's limit for one message is ${megabytes(uploadLimits.messageBytes)}.`,
+    );
+  files.forEach((file, i) => {
+    if (files.findIndex((other) => other.filename === file.filename) !== i)
+      add(
+        `attachments.${i}`,
+        `File ${i + 1}`,
+        `Another file is also named ${file.filename}; rename or remove one.`,
+      );
+  });
 
   message.embeds.forEach((embed, e) => {
     const at = `embeds.${e}`;

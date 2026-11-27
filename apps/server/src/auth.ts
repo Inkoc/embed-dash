@@ -11,7 +11,11 @@ import type {
   FastifyReply,
   FastifyRequest,
 } from "fastify";
-import { snowflakeSchema, type SessionUser } from "@embed-dash/shared";
+import {
+  snowflakeSchema,
+  uploadLimits,
+  type SessionUser,
+} from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import { authorizeUrl, fetchDiscordUser, OAuthError } from "./discord-oauth.js";
 import { safeErrorDetails } from "./errors.js";
@@ -183,6 +187,7 @@ export async function registerAuth(
       insecure: config.authMode === "none",
       authenticated: config.authMode === "none" || !!session,
       csrfToken,
+      maxUploadMb: config.maxUploadMb ?? uploadLimits.defaultFileMb,
       expiresAt: session?.expiresAt ?? null,
       user: session?.userName
         ? {

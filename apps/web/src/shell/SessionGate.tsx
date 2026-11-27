@@ -17,13 +17,14 @@ import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
-interface Session {
+export interface Session {
   authMode: "password" | "none" | "discord";
   authenticated: boolean;
   insecure: boolean;
   csrfToken: string;
   user: SessionUser | null;
   deniedUserId: string | null;
+  maxUploadMb?: number;
 }
 
 const AccessContext = createContext<{
