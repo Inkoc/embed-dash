@@ -153,3 +153,41 @@
     animation: none;
   }
 }
+
+.discordLogin {
+  display: grid;
+  gap: var(--space-3);
+}
+.discordLogin .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+.userId {
+  overflow-wrap: anywhere;
+  padding-block: var(--space-3);
+}
+.identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.identity img {
+  border-radius: var(--radius-pill);
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+.userName {
+  max-width: var(--identity-measure);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 860px) {
+  .userName {
+    display: none;
+  }
+}

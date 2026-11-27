@@ -83,10 +83,11 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 | `AUTH_MODE` | `password` | `none` / `password` / `discord` |
 | `BOT_TOKEN_FILE` (or `BOT_TOKEN`) | — | Required |
 | `ADMIN_PASSWORD_FILE` (or `ADMIN_PASSWORD`) | — | Required for `password` |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET_FILE`, `PUBLIC_URL`, `ALLOWED_USER_IDS` | — | Required for `discord` |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET_FILE` (or `DISCORD_CLIENT_SECRET`), `PUBLIC_URL`, `ALLOWED_USER_IDS` | — | Required for `discord` |
 | `DATA_DIR` | `/data` | SQLite file and uploads |
 | `MAX_UPLOAD_MB` | `10` | Per file; total request capped at 25 MB |
-| `DISCORD_API_BASE` | Discord's | Tests only |
+| `DISCORD_API_BASE` | Discord's | Tests: bot REST, OAuth token exchange and user lookup |
+| `DISCORD_AUTHORIZE_URL` | `https://discord.com/oauth2/authorize` | Test authorization endpoint override |
 
 ## Key decisions
 
@@ -98,3 +99,13 @@ Environment variables, documented in `.env.example`; secrets as files under `/ru
 - **Mentions suppressed by default** (`allowed_mentions.parse = []` on create and edit); the composer can opt in per send.
 - **Delivery is sequential per send** through the client's rate limiter; parallelism is not needed for tens of channels.
 - **Licence: AGPL-3.0.** Copies run as a network service with modifications must share their source, which suits a self-hosted server app.
+
+Discord auth reuses the session store and route guard. The session subject is
+`password` or a `discord:` prefix followed by identity JSON (ID, display name,
+avatar URL); no OAuth token is persisted. Every Discord session is checked
+against the configured allowlist on access. Pending OAuth transactions live in
+a bounded process-local map, use S256 PKCE, expire after five minutes and are
+consumed before exchanging the code. An HttpOnly SameSite=Lax cookie binds
+state to the initiating browser. Only the matched OAuth GET routes are public;
+origin and CSRF protections remain mandatory for writes. The fixed redirect
+URI is derived from `PUBLIC_URL` plus `/api/auth/discord/callback`.

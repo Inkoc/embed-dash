@@ -90,7 +90,7 @@ test("auth mode defaults to password, rejects unsupported modes and reads passwo
   const base = { BOT_TOKEN: "fixture" };
   expect(() => readConfig(base)).toThrow("ADMIN_PASSWORD");
   expect(() => readConfig({ ...base, AUTH_MODE: "discord" })).toThrow(
-    "not supported yet",
+    "PUBLIC_URL",
   );
   expect(() => readConfig({ ...base, AUTH_MODE: "other" })).toThrow(
     "AUTH_MODE",
@@ -146,4 +146,44 @@ test("proxy trust is opt-in and public origins are validated", () => {
     "invalid",
   ])
     expect(() => readConfig({ ...base, PUBLIC_URL })).toThrow("PUBLIC_URL");
+});
+
+test("Discord configuration validates required settings and secret file precedence", () => {
+  const base = {
+    BOT_TOKEN: "fixture",
+    AUTH_MODE: "discord",
+    DISCORD_CLIENT_ID: "123456789012345678",
+    DISCORD_CLIENT_SECRET: "fixture-secret",
+    PUBLIC_URL: "https://embed.example",
+    ALLOWED_USER_IDS: "123456789012345678, 223456789012345678",
+  };
+  expect(readConfig(base).allowedUserIds).toHaveLength(2);
+  for (const field of [
+    "DISCORD_CLIENT_ID",
+    "DISCORD_CLIENT_SECRET",
+    "PUBLIC_URL",
+    "ALLOWED_USER_IDS",
+  ])
+    expect(() => readConfig({ ...base, [field]: "" })).toThrow(field);
+  for (const [field, value] of [
+    ["DISCORD_CLIENT_ID", "abc"],
+    ["DISCORD_CLIENT_SECRET", "two words"],
+    ["ALLOWED_USER_IDS", "123,"],
+    ["DISCORD_AUTHORIZE_URL", "file:///tmp"],
+    ["DISCORD_CLIENT_SECRET_FILE", "/missing-fixture"],
+  ])
+    expect(() => readConfig({ ...base, [field]: value })).toThrow(field);
+  const dir = mkdtempSync(join(tmpdir(), "embed-oauth-config-"));
+  try {
+    writeFileSync(join(dir, "secret"), "file-secret\n");
+    expect(
+      readConfig({
+        ...base,
+        INIT_CWD: dir,
+        DISCORD_CLIENT_SECRET_FILE: "secret",
+      }).discordClientSecret,
+    ).toBe("file-secret");
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });

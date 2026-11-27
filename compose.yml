@@ -7,6 +7,10 @@ services:
       # Trust only the IP addresses of proxies that replace forwarded headers.
       TRUST_PROXY: ${TRUST_PROXY:-off}
       AUTH_MODE: ${AUTH_MODE:-password}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET_FILE: /run/secrets/discord_client_secret
+      ALLOWED_USER_IDS: ${ALLOWED_USER_IDS:-}
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       BOT_TOKEN_FILE: /run/secrets/bot_token
       DATA_DIR: /data
@@ -15,6 +19,7 @@ services:
     secrets:
       - bot_token
       - admin_password
+      - discord_client_secret
     volumes:
       - embed-data:/data
     healthcheck:
@@ -38,3 +43,6 @@ secrets:
   admin_password:
     # No password file in local mode: set ADMIN_PASSWORD_SECRET_FILE=/dev/null.
     file: ${ADMIN_PASSWORD_SECRET_FILE:-./secrets/admin_password.txt}
+  discord_client_secret:
+    # Optional outside Discord mode; /dev/null requires no extra secret file.
+    file: ${DISCORD_CLIENT_SECRET_SOURCE:-/dev/null}

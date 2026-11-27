@@ -54,6 +54,28 @@ export async function registerAuth(
   sqlite: Database.Database,
 ) {
   const db = drizzle(sqlite);
+  const pending = new Map<
+    string,
+    { state: string; verifier: string; expires: number }
+  >();
+  const oauthCookie = "embed_oauth";
+  const oauthLifetime = 5 * 60 * 1000;
+  const identity = (
+    subject?: string,
+  ): { id: string; name: string; avatar: string | null } | null => {
+    if (!subject?.startsWith("discord:")) return null;
+    return JSON.parse(subject.slice(8)) as {
+      id: string;
+      name: string;
+      avatar: string | null;
+    };
+  };
+  const authenticated = (subject?: string) =>
+    config.authMode === "password"
+      ? subject === "password"
+      : config.authMode === "discord" &&
+        !!identity(subject) &&
+        config.allowedUserIds!.includes(identity(subject)!.id);
   const passwordHash =
     config.authMode === "password"
       ? await hash(config.adminPassword!, { algorithm: Algorithm.Argon2id })
@@ -85,13 +107,17 @@ export async function registerAuth(
         .where(eq(sessions.id, digest(id)))
         .run();
   };
-  const create = (request: FastifyRequest, reply: FastifyReply) => {
+  const create = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    subject = "password",
+  ) => {
     db.delete(sessions).where(lte(sessions.expiresAt, Date.now())).run();
     const id = random();
     db.insert(sessions)
       .values({
         id: digest(id),
-        subject: "password",
+        subject,
         csrfToken: random(),
         expiresAt: Date.now() + lifetime,
       })
@@ -109,11 +135,17 @@ export async function registerAuth(
     if (!isApi(route ?? "") && !isApi(decodedPath(request.url))) return;
     reply.header("Cache-Control", "no-store");
     const session = find(request);
-    const publicRoute = route === "/api/session" || route === "/api/auth/login";
+    const publicRoute =
+      route === "/api/session" ||
+      route === "/api/auth/login" ||
+      (config.authMode === "discord" &&
+        request.method === "GET" &&
+        (route === "/api/auth/discord" ||
+          route === "/api/auth/discord/callback"));
     if (
       !publicRoute &&
       config.authMode !== "none" &&
-      session?.subject !== "password"
+      !authenticated(session?.subject)
     )
       return reply.code(401).send({ error: "Sign in to continue" });
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
@@ -144,7 +176,8 @@ export async function registerAuth(
       authMode: config.authMode,
       insecure: config.authMode === "none",
       authenticated:
-        config.authMode === "none" || session?.subject === "password",
+        config.authMode === "none" || authenticated(session?.subject),
+      user: authenticated(session?.subject) ? identity(session?.subject) : null,
       csrfToken,
       expiresAt: session?.expiresAt ?? null,
     };
@@ -177,6 +210,124 @@ export async function registerAuth(
       return { ok: true };
     },
   );
+  if (config.authMode === "discord") {
+    const redirectUri = `${config.publicUrl}/api/auth/discord/callback`;
+    app.get(
+      "/api/auth/discord",
+      { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        for (const [key, value] of pending)
+          if (value.expires <= Date.now()) pending.delete(key);
+        if (pending.size >= 1000)
+          return reply
+            .code(429)
+            .send({ error: "Sign-in is busy. Try again shortly." });
+        const previous = request.cookies[oauthCookie];
+        if (previous) pending.delete(digest(previous));
+        const browser = random();
+        const state = random();
+        const verifier = random();
+        pending.set(digest(browser), {
+          state,
+          verifier,
+          expires: Date.now() + oauthLifetime,
+        });
+        reply.setCookie(oauthCookie, browser, {
+          ...cookieOptions(request),
+          maxAge: oauthLifetime / 1000,
+        });
+        const url = new URL(config.discordAuthorizeUrl!);
+        url.search = new URLSearchParams({
+          client_id: config.discordClientId!,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          scope: "identify",
+          state,
+          code_challenge: createHash("sha256")
+            .update(verifier)
+            .digest("base64url"),
+          code_challenge_method: "S256",
+        }).toString();
+        return reply.redirect(url.toString());
+      },
+    );
+    app.get("/api/auth/discord/callback", async (request, reply) => {
+      const browser = request.cookies[oauthCookie];
+      const transaction = browser ? pending.get(digest(browser)) : undefined;
+      // Consume before any upstream request, including failed or cancelled attempts.
+      if (browser) pending.delete(digest(browser));
+      reply.clearCookie(oauthCookie, { path: "/" });
+      const query = request.query as Record<string, unknown>;
+      if (
+        !transaction ||
+        transaction.expires <= Date.now() ||
+        typeof query.state !== "string" ||
+        !equal(transaction.state, query.state)
+      )
+        return reply.redirect("/login?oauth=state");
+      if (typeof query.code !== "string" || !query.code || query.error)
+        return reply.redirect("/login?oauth=cancelled");
+      try {
+        const tokens = await fetch(`${config.discordApiBase}/oauth2/token`, {
+          method: "POST",
+          redirect: "error",
+          signal: AbortSignal.timeout(10_000),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: config.discordClientId!,
+            client_secret: config.discordClientSecret!,
+            grant_type: "authorization_code",
+            code: query.code,
+            code_verifier: transaction.verifier,
+            redirect_uri: redirectUri,
+          }),
+        });
+        if (!tokens.ok) throw new Error();
+        const token = (await tokens.json()) as { access_token?: unknown };
+        if (typeof token.access_token !== "string" || !token.access_token)
+          throw new Error();
+        const response = await fetch(`${config.discordApiBase}/users/@me`, {
+          redirect: "error",
+          signal: AbortSignal.timeout(10_000),
+          headers: { authorization: `Bearer ${token.access_token}` },
+        });
+        if (!response.ok) throw new Error();
+        const user = (await response.json()) as {
+          id: string;
+          username: string;
+          global_name?: string;
+          avatar?: string;
+        };
+        if (!/^\d{17,20}$/.test(user.id) || typeof user.username !== "string")
+          throw new Error();
+        if (!config.allowedUserIds!.includes(user.id))
+          return reply.redirect(`/login?denied=${user.id}`);
+        const avatar =
+          typeof user.avatar === "string" &&
+          /^(a_)?[a-f0-9]{32}$/.test(user.avatar)
+            ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+            : null;
+        remove(request);
+        create(
+          request,
+          reply,
+          "discord:" +
+            JSON.stringify({
+              id: user.id,
+              name:
+                typeof user.global_name === "string" && user.global_name
+                  ? user.global_name
+                  : user.username,
+              avatar,
+            }),
+        );
+        return reply.redirect("/");
+      } catch {
+        // Provider errors can contain credentials. Return only a fixed local error.
+        return reply.redirect("/login?oauth=failed");
+      }
+    });
+  }
   app.post("/api/auth/logout", async (request, reply) => {
     remove(request);
     reply.clearCookie(cookieName, { path: "/" });

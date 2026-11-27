@@ -27,7 +27,13 @@ function Location() {
 }
 function setup(
   fetcher: ReturnType<typeof vi.fn>,
-  initial?: { authenticated: boolean; insecure: boolean; csrfToken: string },
+  initial?: {
+    authenticated: boolean;
+    insecure: boolean;
+    csrfToken: string;
+    authMode?: "discord";
+  },
+  entry = "/",
 ) {
   vi.stubGlobal("fetch", fetcher);
   const client = new QueryClient({
@@ -36,7 +42,7 @@ function setup(
   if (initial) client.setQueryData(["session"], initial);
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <Location />
         <SessionGate>
           <AccessWarning />
@@ -128,4 +134,23 @@ test("connection errors and empty-password validation explain how to recover", a
   expect((await screen.findByRole("alert")).textContent).toContain(
     "Unable to connect",
   );
+});
+
+test("blocked Discord accounts get an actionable ID and a fresh sign-in link", () => {
+  setup(
+    vi.fn(),
+    { ...anonymous, authMode: "discord" },
+    "/login?denied=123456789012345678",
+  );
+  expect(
+    screen.getByRole("heading", { name: "Account not allowed" }),
+  ).toBeTruthy();
+  expect(screen.getByText("123456789012345678")).toBeTruthy();
+  expect(screen.getByText(/Ask your instance operator/)).toBeTruthy();
+  expect(
+    screen
+      .getByRole("link", { name: "Try another Discord account" })
+      .getAttribute("href"),
+  ).toBe("/api/auth/discord");
+  expect(screen.queryByLabelText("Instance password")).toBeNull();
 });

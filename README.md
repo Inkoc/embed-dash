@@ -66,7 +66,7 @@ protocol is HTTPS. Use HTTPS for remote deployments.
 `AUTH_MODE=none` skips login and displays a permanent access warning. Anyone
 who can reach the instance can use its bot, so keep the published address on
 `127.0.0.1`, including when using Docker. Do not expose this mode to your LAN
-or the internet. Discord login is not supported yet; invalid modes fail startup.
+or the internet. Invalid modes fail startup.
 
 `PORT` sets the server listening port (default 8742). Compose maps
 `127.0.0.1:8742:8742`; change the host port on the left to publish elsewhere.
@@ -101,3 +101,46 @@ file. To set an external `PUBLIC_URL` in Compose, add it to the service's
 environment; the value must be an HTTP(S) origin without credentials or a path.
 Pre-login session checks use an HttpOnly CSRF cookie and do not create database
 rows. Authenticated session identifiers are stored as SHA-256 hashes.
+
+### Discord sign-in
+
+Set `AUTH_MODE=discord`, `DISCORD_CLIENT_ID`, `PUBLIC_URL` and
+`ALLOWED_USER_IDS` (comma-separated Discord user IDs, obtainable with Discord’s
+Developer Mode). Supply the application’s client secret using
+`DISCORD_CLIENT_SECRET_FILE`, or `DISCORD_CLIENT_SECRET`; the file takes
+precedence. Missing or malformed settings stop startup. All approved users
+share the instance’s bot access; there are no individual roles.
+
+Create an application in the [Discord developer portal](https://discord.com/developers/applications).
+Under OAuth2, register exactly `<PUBLIC_URL>/api/auth/discord/callback` as a
+redirect URI (for example `https://embed.example/api/auth/discord/callback`).
+`PUBLIC_URL` is the browser-facing HTTP(S) origin, without a path. Use HTTPS
+for remote access and configure trusted proxies as described above.
+
+For Compose, set `DISCORD_CLIENT_SECRET_SOURCE=./secrets/discord_client_secret.txt`
+to mount the optional `discord_client_secret` secret. Create that file with the
+same ownership/readability rules as the bot secret. Compose uses `/dev/null`
+for this secret outside Discord mode. Set `ADMIN_PASSWORD_SECRET_FILE=/dev/null`
+when using Discord mode without a password file. Compose passes `PUBLIC_URL`,
+`DISCORD_CLIENT_ID` and `ALLOWED_USER_IDS` through to the service.
+
+Only the [`identify` scope](https://docs.discord.com/developers/topics/oauth2#shared-resources-oauth2-scopes)
+is requested: it reads basic profile information (ID, name and avatar). It
+does not grant access to email, private messages, server membership or account
+management, and cannot send messages as the person signing in. Posting uses
+the instance’s separately configured bot. Access and refresh tokens exist only
+in memory during login and are discarded after the profile lookup; they are
+never stored or logged. Sessions retain identity details only. The avatar is
+loaded from Discord’s CDN; the app remains usable if that image is unavailable.
+
+Sign-in uses authorization codes with S256 PKCE and browser-bound, single-use
+state that expires after five minutes. Restarting the server clears pending
+sign-ins; start again if an attempt expires. The callback is a GET navigation
+from Discord and uses state for CSRF defence; write routes still require the
+usual origin and CSRF checks. Unapproved accounts see their ID and instructions
+for contacting the operator. Removing an ID from configuration and restarting
+also blocks its existing sessions.
+
+For local fake-provider tests, `DISCORD_API_BASE` controls token exchange
+(`/oauth2/token`) and identity (`/users/@me`); `DISCORD_AUTHORIZE_URL` overrides
+the authorization URL. Leave both at their Discord defaults in production.

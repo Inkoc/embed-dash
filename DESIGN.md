@@ -364,3 +364,8 @@ All motion uses `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) for arrivals; `--
 - **Don't** use Discord's logo, proprietary font or chrome outside the preview.
 
 The login uses a wider index sheet, hairline rules, and the instance address as a mono identifier. Sign out sits in the header beside the shared sun/moon theme switch.
+
+Discord sign-in and access denial reuse the login desk sheet, address rule and
+sheet-arrival motion (disabled by the existing reduced-motion rule). The
+identity control uses `--identity-measure` (12rem) to truncate long names in the
+desktop header; compact layouts retain the avatar and name tooltip.

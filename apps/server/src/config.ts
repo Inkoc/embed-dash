@@ -3,8 +3,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 export interface Config {
   botToken: string;
-  authMode: "password" | "none";
+  authMode: "password" | "none" | "discord";
   adminPassword?: string;
+  discordClientId?: string;
+  discordClientSecret?: string;
+  allowedUserIds?: string[];
+  discordAuthorizeUrl?: string;
   trustProxy?: string[];
   publicUrl?: string;
   port: number;
@@ -54,10 +58,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
   const authMode = env.AUTH_MODE ?? "password";
-  if (authMode === "discord")
-    throw new Error("AUTH_MODE discord is not supported yet");
-  if (authMode !== "password" && authMode !== "none")
-    throw new Error("AUTH_MODE must be password or none");
+  if (!["password", "none", "discord"].includes(authMode))
+    throw new Error("AUTH_MODE must be password, none or discord");
   let adminPassword = env.ADMIN_PASSWORD;
   if (authMode === "password") {
     if (env.ADMIN_PASSWORD_FILE) {
@@ -108,10 +110,63 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       );
     }
   }
+  let discordClientSecret: string | undefined;
+  let allowedUserIds: string[] | undefined;
+  const discordAuthorizeUrl =
+    env.DISCORD_AUTHORIZE_URL ?? "https://discord.com/oauth2/authorize";
+  if (authMode === "discord") {
+    if (!publicUrl) throw new Error("PUBLIC_URL is required for Discord login");
+    if (!/^\d{17,20}$/.test(env.DISCORD_CLIENT_ID ?? ""))
+      throw new Error("DISCORD_CLIENT_ID must be a Discord ID");
+    discordClientSecret = env.DISCORD_CLIENT_SECRET;
+    if (env.DISCORD_CLIENT_SECRET_FILE) {
+      try {
+        discordClientSecret = readFileSync(
+          resolve(baseDir, env.DISCORD_CLIENT_SECRET_FILE),
+          "utf8",
+        );
+      } catch {
+        throw new Error(
+          "DISCORD_CLIENT_SECRET_FILE must point to a readable secret file",
+        );
+      }
+    }
+    discordClientSecret = discordClientSecret?.trim();
+    if (!discordClientSecret || /\s/.test(discordClientSecret))
+      throw new Error(
+        "DISCORD_CLIENT_SECRET or DISCORD_CLIENT_SECRET_FILE must provide a non-empty secret without whitespace",
+      );
+    allowedUserIds = (env.ALLOWED_USER_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim());
+    if (allowedUserIds.some((value) => !/^\d{17,20}$/.test(value)))
+      throw new Error(
+        "ALLOWED_USER_IDS must be a non-empty comma-separated list of Discord IDs",
+      );
+    try {
+      const url = new URL(discordAuthorizeUrl);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        throw new Error();
+    } catch {
+      throw new Error(
+        "DISCORD_AUTHORIZE_URL must be an HTTP(S) URL without credentials, query or fragment",
+      );
+    }
+  }
   return {
+    discordClientId: env.DISCORD_CLIENT_ID,
+    discordClientSecret,
+    allowedUserIds,
+    discordAuthorizeUrl,
     trustProxy,
     publicUrl,
-    authMode,
+    authMode: authMode as Config["authMode"],
     adminPassword,
     botToken,
     port,

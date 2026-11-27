@@ -8,13 +8,15 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router";
-import { TriangleAlert, X, LogOut } from "lucide-react";
+import { TriangleAlert, X, LogOut, UserRound } from "lucide-react";
 import { ThemeSwitch } from "./ThemeSwitch";
 import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
 interface Session {
+  authMode?: "password" | "none" | "discord";
+  user?: { id: string; name: string; avatar: string | null } | null;
   authenticated: boolean;
   insecure: boolean;
   csrfToken: string;
@@ -22,6 +24,7 @@ interface Session {
 
 const AccessContext = createContext<{
   insecure: boolean;
+  user?: Session["user"];
   busy: boolean;
   error: string;
   logout: () => void;
@@ -45,6 +48,16 @@ export function SessionControls() {
   if (!access || access.insecure) return null;
   return (
     <>
+      {access.user && (
+        <span className={styles.identity} title={access.user.name}>
+          {access.user.avatar ? (
+            <img src={access.user.avatar} alt="" width="28" height="28" />
+          ) : (
+            <UserRound aria-hidden="true" />
+          )}
+          <span className={styles.userName}>{access.user.name}</span>
+        </span>
+      )}
       <button
         className={headerStyles.quiet}
         data-session-control
@@ -134,6 +147,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <AccessContext.Provider
         value={{
           insecure: session.data.insecure,
+          user: session.data.user,
           busy,
           error,
           logout: () => void change("/api/auth/logout"),
@@ -145,6 +159,12 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }
   if (session.data && location.pathname !== "/login")
     return <Navigate to="/login" replace />;
+  const denied = new URLSearchParams(location.search).get("denied");
+  const blockedId =
+    session.data?.authMode === "discord" && /^\d{17,20}$/.test(denied ?? "")
+      ? denied
+      : null;
+  const oauthError = new URLSearchParams(location.search).get("oauth");
   return (
     <main id="main" className={styles.login}>
       <div className={styles.heading}>
@@ -153,7 +173,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
-        <h1 id="login-title">Sign in</h1>
+        <h1 id="login-title">
+          {blockedId ? "Account not allowed" : "Sign in"}
+        </h1>
         <p className={styles.address}>{window.location.host}</p>
         {session.isPending ? (
           <p role="status">Checking your session…</p>
@@ -170,6 +192,39 @@ export function SessionGate({ children }: { children: ReactNode }) {
               Retry
             </button>
           </>
+        ) : session.data?.authMode === "discord" ? (
+          <div className={styles.discordLogin}>
+            {blockedId ? (
+              <>
+                <p>This Discord account is not approved for this instance.</p>
+                <p>
+                  Ask your instance operator to add your user ID to the
+                  allowlist:
+                </p>
+                <code className={styles.userId}>{blockedId}</code>
+              </>
+            ) : (
+              <p>
+                Use an approved Discord account. Only your identity is
+                requested; messages are sent by the instance’s bot.
+              </p>
+            )}
+            {oauthError && (
+              <p role="alert">
+                {oauthError === "state"
+                  ? "This sign-in attempt expired or could not be verified. Start again."
+                  : oauthError === "cancelled"
+                    ? "Discord sign-in was cancelled. You can try again."
+                    : "Unable to sign in with Discord. Try again shortly."}
+              </p>
+            )}
+            <a className={styles.primary} href="/api/auth/discord">
+              <UserRound aria-hidden="true" />
+              {blockedId
+                ? "Try another Discord account"
+                : "Sign in with Discord"}
+            </a>
+          </div>
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <p>Use the password set by your instance operator.</p>
