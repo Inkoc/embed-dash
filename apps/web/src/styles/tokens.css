@@ -85,6 +85,8 @@
   --nav-height: 3.75rem;
   --bar-height: var(--nav-height);
   --login-measure: 40rem;
+  --side-measure: 18rem;
+  --ring-width: 2px;
   --content-max: 86rem;
   --editor-min: 22rem;
   --preview-min: 20rem;

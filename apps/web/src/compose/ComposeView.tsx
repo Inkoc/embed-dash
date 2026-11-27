@@ -8,70 +8,43 @@ import {
 import { Link } from "react-router";
 import {
   ArrowRight,
+  CircleAlert,
+  Eraser,
   GripVertical,
-  Link as LinkIcon,
   Monitor,
+  Plus,
   Smartphone,
+  BookOpen,
 } from "lucide-react";
-import { discordLimits, embedTextLength } from "@embed-dash/shared";
+import { discordLimits, messageEmbedTextLength } from "@embed-dash/shared";
 import { useBot } from "../bot";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import type { Theme } from "../theme";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { BudgetRuler } from "./BudgetRuler";
-import { useDraft, type Draft } from "./draft";
+import {
+  addEmbed,
+  blankDraft,
+  blankEmbed,
+  exampleDraft,
+  isBlank,
+  useDraft,
+} from "./draft";
+import { useEditorState } from "./editorState";
+import { EmbedEditor } from "./EmbedEditor";
 import { TextControl } from "./TextControl";
 import { stackedQuery, usePreviewWidth } from "./usePreviewWidth";
 import styles from "./ComposeView.module.css";
 
-type Pane = "edit" | "preview";
-
-const displayUrl = (url: string) => url.replace(/^https?:\/\//, "");
-
-function embedText(draft: Draft) {
-  return embedTextLength({
-    title: draft.title,
-    description: draft.description,
-    fields: draft.fields,
-    footer: draft.footer,
-    author: draft.author,
-  });
-}
-
-function partSummaries(draft: Draft) {
-  const images = [
-    draft.image && "large image",
-    draft.thumbnail && "thumbnail",
-  ].filter(Boolean);
-  const footer = [
-    draft.footer.text.trim(),
-    draft.timestamp && "send time shown",
-  ].filter(Boolean);
-  return [
-    {
-      name: "Author",
-      summary: draft.author.name.trim()
-        ? `${draft.author.name.trim()}${draft.author.iconUrl ? ", with icon" : ""}`
-        : "Not used",
-    },
-    {
-      name: "Images",
-      summary: images.length
-        ? `${images.join(" and ").replace(/^./, (c) => c.toUpperCase())} set`
-        : "Not used",
-    },
-    {
-      name: "Footer and time",
-      summary: footer.length ? footer.join(" · ") : "Not used",
-    },
-  ];
-}
+const format = (n: number) => n.toLocaleString("en-GB");
 
 export function ComposeView({ theme }: { theme: Theme }) {
-  const [draft, update] = useDraft();
+  const { draft, setDraft, saved } = useDraft();
+  const { pane, setPane, focusAfter, reset } = useEditorState();
   const bot = useBot();
-  const [pane, setPane] = useState<Pane>("edit");
+  const [confirmClear, setConfirmClear] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLElement>(null);
   const editor = useRef<HTMLDivElement>(null);
@@ -81,6 +54,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       `Today at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
     [],
   );
+  const embedCount = draft.embeds.length;
 
   // On phones Esc steps back from the preview pane to the editor.
   useEffect(() => {
@@ -97,7 +71,15 @@ export function ComposeView({ theme }: { theme: Theme }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [pane]);
+  }, [pane, setPane]);
+
+  const clear = () => {
+    setConfirmClear(false);
+    focusAfter("in-content", () => {
+      reset();
+      setDraft(() => blankDraft());
+    });
+  };
 
   return (
     <section
@@ -112,10 +94,43 @@ export function ComposeView({ theme }: { theme: Theme }) {
             Compose
           </h2>
           <BudgetRuler
-            total={embedText(draft)}
+            total={messageEmbedTextLength(draft.embeds)}
             max={discordLimits.embedTotal}
           />
+          <div className={styles.draftState}>
+            <p
+              className={styles.saved}
+              role="status"
+              data-failed={saved ? undefined : ""}
+            >
+              {saved ? (
+                "Saved in this browser"
+              ) : (
+                <>
+                  <CircleAlert aria-hidden="true" />
+                  Not saved
+                </>
+              )}
+            </p>
+            <button
+              type="button"
+              className={styles.quiet}
+              onClick={() => setConfirmClear(true)}
+            >
+              <Eraser aria-hidden="true" />
+              Clear
+            </button>
+          </div>
         </div>
+
+        {!saved && (
+          <p className={styles.saveFailed} role="alert">
+            <b>Your latest changes aren’t saved in this browser.</b> Its storage
+            is full or blocked, so reloading or closing this tab would lose
+            them. Keep the tab open, free up or allow storage for this site, and
+            the next change saves again.
+          </p>
+        )}
 
         <Segmented
           activeKey={pane}
@@ -142,107 +157,84 @@ export function ComposeView({ theme }: { theme: Theme }) {
         <form
           id="editor"
           className={styles.sheet}
-          aria-label="Embed editor"
+          aria-label="Message editor"
           onSubmit={(event) => event.preventDefault()}
         >
+          {isBlank(draft) && (
+            <div className={styles.starter}>
+              <p>
+                <b>A new message.</b> Write it below, or start from an example
+                to see every part filled in.
+              </p>
+              <button
+                type="button"
+                className={styles.add}
+                onClick={() =>
+                  focusAfter("in-content", () => {
+                    reset();
+                    setDraft(() => exampleDraft());
+                  })
+                }
+              >
+                <BookOpen aria-hidden="true" />
+                Start from an example
+              </button>
+            </div>
+          )}
           <section className={styles.section} aria-labelledby="s-message">
             <div className={styles.sectionHead}>
               <h3 id="s-message">Message</h3>
             </div>
             <TextControl
               id="in-content"
+              path="content"
               label="Message text"
               optional
               rows={2}
+              format
+              untrimmed
               max={discordLimits.content}
               value={draft.content}
-              onChange={(content) => update({ content })}
-              focusHint="Shown above the embed in the channel."
+              onChange={(content) =>
+                setDraft((current) => ({ ...current, content }))
+              }
+              focusHint="Shown above the embeds in the channel."
             />
           </section>
 
-          <section className={styles.section} aria-labelledby="s-embed">
-            <div className={styles.sectionHead}>
-              <h3 id="s-embed">Embed</h3>
-              <span className={styles.colour}>
-                <label htmlFor="in-color">Side colour</label>
-                <input
-                  id="in-color"
-                  type="color"
-                  value={draft.color}
-                  onChange={(event) => update({ color: event.target.value })}
-                />
-                <output htmlFor="in-color">{draft.color.toUpperCase()}</output>
-              </span>
-            </div>
-            <div className={styles.stack}>
-              <div>
-                <TextControl
-                  id="in-title"
-                  label="Title"
-                  max={discordLimits.title}
-                  value={draft.title}
-                  onChange={(title) => update({ title })}
-                />
-                {draft.url && (
-                  <p className={styles.linkline}>
-                    <LinkIcon aria-hidden="true" />
-                    <span>
-                      Title links to <b>{displayUrl(draft.url)}</b>
-                    </span>
-                  </p>
-                )}
-              </div>
-              <TextControl
-                id="in-description"
-                label="Description"
-                rows={5}
-                max={discordLimits.description}
-                value={draft.description}
-                onChange={(description) => update({ description })}
-              />
-            </div>
-          </section>
+          {draft.embeds.map((embed, index) => (
+            <EmbedEditor
+              key={embed.id}
+              embed={embed}
+              index={index}
+              count={embedCount}
+            />
+          ))}
 
-          <section className={styles.section} aria-labelledby="s-fields">
-            <div className={styles.sectionHead}>
-              <h3 id="s-fields">Fields</h3>
-              <span className={styles.aside}>
-                {draft.fields.length} of {discordLimits.fields}
-              </span>
-            </div>
-            <ol className={styles.rows} aria-labelledby="s-fields">
-              {draft.fields.map((field, index) => (
-                <li key={index} className={styles.fieldRow}>
-                  <span className={styles.fieldNo}>
-                    <span className="visually-hidden">Field </span>
-                    {index + 1}
-                  </span>
-                  <span className={styles.fieldText}>
-                    <span className={styles.fieldName}>{field.name}</span>
-                    <span className="visually-hidden">: </span>
-                    <span className={styles.fieldValue}>{field.value}</span>
-                  </span>
-                  <span className={styles.fieldTag}>
-                    {field.inline ? "Inline" : "Full width"}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section className={styles.section} aria-labelledby="s-parts">
-            <div className={styles.sectionHead}>
-              <h3 id="s-parts">Optional parts</h3>
-            </div>
-            <dl className={styles.rows}>
-              {partSummaries(draft).map((part) => (
-                <div key={part.name} className={styles.partRow}>
-                  <dt>{part.name}</dt>
-                  <dd>{part.summary}</dd>
-                </div>
-              ))}
-            </dl>
+          <section className={styles.addSection} aria-label="Embeds">
+            {embedCount < discordLimits.embedsPerMessage ? (
+              <button
+                type="button"
+                id="add-embed"
+                className={styles.add}
+                onClick={() => {
+                  const embed = blankEmbed();
+                  focusAfter(`${embed.id}-title`, () =>
+                    setDraft((current) => addEmbed(current, embed)),
+                  );
+                }}
+              >
+                <Plus aria-hidden="true" />
+                Add embed
+              </button>
+            ) : (
+              <p id="add-embed" tabIndex={-1} className={styles.full}>
+                A message holds at most {discordLimits.embedsPerMessage} embeds.
+              </p>
+            )}
+            <span className={styles.aside}>
+              {embedCount} of {discordLimits.embedsPerMessage}
+            </span>
           </section>
         </form>
       </div>
@@ -307,44 +299,145 @@ export function ComposeView({ theme }: { theme: Theme }) {
             time={time}
           />
         </div>
-        <div className={styles.next}>
-          <p>
-            <b>Looks right?</b> Pick where it goes next.
-          </p>
-          <ChooseChannels />
-        </div>
+        <NextStep />
       </aside>
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear the draft?"
+        confirmLabel="Clear draft"
+        onConfirm={clear}
+        onCancel={() => setConfirmClear(false)}
+      >
+        <p>
+          This removes the message text and every embed from this browser. It
+          can’t be undone.
+        </p>
+      </ConfirmDialog>
     </section>
   );
 }
 
-function ChooseChannels() {
+const plural = (n: number) => `${n} ${n === 1 ? "problem" : "problems"}`;
+/** Long lists stay short beside the preview; fixing the first ones brings the rest up. */
+const listed = 5;
+
+/** The way to Send, or what stands in its way. */
+function NextStep() {
+  const { draft, issues } = useDraft();
+  const { reveal } = useEditorState();
+  if (isBlank(draft))
+    return (
+      <div className={styles.next}>
+        <p id="nothing-yet">
+          <b>Nothing to send yet.</b> Write a message or an embed first.
+        </p>
+        <ChooseChannels describedBy="nothing-yet" />
+      </div>
+    );
+  if (issues.length === 0)
+    return (
+      <div className={styles.next}>
+        <p>
+          <b>Looks right?</b> Pick where it goes next.
+        </p>
+        <ChooseChannels describedBy="problems-title" />
+      </div>
+    );
+  return (
+    <div className={styles.next} data-blocked="">
+      <h3 id="problems-title" className={styles.problemsTitle}>
+        <CircleAlert aria-hidden="true" />
+        {plural(issues.length)} to fix before sending
+      </h3>
+      <ul className={styles.problems}>
+        {issues.slice(0, listed).map((issue, index) => (
+          <li key={`${issue.path}-${index}`}>
+            <button type="button" onClick={() => reveal(issue.path)}>
+              <b>{issue.label}:</b> {issue.message}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {issues.length > listed && (
+        <p className={styles.more}>
+          and {plural(issues.length - listed)} more, listed here as you fix
+          these.
+        </p>
+      )}
+      <ChooseChannels describedBy="problems-title" />
+    </div>
+  );
+}
+
+/** While the draft has problems the action stays visible but disabled, and pressing it goes to the first one. */
+function ChooseChannels({ describedBy }: { describedBy: string }) {
+  const { issues } = useDraft();
+  const { reveal } = useEditorState();
+  const content = (
+    <>
+      Choose channels
+      <ArrowRight aria-hidden="true" />
+      <ForwardKeys />
+    </>
+  );
+  if (issues.length > 0)
+    return (
+      <button
+        type="button"
+        className={styles.primary}
+        aria-disabled="true"
+        aria-describedby={describedBy}
+        aria-keyshortcuts={forwardShortcut}
+        onClick={() => reveal(issues[0]!.path)}
+      >
+        {content}
+      </button>
+    );
   return (
     <Link
       to="/send"
       className={styles.primary}
       aria-keyshortcuts={forwardShortcut}
     >
-      Choose channels
-      <ArrowRight aria-hidden="true" />
-      <ForwardKeys />
+      {content}
     </Link>
   );
 }
 
 /** Pinned to the bottom on phones; kept outside the animated view so it stays fixed. */
 export function ComposeActionBar() {
-  const [draft] = useDraft();
+  const { draft, issues } = useDraft();
+  const { reveal } = useEditorState();
   return (
     <div className={styles.actionBar}>
-      <p className={styles.actionMeta}>
-        <span className="visually-hidden">Embed text: </span>
-        {embedText(draft).toLocaleString("en-GB")}
-        <span aria-hidden="true"> / </span>
-        <span className="visually-hidden"> of </span>
-        {discordLimits.embedTotal.toLocaleString("en-GB")}
-      </p>
-      <ChooseChannels />
+      {issues.length > 0 && !isBlank(draft) ? (
+        <button
+          type="button"
+          className={styles.fixFirst}
+          onClick={() => reveal(issues[0]!.path)}
+        >
+          <CircleAlert aria-hidden="true" />
+          {/* Short enough to sit beside the action on a phone; the noun is still read out. */}
+          <span id="problems-count">
+            {issues.length}
+            <span className="visually-hidden">
+              {issues.length === 1 ? " problem" : " problems"}
+            </span>{" "}
+            to fix
+          </span>
+        </button>
+      ) : (
+        <p id="action-meta" className={styles.actionMeta}>
+          <span className="visually-hidden">Embed text: </span>
+          {format(messageEmbedTextLength(draft.embeds))}
+          <span aria-hidden="true"> / </span>
+          <span className="visually-hidden"> of </span>
+          {format(discordLimits.embedTotal)}
+        </p>
+      )}
+      <ChooseChannels
+        describedBy={isBlank(draft) ? "action-meta" : "problems-count"}
+      />
     </div>
   );
 }

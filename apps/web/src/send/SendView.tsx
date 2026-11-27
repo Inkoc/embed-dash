@@ -9,9 +9,9 @@ import styles from "./SendView.module.css";
  * instead of showing a catalogue it can't fill.
  */
 export function SendView() {
-  const [draft] = useDraft();
+  const { draft } = useDraft();
   const bot = useBot();
-  const title = draft.title.trim();
+  const title = draft.embeds[0]?.title.trim();
   const botName = bot.data?.name;
 
   return (

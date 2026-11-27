@@ -1,0 +1,70 @@
+.dialog {
+  width: min(26rem, calc(100vw - var(--space-6)));
+  padding: 0;
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-lg);
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: var(--shadow-lift);
+}
+.dialog[open] {
+  animation: arrive var(--dur-base) var(--ease-out);
+}
+.dialog::backdrop {
+  background: var(--scrim);
+}
+.sheet {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+.sheet h2 {
+  font-size: var(--text-section);
+  font-weight: var(--weight-section);
+  letter-spacing: var(--tracking-section);
+}
+.body {
+  color: var(--ink-2);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.cancel,
+.danger {
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.cancel {
+  border: var(--rule-width) solid var(--field-line);
+  background: var(--sheet);
+  color: var(--ink);
+}
+.cancel:hover {
+  background: var(--sheet-2);
+}
+/* red only because this destroys work; the words say so too */
+.danger {
+  border: var(--rule-width) solid var(--danger);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.danger:hover {
+  box-shadow: inset 0 0 0 var(--rule-width) var(--danger);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+}
