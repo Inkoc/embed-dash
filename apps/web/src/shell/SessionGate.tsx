@@ -76,10 +76,13 @@ export function SessionControls() {
         </span>
       </button>
       {access.error && (
-        <p className={styles.logoutError} role="alert">
-          <X aria-hidden="true" />
-          {access.error.message}
-        </p>
+        <div className={`${styles.logoutError} ${styles.failure}`}>
+          <p role="alert">
+            <X aria-hidden="true" />
+            {access.error.message}
+          </p>
+          <FailureDetail error={access.error} />
+        </div>
       )}
     </>
   );
@@ -233,8 +236,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
               }}
             />
             {error && (
-              <div id="login-error" className={styles.failure} role="alert">
-                <p>
+              <div id="login-error" className={styles.failure}>
+                <p role="alert">
                   <X aria-hidden="true" />
                   {error.message}
                 </p>

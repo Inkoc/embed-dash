@@ -45,8 +45,8 @@ function Loading() {
 function Failure({ error, retry }: { error: Error; retry: () => void }) {
   const failure = asAppError("load-history", error);
   return (
-    <div className={styles.state} role="alert">
-      <p>✗ {failure.message}</p>
+    <div className={styles.state}>
+      <p role="alert">✗ {failure.message}</p>
       <FailureDetail error={failure} />
       <button onClick={retry}>Try again</button>
     </div>

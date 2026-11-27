@@ -68,7 +68,7 @@ interface Sending {
 export type Received = "sent" | "unknown";
 
 /** The message itself, without who it may notify, so two sends of it compare equal. */
-const messageKey = (message: MessageDraft) =>
+export const messageKey = (message: MessageDraft) =>
   JSON.stringify([message.content, message.embeds, message.attachments]);
 
 /** Which channels a send reached, or may have reached. */
@@ -92,6 +92,11 @@ interface InFlight {
   id: string;
   /** The target IDs being retried, or null for the first send. */
   retrying: string[] | null;
+  /**
+   * The sent message's fingerprint, so a reload can still tell which channels
+   * have it; the composer may have been edited since.
+   */
+  message: string | null;
 }
 
 const rememberInFlight = (value: InFlight | null) => {
@@ -135,11 +140,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<SendResult | null>(null);
   const [problem, setProblem] = useState<AppError | null>(null);
   // Which message the current results are for, and the channels it reached across sends.
-  const sentKey = useRef<string | null>(
-    resumed && !resumed.retrying
-      ? messageKey((resumed.body as { payload: MessageDraft }).payload)
-      : null,
-  );
+  const sentKey = useRef<string | null>(resumed?.message ?? null);
   const [reached, setReached] = useState<{
     key: string;
     channels: ReadonlyMap<string, Received>;
@@ -297,6 +298,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         },
         id,
         retrying: null,
+        message: sentKey.current,
       });
     },
     retry: (targetIds) => {
@@ -309,6 +311,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         body: targetIds ? { targetIds } : {},
         id: result?.id ?? "",
         retrying: ids,
+        message: sentKey.current,
       });
     },
     keepDraft: () => {

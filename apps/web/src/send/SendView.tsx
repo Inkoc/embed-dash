@@ -36,6 +36,7 @@ import { ServerRail, ServerStrip } from "./ServerRail";
 import { MessageSlip } from "./MessageSlip";
 import { useSending, type Received } from "./sending";
 import { Tray, type Flight, type TrayEntry } from "./Tray";
+import { ClosedDrawer } from "../ui/ClosedDrawer";
 import styles from "./SendView.module.css";
 
 /** Send: pick the channels the message goes to, from every server the bot is in. */
@@ -68,8 +69,10 @@ export function SendView() {
     body = (
       <Closed label="Not listed" title="The servers couldn’t be listed">
         {guilds.error && (
-          <div role="alert">
-            <p>{asAppError("load-servers", guilds.error).message}</p>
+          <div>
+            <p role="alert">
+              {asAppError("load-servers", guilds.error).message}
+            </p>
             <FailureDetail error={asAppError("load-servers", guilds.error)} />
           </div>
         )}
@@ -144,10 +147,10 @@ export function SendView() {
       </div>
       <MessageSlip draft={draft} />
       {data && guilds.isError && (
-        <div className={styles.problem} role="alert">
+        <div className={styles.problem}>
           <X aria-hidden="true" />
           <div>
-            <p>
+            <p role="alert">
               {asAppError("load-servers", guilds.error).message} The list below
               is from {new Date(data.fetchedAt).toLocaleTimeString()}.
             </p>
@@ -438,7 +441,7 @@ function Picker({
   );
 }
 
-/** A closed drawer whose label says what's missing, beside the explanation. */
+/** A closed drawer whose label says what's missing, with the way back to Compose. */
 function Closed({
   label,
   title,
@@ -449,23 +452,16 @@ function Closed({
   children: ReactNode;
 }) {
   return (
-    <div className={styles.closed}>
-      <div className={styles.drawer} aria-hidden="true">
-        <span className={styles.holder}>{label}</span>
-        <span className={styles.pull} />
-      </div>
-      <div className={styles.copy}>
-        <h3>{title}</h3>
-        {children}
-        <Link to="/" className={styles.back} aria-keyshortcuts="Escape">
-          <ArrowLeft aria-hidden="true" />
-          Back to Compose
-          <kbd data-k="back" aria-hidden="true">
-            Esc
-          </kbd>
-        </Link>
-      </div>
-    </div>
+    <ClosedDrawer label={label} title={title}>
+      {children}
+      <Link to="/" className={styles.back} aria-keyshortcuts="Escape">
+        <ArrowLeft aria-hidden="true" />
+        Back to Compose
+        <kbd data-k="back" aria-hidden="true">
+          Esc
+        </kbd>
+      </Link>
+    </ClosedDrawer>
   );
 }
 

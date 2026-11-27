@@ -103,7 +103,7 @@ test("a failed listing explains itself and retries with a fresh list", async () 
   ]);
   renderSend();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Discord is temporarily unavailable.",
+    "Couldn’t load servers: Discord is having problems on its side.",
   );
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(

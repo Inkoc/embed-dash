@@ -107,15 +107,22 @@ export function createUploadStore(dataDir: string, sqlite: Database.Database) {
 const dayMs = 24 * 60 * 60 * 1000;
 const sweepEveryMs = 60 * 60 * 1000;
 
-/** True for an upload some stored send names, whatever its status: a retry sends the file again. */
-const referencedBySend = sql`exists (
+/**
+ * True for an upload a stored send or a template names. A send's files stay
+ * whatever its status, since a retry sends them again; a template's stay so
+ * it still has them when a message is started from it.
+ */
+const referenced = sql`(exists (
   select 1 from sends, json_each(sends.payload_json, '$.attachments') as attachment
   where json_extract(attachment.value, '$.id') = ${uploads.id}
-)`;
+) or exists (
+  select 1 from templates, json_each(templates.payload_json, '$.attachments') as attachment
+  where json_extract(attachment.value, '$.id') = ${uploads.id}
+))`;
 
 /**
- * Removes files older than the retention period that no stored send refers
- * to. Drafts live in the browser, so a file only a draft uses counts as
+ * Removes files older than the retention period that no stored send or
+ * template refers to. Drafts live in the browser, so a file only a draft uses counts as
  * unreferenced; the composer marks it missing if the draft comes back later.
  * Files on disk without a record (an interrupted upload) go too.
  */
@@ -129,7 +136,7 @@ export function sweepUploads(
   const cutoff = now - retentionDays * dayMs;
   const stale = db
     .delete(uploads)
-    .where(and(lt(uploads.createdAt, cutoff), sql`not ${referencedBySend}`))
+    .where(and(lt(uploads.createdAt, cutoff), sql`not ${referenced}`))
     .returning({ id: uploads.id })
     .all();
   const { directory, find } = createUploadStore(dataDir, sqlite);
@@ -267,11 +274,11 @@ export async function registerUploads(
 
   app.delete("/api/uploads/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
-    // The draft lets go of the file, but a send that names it may still need
-    // it for a retry; the sweep removes it once nothing refers to it.
+    // The draft lets go of the file, but a send or template that names it may
+    // still need it; the sweep removes it once nothing refers to it.
     const removed = db
       .delete(uploads)
-      .where(and(eq(uploads.id, id), sql`not ${referencedBySend}`))
+      .where(and(eq(uploads.id, id), sql`not ${referenced}`))
       .returning({ id: uploads.id })
       .all();
     if (removed.length || !find(id))

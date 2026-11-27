@@ -20,7 +20,7 @@ import {
 } from "@embed-dash/shared";
 import { DraftProvider, useDraft } from "../compose/draft";
 import { SelectionProvider } from "./selection";
-import { SendingProvider } from "./sending";
+import { messageKey, SendingProvider } from "./sending";
 import { SendView } from "./SendView";
 
 vi.mock("./sendApi", async (original) => ({
@@ -602,7 +602,7 @@ test("channels the server refuses leave the tray and nothing is marked sent", as
     }),
   );
   expect(await within(tray()).findByRole("alert")).toHaveTextContent(
-    "Nothing was sent.",
+    "nothing was sent",
   );
   expect(tray()).toHaveTextContent("2 channels in 2 servers");
   expect(screen.getByRole("checkbox", { name: "news" })).not.toBeChecked();
@@ -761,11 +761,13 @@ test("connection and session failures are explained without losing the tray", as
     "Couldn’t send: your session changed",
   );
   const last = await attempt();
-  expect(last.querySelector("p")).toHaveTextContent(
+  expect(last).toHaveTextContent(
     "Couldn’t send: Discord is having problems on its side. Try again in a few minutes.",
   );
-  // The server's own words and the status are kept for Details, folded away.
-  const details = last.querySelector("details")!;
+  // The server's own words and the status are kept for Details, folded away
+  // and outside the alert, so opening it isn't announced again.
+  expect(last.querySelector("details")).toBeNull();
+  const details = last.parentElement!.querySelector("details")!;
   expect(details.open).toBe(false);
   expect(details).toHaveTextContent(
     "HTTP 502 · DISCORD_UNAVAILABLE · Server said: “Discord is temporarily unavailable.”",
@@ -934,6 +936,12 @@ test("the selection is locked while the send is delivered, and says so", async (
   fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "news" }));
   await startSending("Send to 2 channels");
+  // What a reload needs to pick the send up again, including which message it is.
+  expect(
+    JSON.parse(sessionStorage.getItem("embed-dash:send-in-flight")!),
+  ).toMatchObject({
+    message: messageKey({ content: "Patch day", embeds: [], attachments: [] }),
+  });
   expect(
     await screen.findByText(/The selection is locked/),
   ).toBeInTheDocument();
@@ -1047,7 +1055,7 @@ test("reloading mid-send shows the progress again and keeps the lock", async () 
   expect(screen.queryByText(/The selection is locked/)).toBeNull();
 });
 
-test("reloading mid-retry follows the send without asking for the retry again", async () => {
+test("reloading mid-retry follows the send without asking for the retry again, and still knows which channels have the message", async () => {
   draftWith({ content: "Patch day" });
   sessionStorage.setItem(
     "embed-dash:send-in-flight",
@@ -1056,6 +1064,11 @@ test("reloading mid-retry follows the send without asking for the retry again", 
       body: {},
       id: "s1",
       retrying: ["t2"],
+      message: messageKey({
+        content: "Patch day",
+        embeds: [],
+        attachments: [],
+      }),
     }),
   );
   serve(
@@ -1065,20 +1078,41 @@ test("reloading mid-retry follows the send without asking for the retry again", 
       targets: [
         target("t1", "1", "10", "general"),
         { ...target("t2", "1", "11", "news"), status: "pending" },
+        target("t3", "2", "20", "edits", "failed", "MISSING_PERMISSION"),
       ],
     },
     {
       id: "s1",
-      status: "done",
+      status: "partial",
       targets: [
         target("t1", "1", "10", "general"),
         target("t2", "1", "11", "news"),
+        target("t3", "2", "20", "edits", "failed", "MISSING_PERMISSION"),
       ],
     },
   );
   renderSend();
   await screen.findByRole("complementary", { name: "Tray" });
-  await within(tray()).findByText("Every copy arrived.");
+  await within(tray()).findByText("2 sent, 1 failed.");
   expect(sendRequests()).toEqual([]);
   expect(sessionStorage.getItem("embed-dash:send-in-flight")).toBeNull();
+
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Keep this draft" }),
+  );
+  for (const name of ["general", "news"])
+    expect(screen.getByRole("checkbox", { name })).toHaveAccessibleDescription(
+      /Already has this message/,
+    );
+  // The channel that failed never got it, so it isn't marked.
+  expect(
+    screen.getByRole("checkbox", { name: "edits" }),
+  ).not.toHaveAccessibleDescription(/Already has this message/);
+  fireEvent.click(screen.getByRole("checkbox", { name: "news" }));
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Send to 1 channel" }),
+  );
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    "1 of these channels already has this message: #news. They’ll get a second copy.",
+  );
 });

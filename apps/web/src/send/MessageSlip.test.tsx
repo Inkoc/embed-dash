@@ -45,7 +45,9 @@ test("falls back to the first line of the text, and counts one embed and no file
 
 test("a blank draft says so and points to Compose", () => {
   const { container } = show(blankDraft());
-  expect(container).toHaveTextContent("Sending Nothing written yet");
+  expect(container).toHaveTextContent("Nothing written yet");
+  // Nothing is going out, so it isn't labelled as sending.
+  expect(container).not.toHaveTextContent("Sending");
   expect(
     screen.getByRole("link", { name: "Write it in Compose" }),
   ).toBeInTheDocument();

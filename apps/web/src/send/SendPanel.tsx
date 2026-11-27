@@ -233,10 +233,10 @@ const progressText = (
 /** A failure the tray reports, with its technical side behind "Details". */
 function Problem({ error }: { error: AppError }) {
   return (
-    <div className={styles.problem} role="alert">
+    <div className={styles.problem}>
       <X aria-hidden="true" />
       <div>
-        <p>{error.message}</p>
+        <p role="alert">{error.message}</p>
         <FailureDetail error={error} />
       </div>
     </div>

@@ -78,3 +78,8 @@
     transform: translateY(var(--space-2));
   }
 }
+
+/* only while the server answers; the label says so */
+.primary:disabled {
+  cursor: progress;
+}

@@ -20,7 +20,9 @@ test("password login reaches composer and logout protects it again", async ({
   }
   await page.getByLabel("Instance password").fill("wrong");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Incorrect password");
+  await expect(page.getByRole("alert")).toContainText(
+    "Couldn’t sign in: the password is incorrect.",
+  );
   await page.getByLabel("Instance password").fill("e2e-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(

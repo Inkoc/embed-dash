@@ -12,6 +12,7 @@ import { openDatabase } from "./db.js";
 import { discordFailure, safeErrorDetails } from "./errors.js";
 import { registerSends } from "./sends.js";
 import { securityHeaders } from "./security.js";
+import { registerTemplates } from "./templates.js";
 import { registerUploads } from "./uploads.js";
 export async function createApp(
   config: Config,
@@ -38,6 +39,7 @@ export async function createApp(
   await registerAuth(app, config, database);
   await registerUploads(app, config, database);
   await registerSends(app, config, database, discord);
+  registerTemplates(app, config, database);
   app.get("/health", async () => ({ status: "ok" }));
   const fromDiscord =
     <T>(what: string, load: (request: FastifyRequest) => Promise<T>) =>

@@ -25,3 +25,7 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Main channel of a server** is its system channel, else its first postable announcement channel, else its first postable text channel.
 - **Forum channels are listed but not selectable** until forum posting exists.
 - **`@fastify/static` upgraded to 11.0.0** to clear a path-traversal advisory found by the milestone audit. The one remaining advisory is development-only (an `esbuild` copy inside `drizzle-kit`, whose dev server this project never runs).
+
+## Milestone 2
+
+- **Templates hold on to their files.** The upload sweep and a draft's clear skip any file a template names, as they already did for sends; saving keeps only files the server still has, and a file lost anyway (a wiped data directory) is flagged on the template and in the composer when a message is started from it.

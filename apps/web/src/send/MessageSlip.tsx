@@ -17,7 +17,6 @@ export function MessageSlip({ draft }: { draft: Draft }) {
     return (
       <div className={styles.slip} data-blank="">
         <p className={styles.what}>
-          <span className={styles.label}>Sending</span>{" "}
           <b>Nothing written yet</b>
         </p>
         <Link to="/" className={styles.edit}>
