@@ -9,19 +9,25 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router";
 import { TriangleAlert, X, LogOut } from "lucide-react";
+import type { SessionUser } from "@embed-dash/shared";
+import { DiscordEntry, NotAllowed, UserBadge } from "./DiscordSignIn";
 import { ThemeSwitch } from "./ThemeSwitch";
 import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
 interface Session {
+  authMode: "password" | "none" | "discord";
   authenticated: boolean;
   insecure: boolean;
   csrfToken: string;
+  user: SessionUser | null;
+  deniedUserId: string | null;
 }
 
 const AccessContext = createContext<{
   insecure: boolean;
+  user: SessionUser | null;
   busy: boolean;
   error: string;
   logout: () => void;
@@ -45,6 +51,7 @@ export function SessionControls() {
   if (!access || access.insecure) return null;
   return (
     <>
+      {access.user && <UserBadge user={access.user} />}
       <button
         className={headerStyles.quiet}
         data-session-control
@@ -134,6 +141,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <AccessContext.Provider
         value={{
           insecure: session.data.insecure,
+          user: session.data.user,
           busy,
           error,
           logout: () => void change("/api/auth/logout"),
@@ -145,6 +153,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }
   if (session.data && location.pathname !== "/login")
     return <Navigate to="/login" replace />;
+  const discord = session.data?.authMode === "discord";
+  const denied = discord ? session.data?.deniedUserId : null;
   return (
     <main id="main" className={styles.login}>
       <div className={styles.heading}>
@@ -153,7 +163,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
-        <h1 id="login-title">Sign in</h1>
+        <h1 id="login-title">{denied ? "Not allowed" : "Sign in"}</h1>
         <p className={styles.address}>{window.location.host}</p>
         {session.isPending ? (
           <p role="status">Checking your session…</p>
@@ -170,6 +180,12 @@ export function SessionGate({ children }: { children: ReactNode }) {
               Retry
             </button>
           </>
+        ) : denied ? (
+          <NotAllowed userId={denied} />
+        ) : discord ? (
+          <DiscordEntry
+            reason={new URLSearchParams(location.search).get("auth")}
+          />
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <p>Use the password set by your instance operator.</p>

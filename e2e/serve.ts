@@ -3,14 +3,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
 import { createApp } from "../apps/server/src/app.js";
-import { startFakeDiscord } from "./fake-discord.js";
+import { fakeOAuth, startFakeDiscord } from "./fake-discord.js";
 const dataDir = mkdtempSync(join(tmpdir(), "embed-e2e-"));
+const discordDataDir = mkdtempSync(join(tmpdir(), "embed-e2e-discord-"));
 const port = Number(process.env.E2E_PORT ?? 28742);
 const fake = startFakeDiscord(0);
 await once(fake, "listening");
 const address = fake.address();
 if (!address || typeof address === "string")
   throw new Error("No fake API address");
+const discordApiBase = `http://127.0.0.1:${address.port}/api`;
+const spaRoot = resolve("apps/web/dist");
 const app = await createApp(
   {
     botToken: "e2e-test-token",
@@ -19,15 +22,37 @@ const app = await createApp(
     host: "127.0.0.1",
     port,
     dataDir,
-    discordApiBase: `http://127.0.0.1:${address.port}/api`,
+    discordApiBase,
   },
-  { spaRoot: resolve("apps/web/dist"), logger: false },
+  { spaRoot, logger: false },
 );
 await app.listen({ port, host: "127.0.0.1" });
+// A second instance in Discord login mode, one port above, for the sign-in specs.
+const discordPort = port + 1;
+const discordApp = await createApp(
+  {
+    botToken: "e2e-test-token",
+    authMode: "discord",
+    host: "127.0.0.1",
+    port: discordPort,
+    dataDir: discordDataDir,
+    discordApiBase,
+    publicUrl: `http://127.0.0.1:${discordPort}`,
+    discordLogin: {
+      clientId: fakeOAuth.clientId,
+      clientSecret: fakeOAuth.secret,
+      allowedUserIds: ["111111111111111111"],
+      authorizeUrl: `http://127.0.0.1:${address.port}/oauth2/authorize`,
+    },
+  },
+  { spaRoot, logger: false },
+);
+await discordApp.listen({ port: discordPort, host: "127.0.0.1" });
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {
-    void app.close().then(() => {
+    void Promise.all([app.close(), discordApp.close()]).then(() => {
       fake.close();
       rmSync(dataDir, { recursive: true });
+      rmSync(discordDataDir, { recursive: true });
     });
   });

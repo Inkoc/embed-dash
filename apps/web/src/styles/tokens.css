@@ -94,6 +94,7 @@
   --dot: 0.5rem;
   --row-min: 3.25rem; /* one ruled list row */
   --ruler-length: 11rem;
+  --name-max: 10rem; /* the signed-in name in the top bar */
 
   /* motion: exponential ease-out for arrivals, a quick ease-in for departures */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
