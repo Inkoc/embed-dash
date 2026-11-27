@@ -652,7 +652,7 @@ export const sendTargetSchema = z.object({
   guildName: z.string(),
   channelId: z.string(),
   channelName: z.string(),
-  status: z.enum(["pending", "sent", "failed", "unknown"]),
+  status: z.enum(["pending", "posting", "sent", "failed", "unknown"]),
   messageId: z.string().nullable(),
   error: deliveryErrorSchema.nullable(),
 });

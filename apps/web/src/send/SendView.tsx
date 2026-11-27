@@ -274,16 +274,16 @@ function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
         onJump={onJump}
       />
       <div className={styles.main}>
-        {locked && (
-          <p className={styles.unavailable} role="status">
-            <Lock aria-hidden="true" />
-            <span>
-              The selection is locked while the send is delivered. It unlocks
-              when every channel has an answer.
-            </span>
-          </p>
-        )}
         <div className={styles.lookup}>
+          {locked && (
+            <p className={styles.locked} role="status">
+              <Lock aria-hidden="true" />
+              <span>
+                The selection is locked while the send is delivered. It unlocks
+                when every channel has an answer.
+              </span>
+            </p>
+          )}
           <label htmlFor="channel-search" className={styles.label}>
             Find channels
           </label>

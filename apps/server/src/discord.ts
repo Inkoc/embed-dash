@@ -76,7 +76,11 @@ export function createDiscord(
     rejectOnRateLimit: (limit) => limit.retryAfter > 10_000,
     timeout: 5000,
   });
+  // Rate-limit waits spent by the post now running in a channel, and the post
+  // queued behind it. Two sends can aim at one channel; their posts take turns
+  // so that each starts counting from zero.
   const rateLimitPauses = new Map<string, number>();
+  const channelTurns = new Map<string, Promise<unknown>>();
   // Posting waits out short rate limits. It never retries by itself: repeating
   // a post that timed out could put the message in the channel twice.
   const posting = new REST({
@@ -85,7 +89,7 @@ export function createDiscord(
     retries: 0,
     rejectOnRateLimit: (limit) => {
       if (limit.retryAfter > maxRateLimitWaitMs) return true;
-      // The major parameter of a message post is its channel, and one post per channel runs at a time.
+      // The major parameter of a message post is its channel, and one post per channel runs at a time (see createMessage).
       const pauses = (rateLimitPauses.get(limit.majorParameter) ?? 0) + 1;
       rateLimitPauses.set(limit.majorParameter, pauses);
       return pauses > maxRateLimitReplays;
@@ -176,7 +180,7 @@ export function createDiscord(
     return inFlight;
   }
 
-  async function createMessage(
+  async function post(
     channelId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
@@ -191,6 +195,23 @@ export function createDiscord(
     } finally {
       rateLimitPauses.delete(channelId);
     }
+  }
+
+  function createMessage(
+    channelId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) {
+    const turn = (channelTurns.get(channelId) ?? Promise.resolve()).then(() =>
+      post(channelId, body, files),
+    );
+    const settled = turn.catch(() => undefined);
+    channelTurns.set(channelId, settled);
+    void settled.then(() => {
+      if (channelTurns.get(channelId) === settled)
+        channelTurns.delete(channelId);
+    });
+    return turn;
   }
 
   return { getBot, listGuilds, createMessage };

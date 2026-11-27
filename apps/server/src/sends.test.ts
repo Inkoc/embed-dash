@@ -793,19 +793,30 @@ test("repeating a request with the same id returns that send and posts nothing m
   expect((await read(s, "not-a-uuid")).statusCode).toBe(400);
 });
 
-test("a restart marks copies that were still pending as unknown", async () => {
+const statuses = (dir: string, sendId: string) =>
+  (
+    rows(
+      dir,
+      `SELECT status, error FROM send_targets WHERE send_id = '${sendId}' ORDER BY position`,
+    ) as { status: string; error: string | null }[]
+  ).map((t) => (t.error ? `${t.status}:${t.error}` : t.status));
+
+test("a restart leaves only the copy being posted unknown and lets retry take the ones never tried", async () => {
   const s = await setup();
   const done = await sent(s, [news]);
+  const cutOff = randomUUID();
   const db = openDatabase(s.dir);
   db.prepare(
-    "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('cut-off', '{}', '', 'sending', 1, 1)",
-  ).run();
+    "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES (?, ?, '', 'sending', 1, 1)",
+  ).run(cutOff, JSON.stringify(payload()));
   const insert = db.prepare(
-    "INSERT INTO send_targets (id, send_id, guild_id, guild_name, channel_id, channel_name, status, position) VALUES (?, 'cut-off', 'g', 'G', ?, 'c', ?, ?)",
+    "INSERT INTO send_targets (id, send_id, guild_id, guild_name, channel_id, channel_name, status, position) VALUES (?, ?, ?, 'G', ?, 'c', ?, ?)",
   );
-  insert.run("t1", "1", "sent", 0);
-  insert.run("t2", "2", "pending", 1);
-  insert.run("t3", "3", "pending", 2);
+  const guild = fakeGuilds[2].id;
+  insert.run("t1", cutOff, guild, news, "sent", 0);
+  insert.run("t2", cutOff, guild, results, "posting", 1);
+  insert.run("t3", cutOff, guild, schedule, "pending", 2);
+  insert.run("t4", cutOff, guild, schedule, "pending", 3);
   db.close();
   await s.app.close();
   const restarted = await createApp(
@@ -813,22 +824,159 @@ test("a restart marks copies that were still pending as unknown", async () => {
     { logger: false },
   );
   cleanups.push(() => restarted.close());
+  expect(statuses(s.dir, cutOff)).toEqual([
+    "sent",
+    "unknown:UNKNOWN_OUTCOME",
+    "failed:NOT_ATTEMPTED",
+    "failed:NOT_ATTEMPTED",
+  ]);
   expect(
-    rows(
-      s.dir,
-      "SELECT id, status, error FROM send_targets WHERE send_id = 'cut-off' ORDER BY position",
-    ),
-  ).toEqual([
-    { id: "t1", status: "sent", error: null },
-    { id: "t2", status: "unknown", error: "UNKNOWN_OUTCOME" },
-    { id: "t3", status: "unknown", error: "UNKNOWN_OUTCOME" },
-  ]);
-  expect(rows(s.dir, "SELECT status FROM sends WHERE id = 'cut-off'")).toEqual([
-    { status: "partial" },
-  ]);
+    rows(s.dir, `SELECT status FROM sends WHERE id = '${cutOff}'`),
+  ).toEqual([{ status: "partial" }]);
   expect(
     rows(s.dir, `SELECT status FROM sends WHERE id = '${done.id}'`),
   ).toEqual([{ status: "done" }]);
+
+  // Retry sends to the channels never tried and leaves the unconfirmed one alone.
+  const again = { ...s, app: restarted };
+  expect((await retried(again, cutOff)).status).toBe("partial");
+  expect(statuses(s.dir, cutOff)).toEqual([
+    "sent",
+    "unknown:UNKNOWN_OUTCOME",
+    "sent",
+    "sent",
+  ]);
+  expect(s.fake.messages.map((m) => m.channelId)).toEqual([
+    news,
+    schedule,
+    schedule,
+  ]);
+});
+
+test("a copy is marked as being posted until Discord answers, and the ones after it stay pending", async () => {
+  const s = await setup();
+  s.fake.slow(300);
+  const id = randomUUID();
+  await post(s, [news, results, schedule], {}, id);
+  await expect
+    .poll(() => statuses(s.dir, id).join())
+    .toBe("posting,pending,pending");
+  const early = (await read(s, id)).json();
+  expect(early.targets[0].status).toBe("posting");
+  await settle(s, id);
+  expect(statuses(s.dir, id)).toEqual(["sent", "sent", "sent"]);
+});
+
+test("stopping the server finishes the post in flight, starts no more and records the rest as not sent", async () => {
+  const s = await setup();
+  s.fake.slow(300);
+  const id = randomUUID();
+  await post(s, [news, results, schedule], {}, id);
+  await expect.poll(() => statuses(s.dir, id)[0]).toBe("posting");
+  const started = Date.now();
+  await s.app.close();
+  // It waited for one post, not for all three.
+  expect(Date.now() - started).toBeLessThan(800);
+  expect(statuses(s.dir, id)).toEqual([
+    "sent",
+    "failed:NOT_ATTEMPTED",
+    "failed:NOT_ATTEMPTED",
+  ]);
+  expect(rows(s.dir, `SELECT status FROM sends WHERE id = '${id}'`)).toEqual([
+    { status: "partial" },
+  ]);
+  expect(s.fake.messages).toHaveLength(1);
+});
+
+test("two requests with the same id that overlap while the listing loads store one send and post once", async () => {
+  const s = await setup();
+  s.fake.slowListing(200);
+  const id = randomUUID();
+  const [first, second] = await Promise.all([
+    post(s, [news, schedule], {}, id),
+    post(s, [news, schedule], {}, id),
+  ]);
+  expect([first.statusCode, second.statusCode]).toEqual([202, 202]);
+  expect(first.json()).toEqual({ id });
+  expect(second.json()).toEqual({ id });
+  await settle(s, id);
+  expect(s.fake.messages.map((m) => m.channelId)).toEqual([news, schedule]);
+  expect(rows(s.dir, "SELECT id FROM sends")).toHaveLength(1);
+  expect(rows(s.dir, "SELECT id FROM send_targets")).toHaveLength(2);
+});
+
+test("a connection dropped before the send is stored can be recovered by asking again with the same id", async () => {
+  const s = await setup();
+  s.fake.slowListing(400);
+  await s.app.listen({ port: 0, host: "127.0.0.1" });
+  const { port } = s.app.server.address() as { port: number };
+  const origin = `http://127.0.0.1:${port}`;
+  const id = randomUUID();
+  const body = JSON.stringify({
+    id,
+    payload: payload(),
+    channelIds: [news, schedule],
+  });
+  const headers = {
+    ...s.headers,
+    origin,
+    host: `127.0.0.1:${port}`,
+    "content-type": "application/json",
+  };
+  const dropped = new AbortController();
+  const first = fetch(`${origin}/api/sends`, {
+    method: "POST",
+    headers,
+    body,
+    signal: dropped.signal,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  dropped.abort();
+  await expect(first).rejects.toThrow();
+  // The server hasn't stored it yet, so there is nothing to find...
+  expect((await read(s, id)).statusCode).toBe(404);
+  // ...but asking again is safe: whichever request stores it, there is one send.
+  const again = await post(s, [news, schedule], {}, id);
+  expect(again.statusCode).toBe(202);
+  const send = await settle(s, id);
+  expect(send.status).toBe("done");
+  // Both requests carried on, and each channel got one message.
+  expect(s.fake.messages.map((m) => m.channelId)).toEqual([news, schedule]);
+  expect(rows(s.dir, "SELECT id FROM sends")).toHaveLength(1);
+});
+
+test("two retries that start together can't both deliver, even for different copies", async () => {
+  const s = await setup();
+  s.fake.fail(news, { status: 503 });
+  s.fake.fail(schedule, { status: 503 });
+  const send = await sent(s, [news, schedule]);
+  s.fake.slow(150);
+  const [first, second] = await Promise.all(
+    send.targets.map((t: { id: string }) =>
+      retry(s, send.id, { targetIds: [t.id] }),
+    ),
+  );
+  expect([first.statusCode, second.statusCode].sort()).toEqual([202, 409]);
+  expect([first, second].find((r) => r.statusCode === 409)!.json().code).toBe(
+    "SEND_IN_PROGRESS",
+  );
+  await settle(s, send.id);
+  expect(s.fake.messages).toHaveLength(1);
+});
+
+test("two sends to one channel each get their own rate-limit allowance", async () => {
+  const s = await setup();
+  // Each post is held up four times and then given up on; with turns taken, the
+  // second send can't reset the first one's count and spend its allowance.
+  s.fake.fail(news, { status: 429, retryAfter: 0.01, times: 8 });
+  const [a, b] = [randomUUID(), randomUUID()];
+  await Promise.all([post(s, [news], {}, a), post(s, [news], {}, b)]);
+  const [first, second] = await Promise.all([settle(s, a), settle(s, b)]);
+  expect(first.targets[0].error.code).toBe("RATE_LIMITED");
+  expect(second.targets[0].error.code).toBe("RATE_LIMITED");
+  // All eight forced answers were used up by exactly those two posts.
+  expect((await sent(s, [news])).status).toBe("done");
+  expect(s.fake.messages).toHaveLength(1);
 });
 
 test.each([500, 504])(

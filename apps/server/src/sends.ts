@@ -61,28 +61,50 @@ export async function registerSends(
   const db = drizzle(sqlite);
   const store = createUploadStore(config.dataDir, sqlite);
 
-  // A restart cuts a send off mid-way. What was in flight may or may not have
-  // been posted, so it is recorded as unknown, which retry never re-sends unseen.
-  sqlite.transaction(() => {
-    db.update(sendTargets)
-      .set({ status: "unknown", error: "UNKNOWN_OUTCOME" })
-      .where(eq(sendTargets.status, "pending"))
-      .run();
-    for (const send of db
-      .select({ id: sends.id })
-      .from(sends)
-      .where(eq(sends.status, "sending"))
-      .all())
-      finish(send.id);
-  })();
+  /**
+   * Closes the books on a send that was cut off. A copy that was being posted
+   * may or may not have arrived, so it is unknown; one never started was
+   * certainly not posted, so retry can pick it up.
+   */
+  const settleInterrupted = (sendId?: string) =>
+    sqlite.transaction(() => {
+      const scope = (...status: TargetRow["status"][]) =>
+        and(
+          inArray(sendTargets.status, status),
+          sendId ? eq(sendTargets.sendId, sendId) : undefined,
+        );
+      db.update(sendTargets)
+        .set({ status: "unknown", error: "UNKNOWN_OUTCOME" })
+        .where(scope("posting"))
+        .run();
+      db.update(sendTargets)
+        .set({ status: "failed", error: "NOT_ATTEMPTED" })
+        .where(scope("pending"))
+        .run();
+      for (const send of db
+        .select({ id: sends.id })
+        .from(sends)
+        .where(
+          and(
+            eq(sends.status, "sending"),
+            sendId ? eq(sends.id, sendId) : undefined,
+          ),
+        )
+        .all())
+        finish(send.id);
+    })();
+  settleInterrupted();
 
-  // Delivery runs after the answer has gone out; closing waits for it.
+  // Delivery runs after the answer has gone out. Closing lets the post in
+  // flight finish, but starts no more: the rest are recorded as not sent.
   const running = new Set<Promise<void>>();
+  let closing = false;
   const inBackground = (task: Promise<void>) => {
     running.add(task);
     void task.finally(() => running.delete(task));
   };
   app.addHook("onClose", async () => {
+    closing = true;
     await Promise.all(running);
   });
 
@@ -220,7 +242,7 @@ export async function registerSends(
     let stopped = false;
     const refusals = new Map<string, number>();
     for (const target of targets) {
-      if (stopped) {
+      if (stopped || closing) {
         record(target, { status: "failed", error: "NOT_ATTEMPTED" });
         continue;
       }
@@ -243,6 +265,9 @@ export async function registerSends(
         });
         continue;
       }
+      // Marked before the request goes out, so a crash can tell this copy,
+      // which may have arrived, from the ones never tried.
+      record(target, { status: "posting" });
       try {
         const messageId = await discord.createMessage(
           target.channelId,
@@ -270,7 +295,7 @@ export async function registerSends(
     finish(sendId);
   }
 
-  /** Runs delivery in the background; whatever it didn't get to is recorded as unknown. */
+  /** Runs delivery in the background; whatever it didn't get to is settled as after a restart. */
   function deliverInBackground(...args: Parameters<typeof deliver>) {
     inBackground(
       deliver(...args).catch((error: unknown) => {
@@ -278,16 +303,7 @@ export async function registerSends(
           { err: error instanceof Error ? error.name : "unknown" },
           "Delivery stopped unexpectedly",
         );
-        db.update(sendTargets)
-          .set({ status: "unknown", error: "UNKNOWN_OUTCOME" })
-          .where(
-            and(
-              eq(sendTargets.sendId, args[0]),
-              eq(sendTargets.status, "pending"),
-            ),
-          )
-          .run();
-        finish(args[0]);
+        settleInterrupted(args[0]);
       }),
     );
   }
@@ -342,8 +358,11 @@ export async function registerSends(
         );
 
     const now = Date.now();
-    sqlite.transaction(() => {
-      db.insert(sends)
+    // The same id may arrive twice while the listing above is awaited: the
+    // second insert finds the row and hands back that send instead of posting.
+    const stored = sqlite.transaction(() => {
+      const inserted = db
+        .insert(sends)
         .values({
           id: sendId,
           payloadJson: JSON.stringify(payload),
@@ -352,7 +371,9 @@ export async function registerSends(
           createdAt: now,
           updatedAt: now,
         })
+        .onConflictDoNothing()
         .run();
+      if (inserted.changes === 0) return false;
       db.insert(sendTargets)
         .values(
           channelIds.map((id, position) => {
@@ -370,7 +391,9 @@ export async function registerSends(
           }),
         )
         .run();
+      return true;
     })();
+    if (!stored) return reply.code(202).send({ id: sendId });
     const targets = db
       .select()
       .from(sendTargets)
@@ -431,18 +454,12 @@ export async function registerSends(
     } catch (error) {
       return listingFailed(reply, error);
     }
-    if (send.status === "sending")
-      return reply
-        .code(409)
-        .send(
-          sendError(
-            "SEND_IN_PROGRESS",
-            "This send is still being delivered. Wait for it to finish.",
-          ),
-        );
-
-    // Claiming and attempting are one step, so two retries can't both post a copy.
+    // Claiming and attempting are one step, so two retries can't both post a
+    // copy. The send's status is read here, not before the listing was awaited,
+    // so a delivery that began meanwhile is seen.
     const claimed = sqlite.transaction(() => {
+      const current = db.select().from(sends).where(eq(sends.id, id)).get()!;
+      if (current.status === "sending") return "in-progress" as const;
       const failed = db
         .select()
         .from(sendTargets)
@@ -473,6 +490,15 @@ export async function registerSends(
         .run();
       return failed;
     })();
+    if (claimed === "in-progress")
+      return reply
+        .code(409)
+        .send(
+          sendError(
+            "SEND_IN_PROGRESS",
+            "This send is still being delivered. Wait for it to finish.",
+          ),
+        );
     if (claimed.length === 0)
       return reply
         .code(409)

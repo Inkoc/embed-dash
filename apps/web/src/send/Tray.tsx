@@ -16,7 +16,7 @@ import {
   Verdict,
 } from "./SendPanel";
 import { useSending } from "./sending";
-import { plural, tally } from "./summary";
+import { inFlight, plural, tally } from "./summary";
 import styles from "./Tray.module.css";
 
 export interface TrayEntry {
@@ -119,7 +119,7 @@ export function Tray({
   const outcome = result ? tally(result) : null;
   // Copies still in flight spin; before the first answer every ticked channel does.
   const waiting = (slip: Slip) =>
-    slip.target ? slip.target.status === "pending" : !!busy;
+    slip.target ? inFlight(slip.target) : !!busy;
 
   const blocked = busy
     ? null
@@ -366,7 +366,7 @@ export function Tray({
           </b>{" "}
           {reconnecting
             ? "The send carries on there. Nothing is sent twice."
-            : `Mentions ${pings.length ? `notify ${pings.join(", ")}` : "notify nobody"}${silent ? "; sent silently" : ""}.`}
+            : `Mentions ${pings.length ? `notify ${pings.join(", ")}` : "notify nobody"}${silent ? "; sent silently" : ""}. Channels stay locked until every one has an answer.`}
         </p>
       ) : outcome ? (
         <p

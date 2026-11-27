@@ -1,4 +1,4 @@
-import type { SendResult } from "@embed-dash/shared";
+import type { SendResult, SendTarget } from "@embed-dash/shared";
 import type { Draft } from "../compose/draft";
 
 export const plural = (n: number, one: string, many: string) =>
@@ -32,6 +32,10 @@ export function messageSummary(draft: Draft): {
   return { headline, parts: parts.join(" · ") };
 }
 
+/** A copy that has no outcome yet: queued, or its post is under way. */
+export const inFlight = (target: Pick<SendTarget, "status">) =>
+  target.status === "pending" || target.status === "posting";
+
 /** How many of the copies being delivered (all, or the ones being retried) have an outcome. */
 export function progress(
   result: SendResult,
@@ -41,7 +45,7 @@ export function progress(
     ? result.targets.filter((target) => retrying.has(target.id))
     : result.targets;
   return {
-    done: copies.filter((target) => target.status !== "pending").length,
+    done: copies.filter((target) => !inFlight(target)).length,
     total: copies.length,
   };
 }
@@ -53,7 +57,7 @@ export function tally(result: SendResult) {
   const sent = count("sent");
   const failed = count("failed");
   const unknown = count("unknown");
-  const pending = count("pending");
+  const pending = result.targets.filter(inFlight).length;
   const parts = [
     `${sent} sent`,
     failed ? `${failed} failed` : null,

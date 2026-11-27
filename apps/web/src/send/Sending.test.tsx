@@ -124,6 +124,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -573,9 +574,6 @@ test("a file the server lost blocks the send and is marked on the draft", async 
 test("connection and session failures are explained without losing the tray", async () => {
   draftWith({ content: "Hi" });
   const answers = [
-    () => {
-      throw new TypeError("network");
-    },
     () => Response.json({}, { status: 401 }),
     () => Response.json({}, { status: 403 }),
     () =>
@@ -601,8 +599,6 @@ test("connection and session failures are explained without losing the tray", as
     );
     return within(tray()).findByRole("alert");
   };
-  // No answer at all: the id is asked about, and the server has never heard of it.
-  expect(await attempt()).toHaveTextContent("never reached the server");
   expect(await attempt()).toHaveTextContent("Your session ended");
   expect(await attempt()).toHaveTextContent("Your session changed");
   expect(await attempt()).toHaveTextContent(
@@ -785,10 +781,135 @@ test("the selection is locked while the send is delivered, and says so", async (
   for (const name of [/Main channel/, /All postable/, /Clear/])
     expect(picks.getByRole("button", { name })).toBeDisabled();
   expect(tray()).toHaveTextContent("2 channels in 1 server");
+  // The note sits in the sticky search bar, so scrolling the catalogue keeps it in view.
+  expect(
+    screen
+      .getByLabelText("Find channels")
+      .closest("[class*='lookup']")!
+      .contains(screen.getByText(/The selection is locked/)),
+  ).toBe(true);
+  expect(tray()).toHaveTextContent("Channels stay locked");
+  expect(
+    await within(tray()).findByRole("button", { name: "New send" }),
+  ).toBeDisabled();
   feed.release();
   await within(tray()).findByText("Every copy arrived.");
   expect(screen.queryByText(/The selection is locked/)).toBeNull();
   expect(screen.getByRole("checkbox", { name: "edits" })).not.toHaveAttribute(
     "aria-disabled",
   );
+});
+
+test("a send dropped before the server stored it is asked for again under the same id, never reported as unposted", async () => {
+  draftWith({ content: "Patch day" });
+  const done: SendResult = {
+    id: "s1",
+    status: "done",
+    targets: [target("t1", "1", "10", "general")],
+  };
+  const posts: { id: string }[] = [];
+  let stored = false;
+  handlers.push((url, init) => {
+    if (url === "/api/sends" && init?.method === "POST") {
+      posts.push(JSON.parse(init.body as string));
+      // The first request dies on the way; the second is stored.
+      if (posts.length === 1) throw new TypeError("network");
+      stored = true;
+      return Response.json({ id: posts[0].id }, { status: 202 });
+    }
+    if (/^\/api\/sends\/[0-9a-z-]+$/.test(url) && !init?.method)
+      return stored
+        ? Response.json(done)
+        : Response.json({ code: "NOT_FOUND", error: "No." }, { status: 404 });
+    return undefined;
+  });
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  await startSending("Send to 1 channel");
+  expect(await within(tray()).findByText("Sent")).toBeInTheDocument();
+  expect(posts).toHaveLength(2);
+  expect(posts[1].id).toBe(posts[0].id);
+  expect(within(tray()).queryByRole("alert")).toBeNull();
+  expect(tray()).not.toHaveTextContent("nothing was posted");
+});
+
+test("reloading mid-send shows the progress again and keeps the lock", async () => {
+  draftWith({ content: "Patch day" });
+  const pending: SendResult = {
+    id: "s1",
+    status: "sending",
+    targets: [
+      target("t1", "1", "10", "general"),
+      { ...target("t2", "1", "11", "news"), status: "posting" },
+    ],
+  };
+  const done: SendResult = {
+    id: "s1",
+    status: "done",
+    targets: [
+      target("t1", "1", "10", "general"),
+      target("t2", "1", "11", "news"),
+    ],
+  };
+  const feed = serve(pending, done);
+  feed.hold();
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  await startSending("Send to 1 channel");
+  await within(tray()).findByText("1 of 2 sent.");
+  const kept = JSON.parse(sessionStorage.getItem("embed-dash:send-in-flight")!);
+  expect(kept.id).toBe((sendRequests()[0].body as { id: string }).id);
+  // The page goes away mid-send and comes back.
+  cleanup();
+  calls.length = 0;
+  renderSend();
+  await screen.findByRole("complementary", { name: "Tray" });
+  expect(await within(tray()).findByText("1 of 2 sent.")).toBeInTheDocument();
+  expect(
+    await screen.findByText(/The selection is locked/),
+  ).toBeInTheDocument();
+  // The same send, asked for again under its own id, not a new one.
+  expect(sendRequests().map((c) => (c.body as { id: string }).id)).toEqual([
+    kept.id,
+  ]);
+  feed.release();
+  await within(tray()).findByText("Every copy arrived.");
+  expect(sessionStorage.getItem("embed-dash:send-in-flight")).toBeNull();
+  expect(screen.queryByText(/The selection is locked/)).toBeNull();
+});
+
+test("reloading mid-retry follows the send without asking for the retry again", async () => {
+  draftWith({ content: "Patch day" });
+  sessionStorage.setItem(
+    "embed-dash:send-in-flight",
+    JSON.stringify({
+      url: "/api/sends/s1/retry",
+      body: {},
+      id: "s1",
+      retrying: ["t2"],
+    }),
+  );
+  serve(
+    {
+      id: "s1",
+      status: "sending",
+      targets: [
+        target("t1", "1", "10", "general"),
+        { ...target("t2", "1", "11", "news"), status: "pending" },
+      ],
+    },
+    {
+      id: "s1",
+      status: "done",
+      targets: [
+        target("t1", "1", "10", "general"),
+        target("t2", "1", "11", "news"),
+      ],
+    },
+  );
+  renderSend();
+  await screen.findByRole("complementary", { name: "Tray" });
+  await within(tray()).findByText("Every copy arrived.");
+  expect(sendRequests()).toEqual([]);
+  expect(sessionStorage.getItem("embed-dash:send-in-flight")).toBeNull();
 });
