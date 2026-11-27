@@ -13,7 +13,6 @@ interface Session {
 export function SessionGate({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const location = useLocation();
-  const { theme, toggle } = useTheme();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -101,9 +100,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <div className={styles.heading}>
         <img src="/icon.svg" alt="" width="28" height="28" />
         <span>embed-dash</span>
-        <button className={styles.quiet} onClick={toggle}>
-          {theme === "dark" ? "Light theme" : "Dark theme"}
-        </button>
+        <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
         <h1 id="login-title">Sign in to your instance</h1>
@@ -152,5 +149,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
         )}
       </section>
     </main>
+  );
+}
+
+function LoginThemeSwitch() {
+  const { theme, toggle } = useTheme();
+  return (
+    <button className={styles.quiet} onClick={toggle}>
+      {theme === "dark" ? "Light theme" : "Dark theme"}
+    </button>
   );
 }

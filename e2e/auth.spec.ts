@@ -33,7 +33,9 @@ test("password login reaches composer and logout protects it again", async ({
   await expect(
     page.getByRole("heading", { name: "Compose", exact: true }),
   ).toBeVisible();
+  await page.getByRole("switch", { name: "Dark theme" }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("button", { name: "Dark theme" })).toBeVisible();
   expect(errors).toEqual([]);
 });
