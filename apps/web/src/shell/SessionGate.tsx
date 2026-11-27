@@ -14,10 +14,11 @@ import headerStyles from "./TopBar.module.css";
 import { useTheme } from "../theme";
 import styles from "./SessionGate.module.css";
 
-interface Session {
+export interface Session {
   authenticated: boolean;
   insecure: boolean;
   csrfToken: string;
+  maxUploadMb?: number;
 }
 
 const AccessContext = createContext<{

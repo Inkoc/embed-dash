@@ -27,6 +27,7 @@ test("all ten embeds a message can carry are shown", () => {
   show(
     withIds({
       content: "",
+      attachments: [],
       embeds: Array.from({ length: 10 }, (_, i) => ({
         ...emptyEmbed(),
         title: `Embed ${i + 1}`,
@@ -60,6 +61,7 @@ test("pictures that don't load leave a placeholder in their place", () => {
   show(
     withIds({
       content: "",
+      attachments: [],
       embeds: [
         {
           ...emptyEmbed(),
@@ -90,10 +92,41 @@ test("links Discord wouldn't show as pictures are left out", () => {
   show(
     withIds({
       content: "",
+      attachments: [],
       embeds: [
         { ...emptyEmbed(), title: "T", image: "ftp://example.com/x.png" },
       ],
     }),
   );
   expect(screen.queryByRole("img", { name: /Embed image/ })).toBeNull();
+});
+
+test("an attached image shows in the preview, and a missing one leaves a placeholder", () => {
+  show(
+    withIds({
+      content: "",
+      attachments: [
+        {
+          id: "up1",
+          filename: "banner.png",
+          size: 10,
+          contentType: "image/png",
+        },
+      ],
+      embeds: [
+        {
+          ...emptyEmbed(),
+          title: "Attached",
+          image: "attachment://banner.png",
+          thumbnail: "attachment://gone.png",
+        },
+      ],
+    }),
+  );
+  expect(
+    screen.getByRole("img", { name: "Embed image" }).getAttribute("src"),
+  ).toBe("/api/uploads/up1/content");
+  expect(
+    screen.getByRole("img", { name: "Embed thumbnail (didn’t load)" }),
+  ).toBeTruthy();
 });

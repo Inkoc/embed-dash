@@ -49,6 +49,10 @@ test.each([
   ]),
   [{ BOT_TOKEN: "test", DATA_DIR: "" }, "DATA_DIR"],
   [{ BOT_TOKEN: "test", HOST: "invalid" }, "HOST"],
+  ...["0", "26", "1.5", "abc", ""].map((MAX_UPLOAD_MB) => [
+    { BOT_TOKEN: "test", MAX_UPLOAD_MB },
+    "MAX_UPLOAD_MB",
+  ]),
   ...[
     "invalid",
     "file:///tmp/api",
@@ -146,4 +150,10 @@ test("proxy trust is opt-in and public origins are validated", () => {
     "invalid",
   ])
     expect(() => readConfig({ ...base, PUBLIC_URL })).toThrow("PUBLIC_URL");
+});
+
+test("the per-file upload limit defaults to 10 MB and can be set", () => {
+  const env = { ADMIN_PASSWORD: "fixture-password", BOT_TOKEN: "test" };
+  expect(readConfig(env).maxUploadMb).toBe(10);
+  expect(readConfig({ ...env, MAX_UPLOAD_MB: "3" }).maxUploadMb).toBe(3);
 });

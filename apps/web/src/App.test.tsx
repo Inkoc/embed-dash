@@ -102,6 +102,14 @@ test("the preview shows every part of the embed in Discord's order", () => {
     <DiscordPreview
       draft={{
         ...example,
+        attachments: [
+          {
+            id: "u1",
+            filename: "mark.png",
+            size: 10,
+            contentType: "image/png",
+          },
+        ],
         embeds: [
           {
             ...example.embeds[0]!,
@@ -132,7 +140,9 @@ test("the preview shows every part of the embed in Discord's order", () => {
   ).toBe(true);
   expect(text).toContain("•Today at 18:00");
   expect(screen.getByAltText("Embed image")).toBeTruthy();
-  expect(screen.getByAltText("Embed thumbnail")).toBeTruthy();
+  expect(screen.getByAltText("Embed thumbnail").getAttribute("src")).toBe(
+    "/api/uploads/u1/content",
+  );
   expect(screen.getByTestId("preview-embed").getAttribute("style")).toContain(
     "#e8a33d",
   );

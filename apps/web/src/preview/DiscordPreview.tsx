@@ -3,7 +3,7 @@ import type { BotIdentity } from "@embed-dash/shared";
 import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
 import { Markdown } from "./Markdown";
-import { Media, mediaUrl } from "./Media";
+import { Media, mediaSource } from "./EmbedMedia";
 import styles from "./DiscordPreview.module.css";
 
 interface Props {
@@ -73,15 +73,29 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
           </div>
         )}
         {draft.embeds.map((embed) => (
-          <PreviewEmbed key={embed.id} embed={embed} time={time} />
+          <PreviewEmbed
+            key={embed.id}
+            embed={embed}
+            draft={draft}
+            time={time}
+          />
         ))}
       </div>
     </article>
   );
 }
 
-function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
-  const hasThumbnail = Boolean(mediaUrl(embed.thumbnail));
+function PreviewEmbed({
+  embed,
+  draft,
+  time,
+}: {
+  embed: Embed;
+  draft: Draft;
+  time: string;
+}) {
+  const { attachments } = draft;
+  const hasThumbnail = mediaSource(embed.thumbnail, attachments) !== null;
   const rows = fieldRows(embed.fields, hasThumbnail);
   const title = embed.title.trim();
   const description = embed.description.trim();
@@ -104,7 +118,11 @@ function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
       >
         {author && (
           <p className={styles.author}>
-            <Media url={embed.author.iconUrl} kind="authorIcon" />
+            <Media
+              url={embed.author.iconUrl}
+              kind="authorIcon"
+              attachments={attachments}
+            />
             <span data-link={embed.author.url.trim() ? "" : undefined}>
               <Markdown text={author} surface="plain" />
             </span>
@@ -140,11 +158,21 @@ function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
             ))}
           </div>
         )}
-        <Media url={embed.image} kind="image" />
-        <Media url={embed.thumbnail} kind="thumbnail" />
+        <Media url={embed.image} kind="image" attachments={attachments} />
+        <Media
+          url={embed.thumbnail}
+          kind="thumbnail"
+          attachments={attachments}
+        />
         {(footer || when) && (
           <p className={styles.footer}>
-            {footer && <Media url={embed.footer.iconUrl} kind="footerIcon" />}
+            {footer && (
+              <Media
+                url={embed.footer.iconUrl}
+                kind="footerIcon"
+                attachments={attachments}
+              />
+            )}
             <span>
               <Markdown text={footer} surface="plain" />
               {footer && when && (

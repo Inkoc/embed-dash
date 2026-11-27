@@ -16,13 +16,18 @@ import {
   Smartphone,
   BookOpen,
 } from "lucide-react";
-import { discordLimits, messageEmbedTextLength } from "@embed-dash/shared";
+import {
+  discordLimits,
+  messageEmbedTextLength,
+  uploadLimits,
+} from "@embed-dash/shared";
 import { useBot } from "../bot";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import type { Theme } from "../theme";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
+import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import {
   addEmbed,
@@ -235,6 +240,17 @@ export function ComposeView({ theme }: { theme: Theme }) {
             <span className={styles.aside}>
               {embedCount} of {discordLimits.embedsPerMessage}
             </span>
+          </section>
+
+          <section className={styles.section} aria-labelledby="s-files">
+            <div className={styles.sectionHead}>
+              <h3 id="s-files">Files</h3>
+              <span className={styles.aside}>
+                {draft.attachments.length} of{" "}
+                {uploadLimits.attachmentsPerMessage}
+              </span>
+            </div>
+            <Attachments />
           </section>
         </form>
       </div>

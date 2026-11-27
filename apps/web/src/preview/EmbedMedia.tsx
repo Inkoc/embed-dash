@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ImageOff } from "lucide-react";
-import { isAcceptedLink } from "@embed-dash/shared";
+import { isAcceptedLink, type AttachmentDraft } from "@embed-dash/shared";
+import { previewSource } from "./media";
 import styles from "./DiscordPreview.module.css";
 
 type Kind = "image" | "thumbnail" | "authorIcon" | "footerIcon";
@@ -16,21 +17,39 @@ const labels: Partial<Record<Kind, string>> = {
   thumbnail: "Embed thumbnail",
 };
 
-/** Only links Discord would show; anything else also fails validation. */
-export const mediaUrl = (url: string) =>
-  url.trim() && isAcceptedLink(url, true) ? url.trim() : "";
+/**
+ * What the preview loads for a picture link, with an `attachment://` name
+ * swapped for the uploaded file it points to. Null when Discord wouldn't show
+ * the link at all (it also fails validation); empty when it names a file that
+ * isn't attached, which is shown as a picture that didn't load.
+ */
+export const mediaSource = (
+  url: string,
+  attachments: readonly AttachmentDraft[],
+) =>
+  url.trim() && isAcceptedLink(url, true)
+    ? previewSource(url.trim(), attachments)
+    : null;
 
 /**
  * Every picture in an embed. A link that doesn't load shows a placeholder in
  * its place, the way Discord marks a broken image, so the layout stays true.
  */
-export function Media({ url, kind }: { url: string; kind: Kind }) {
+export function Media({
+  url,
+  kind,
+  attachments,
+}: {
+  url: string;
+  kind: Kind;
+  attachments: readonly AttachmentDraft[];
+}) {
   const [failed, setFailed] = useState("");
-  const src = mediaUrl(url);
-  if (!src) return null;
+  const src = mediaSource(url, attachments);
+  if (src === null) return null;
   const [width, height] = sizes[kind];
   const label = labels[kind];
-  if (failed === src)
+  if (!src || failed === src)
     return (
       <span
         className={`${styles[kind]} ${styles.broken}`}

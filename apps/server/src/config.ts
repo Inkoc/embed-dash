@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { uploadLimits } from "@embed-dash/shared";
 export interface Config {
   botToken: string;
   authMode: "password" | "none";
@@ -10,6 +11,8 @@ export interface Config {
   port: number;
   host: string;
   dataDir: string;
+  /** Per-file upload limit; the request as a whole is capped by the shared message total. */
+  maxUploadMb?: number;
   discordApiBase: string;
 }
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -35,6 +38,15 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("HOST must be 127.0.0.1, 0.0.0.0, ::1 or ::");
   const dataDir = env.DATA_DIR ?? "/data";
   if (!dataDir.trim()) throw new Error("DATA_DIR must be a non-empty path");
+  const maxUploadMb = Number(env.MAX_UPLOAD_MB ?? uploadLimits.defaultFileMb);
+  if (
+    !Number.isInteger(maxUploadMb) ||
+    maxUploadMb < 1 ||
+    maxUploadMb > uploadLimits.maxFileMb
+  )
+    throw new Error(
+      `MAX_UPLOAD_MB must be an integer from 1 to ${uploadLimits.maxFileMb}`,
+    );
   const discordApiBase = (
     env.DISCORD_API_BASE ?? "https://discord.com/api"
   ).replace(/\/$/, "");
@@ -117,6 +129,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     host,
     dataDir: resolve(baseDir, dataDir),
+    maxUploadMb,
     discordApiBase,
   };
 }

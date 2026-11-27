@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq, lte } from "drizzle-orm";
 import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { uploadLimits } from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import { sessions } from "./schema.js";
 
@@ -146,6 +147,7 @@ export async function registerAuth(
       authenticated:
         config.authMode === "none" || session?.subject === "password",
       csrfToken,
+      maxUploadMb: config.maxUploadMb ?? uploadLimits.defaultFileMb,
       expiresAt: session?.expiresAt ?? null,
     };
   });
