@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -178,9 +179,13 @@ export function FormatEditor({
 
   // One tab stop for the whole toolbar; arrow keys move along it.
   const onToolbarKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const focused = buttons.current.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const from = focused === -1 ? current : focused;
     const moves: Record<string, number> = {
-      ArrowRight: current + 1,
-      ArrowLeft: current - 1,
+      ArrowRight: from + 1,
+      ArrowLeft: from - 1,
       Home: 0,
       End: commands.length - 1,
     };
@@ -258,7 +263,13 @@ export function FormatEditor({
                         setCurrent(index);
                         setDescribed(command);
                       }}
-                      onClick={() => press(command)}
+                      onClick={(event) => {
+                        press(command);
+                        // From the keyboard, stay on the toolbar for the next command;
+                        // the inserts move into their own small form instead.
+                        if (event.detail === 0 && !command.panel)
+                          buttons.current[index]?.focus();
+                      }}
                     >
                       <command.icon aria-hidden="true" />
                     </button>
@@ -285,8 +296,20 @@ export function FormatEditor({
           {panel === "timestamp" && <TimestampPanel onDone={closePanel} />}
         </div>
       </div>
+      <p className={styles.touchHint}>
+        Formatting tools open below while you type.
+      </p>
     </div>
   );
+}
+
+/** An opened form scrolls fully into view, clear of the phone's bottom bar. */
+function useRevealed() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+  return ref;
 }
 
 interface PanelProps {
@@ -317,6 +340,7 @@ function MentionPanel({ onDone }: PanelProps) {
   const [id, setId] = useState("");
   const [error, setError] = useState(false);
   const field = useId();
+  const revealed = useRevealed();
   const insert = () => {
     const value = id.trim();
     if (!isSnowflake(value)) return setError(true);
@@ -324,6 +348,7 @@ function MentionPanel({ onDone }: PanelProps) {
   };
   return (
     <div
+      ref={revealed}
       className={styles.panel}
       role="group"
       aria-label="Insert a mention"
@@ -397,6 +422,7 @@ function TimestampPanel({ onDone }: PanelProps) {
   const [style, setStyle] = useState<TimestampStyle>("f");
   const [opened] = useState(() => Date.now());
   const field = useId();
+  const revealed = useRevealed();
   const date = new Date(when);
   const valid = !Number.isNaN(date.getTime());
   const sample = (key: TimestampStyle) => {
@@ -419,6 +445,7 @@ function TimestampPanel({ onDone }: PanelProps) {
   const insert = () => valid && onDone(timestamp(date, style));
   return (
     <div
+      ref={revealed}
       className={styles.panel}
       role="group"
       aria-label="Insert a timestamp"

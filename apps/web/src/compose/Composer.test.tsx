@@ -38,14 +38,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderApp() {
-  return render(
+function renderApp({ example = true } = {}) {
+  const view = render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
         <App />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  const start = screen.queryByRole("button", { name: "Start from an example" });
+  if (example && start) fireEvent.click(start);
+  return view;
 }
 const field = (name: string | RegExp) =>
   screen.getByLabelText(name, { exact: true }) as
@@ -62,14 +65,47 @@ test("the draft is saved in the browser and comes back after a reload", () => {
   expect(screen.getByText("Saved in this browser")).toBeTruthy();
 });
 
-test("a stored draft that doesn't fit the schema is replaced by the example", () => {
+test("a first visit, or a stored draft that doesn't fit, starts blank with the example on offer", () => {
+  renderApp({ example: false });
+  expect(field("Title").value).toBe("");
+  expect(screen.getByText("Nothing to send yet.")).toBeTruthy();
+  expect(screen.queryByText(/to fix before sending/)).toBeNull();
+  cleanup();
   localStorage.setItem("embed-dash:draft", JSON.stringify({ content: 1 }));
-  renderApp();
-  expect(field("Title").value).toContain("Saltmarsh");
+  renderApp({ example: false });
+  expect(field("Title").value).toBe("");
   localStorage.setItem("embed-dash:draft", "{not json");
   cleanup();
-  renderApp();
+  renderApp({ example: false });
+  fireEvent.click(button("Start from an example"));
   expect(field("Title").value).toContain("Saltmarsh");
+  // The example is text only: nothing points at media Discord can't reach.
+  expect(screen.queryByAltText("Embed image")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Start from an example" }),
+  ).toBeNull();
+  expect(screen.getByText("Looks right?")).toBeTruthy();
+});
+
+test("a change that can't be saved says so, keeps the draft and saves again later", () => {
+  renderApp();
+  fireEvent.change(field("Title"), { target: { value: "persisted" } });
+  const setItem = vi
+    .spyOn(Storage.prototype, "setItem")
+    .mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+  fireEvent.change(field("Title"), { target: { value: "new unsaved work" } });
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Your latest changes aren’t saved in this browser.",
+  );
+  expect(screen.getByText("Not saved")).toBeTruthy();
+  expect(field("Title").value).toBe("new unsaved work");
+  setItem.mockRestore();
+  fireEvent.change(field("Title"), { target: { value: "saved again" } });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Saved in this browser")).toBeTruthy();
+  expect(localStorage.getItem("embed-dash:draft")).toContain("saved again");
 });
 
 test("Clear asks first, then empties the draft", () => {
@@ -83,8 +119,8 @@ test("Clear asks first, then empties the draft", () => {
   expect(field("Title").value).toBe("");
   expect(field(/^Message text/).value).toBe("");
   expect(document.activeElement).toBe(field(/^Message text/));
-  // A blank embed can't be sent yet, and the summary says why.
-  expect(screen.getByText("1 problem to fix before sending")).toBeTruthy();
+  // A blank draft can't be sent yet, and says so calmly.
+  expect(screen.getByText("Nothing to send yet.")).toBeTruthy();
   expect(
     screen
       .getAllByRole("button", { name: /Choose channels/ })[0]!
@@ -211,8 +247,11 @@ test("the formatting toolbar and shortcuts write Discord markdown", () => {
   expect(description.value).toBe("hello world");
   const toolbar = screen.getByRole("toolbar", { name: "Format Description" });
   description.setSelectionRange(6, 11);
-  fireEvent.click(within(toolbar).getByRole("button", { name: "Spoiler" }));
+  const spoiler = within(toolbar).getByRole("button", { name: "Spoiler" });
+  fireEvent.click(spoiler);
   expect(description.value).toBe("hello ||world||");
+  // Pressed from the keyboard, focus stays on the toolbar for the next command.
+  expect(document.activeElement).toBe(spoiler);
   // Arrow keys move along the toolbar, which is a single tab stop.
   const bold = within(toolbar).getByRole("button", { name: "Bold" });
   bold.focus();
@@ -273,4 +312,37 @@ test("the title link folds into one line under the title", () => {
   fireEvent.click(toggle);
   fireEvent.change(field(/^Title link/), { target: { value: "" } });
   expect(button(/^Title link/).textContent).toContain("Add");
+});
+
+test("with several embeds each folds to one line, and problems unfold it", () => {
+  renderApp();
+  expect(screen.queryByRole("button", { name: /^Embed 1/ })).toBeNull();
+  fireEvent.click(button("Add embed"));
+  const foldOf = (n: number) =>
+    screen
+      .getAllByRole("button", { name: new RegExp(`^Embed\\s*${n}`) })
+      .find((element) => element.hasAttribute("aria-expanded"))!;
+  const fold = () => foldOf(1);
+  expect(fold().getAttribute("aria-expanded")).toBe("true");
+  fireEvent.click(fold());
+  expect(fold().getAttribute("aria-expanded")).toBe("false");
+  expect(fold().textContent).toContain("Patch 0.9.4");
+  expect(fold().textContent).toContain("4 fields");
+  expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(1);
+  // Reordering still works while folded.
+  expect(button(/^Move down\s*embed 1$/)).toBeTruthy();
+
+  fireEvent.click(foldOf(2));
+  expect(foldOf(2).textContent).toContain("Nothing written yet");
+  expect(foldOf(2).textContent).toContain("Needs a fix");
+  fireEvent.click(
+    screen.getAllByRole("button", { name: /Choose channels/ })[0]!,
+  );
+  expect(foldOf(2).getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement!.id).toMatch(/-head$/);
+  expect(
+    document.getElementById(
+      document.activeElement!.id.replace(/-head$/, "-problem"),
+    )!.textContent,
+  ).toMatch(/This embed is empty/);
 });

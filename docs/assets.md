@@ -23,7 +23,3 @@ Noto Sans stands in for Discord's proprietary typeface in the preview; Discord i
 | `apps/web/public/icon.svg` (copy of `assets/icon.svg`) | Brand mark and favicon | Project asset, AGPL-3.0 with the code | Created for embed-dash |
 
 No Discord logos or marks are used anywhere. The blurple "APP" tag in the preview is a coloured text label that Discord shows on bot messages, reproduced for accuracy.
-
-## Example art
-
-`apps/web/public/examples/*.svg` (about 2 KB in total) are generated vector illustrations for the composer's illustrative example draft (an invented game community). They were drawn for this project as SVG code and carry no third-party rights; licensed with the code under AGPL-3.0.

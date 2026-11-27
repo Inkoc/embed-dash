@@ -14,6 +14,7 @@ import {
   Monitor,
   Plus,
   Smartphone,
+  BookOpen,
 } from "lucide-react";
 import { discordLimits, messageEmbedTextLength } from "@embed-dash/shared";
 import { useBot } from "../bot";
@@ -23,7 +24,14 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { BudgetRuler } from "./BudgetRuler";
-import { addEmbed, blankDraft, blankEmbed, useDraft } from "./draft";
+import {
+  addEmbed,
+  blankDraft,
+  blankEmbed,
+  exampleDraft,
+  isBlank,
+  useDraft,
+} from "./draft";
 import { useEditorState } from "./editorState";
 import { EmbedEditor } from "./EmbedEditor";
 import { TextControl } from "./TextControl";
@@ -90,10 +98,19 @@ export function ComposeView({ theme }: { theme: Theme }) {
             max={discordLimits.embedTotal}
           />
           <div className={styles.draftState}>
-            <p className={styles.saved} role="status">
-              {saved
-                ? "Saved in this browser"
-                : "Not saved: this browser blocks storage"}
+            <p
+              className={styles.saved}
+              role="status"
+              data-failed={saved ? undefined : ""}
+            >
+              {saved ? (
+                "Saved in this browser"
+              ) : (
+                <>
+                  <CircleAlert aria-hidden="true" />
+                  Not saved
+                </>
+              )}
             </p>
             <button
               type="button"
@@ -105,6 +122,15 @@ export function ComposeView({ theme }: { theme: Theme }) {
             </button>
           </div>
         </div>
+
+        {!saved && (
+          <p className={styles.saveFailed} role="alert">
+            <b>Your latest changes aren’t saved in this browser.</b> Its storage
+            is full or blocked, so reloading or closing this tab would lose
+            them. Keep the tab open, free up or allow storage for this site, and
+            the next change saves again.
+          </p>
+        )}
 
         <Segmented
           activeKey={pane}
@@ -134,6 +160,27 @@ export function ComposeView({ theme }: { theme: Theme }) {
           aria-label="Message editor"
           onSubmit={(event) => event.preventDefault()}
         >
+          {isBlank(draft) && (
+            <div className={styles.starter}>
+              <p>
+                <b>A new message.</b> Write it below, or start from an example
+                to see every part filled in.
+              </p>
+              <button
+                type="button"
+                className={styles.add}
+                onClick={() =>
+                  focusAfter("in-content", () => {
+                    reset();
+                    setDraft(() => exampleDraft());
+                  })
+                }
+              >
+                <BookOpen aria-hidden="true" />
+                Start from an example
+              </button>
+            </div>
+          )}
           <section className={styles.section} aria-labelledby="s-message">
             <div className={styles.sectionHead}>
               <h3 id="s-message">Message</h3>
@@ -276,8 +323,17 @@ const listed = 5;
 
 /** The way to Send, or what stands in its way. */
 function NextStep() {
-  const { issues } = useDraft();
+  const { draft, issues } = useDraft();
   const { reveal } = useEditorState();
+  if (isBlank(draft))
+    return (
+      <div className={styles.next}>
+        <p id="nothing-yet">
+          <b>Nothing to send yet.</b> Write a message or an embed first.
+        </p>
+        <ChooseChannels describedBy="nothing-yet" />
+      </div>
+    );
   if (issues.length === 0)
     return (
       <div className={styles.next}>
@@ -354,7 +410,7 @@ export function ComposeActionBar() {
   const { reveal } = useEditorState();
   return (
     <div className={styles.actionBar}>
-      {issues.length > 0 ? (
+      {issues.length > 0 && !isBlank(draft) ? (
         <button
           type="button"
           className={styles.fixFirst}
@@ -364,7 +420,7 @@ export function ComposeActionBar() {
           <span id="problems-count">{plural(issues.length)} to fix</span>
         </button>
       ) : (
-        <p className={styles.actionMeta}>
+        <p id="action-meta" className={styles.actionMeta}>
           <span className="visually-hidden">Embed text: </span>
           {format(messageEmbedTextLength(draft.embeds))}
           <span aria-hidden="true"> / </span>
@@ -372,7 +428,9 @@ export function ComposeActionBar() {
           {format(discordLimits.embedTotal)}
         </p>
       )}
-      <ChooseChannels describedBy="problems-count" />
+      <ChooseChannels
+        describedBy={isBlank(draft) ? "action-meta" : "problems-count"}
+      />
     </div>
   );
 }

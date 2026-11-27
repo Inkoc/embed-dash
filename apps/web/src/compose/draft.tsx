@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -50,29 +51,24 @@ export const blankDraft = (): Draft => ({
 });
 
 /**
- * The composer opens on an illustrative announcement for an invented game
- * community, so every part of the preview is visible before the operator types.
- * Its images are generated art bundled with the app, linked absolutely so the
- * links are ones Discord would accept; its side colour is the example's own
- * brand colour: user content, not part of the app palette.
+ * An illustrative announcement for an invented game community, loaded only
+ * when the operator asks for it, so every text part of the preview can be
+ * seen filled in. It carries no media links: anything bundled with a
+ * self-hosted app is usually out of Discord's reach. Its side colour is the
+ * example's own brand colour: user content, not part of the app palette.
  */
 export function exampleDraft(): Draft {
-  const art = (file: string) =>
-    new URL(`/examples/${file}`, location.origin).href;
   return withIds({
     content: "Patch 0.9.4 lands on Thursday. Everything you need is below.",
     embeds: [
       {
+        ...emptyEmbed(),
         color: "#e8a33d",
         title: "Patch 0.9.4 — The Saltmarsh Update",
         url: "https://lanternfall.example/patch/0-9-4",
         description:
           "The marsh is open. Wade into **six new tidal caves**, meet the Heron Keeper, and try the reworked lantern-oil system.\n\nFull notes are on the [patch page](https://lanternfall.example/patch/0-9-4). Report anything odd in the bug-reports forum.",
-        author: {
-          name: "Lanternfall Dev Team",
-          url: "",
-          iconUrl: art("dev-team.svg"),
-        },
+        author: { name: "Lanternfall Dev Team", url: "", iconUrl: "" },
         fields: [
           { name: "Goes live", value: "Thu 3 Dec · 18:00 UTC", inline: true },
           { name: "Downtime", value: "About 30 minutes", inline: true },
@@ -84,17 +80,33 @@ export function exampleDraft(): Draft {
             inline: false,
           },
         ],
-        image: art("saltmarsh-banner.svg"),
-        thumbnail: art("lantern-mark.svg"),
-        footer: {
-          text: "Lanternfall · Patch notes",
-          iconUrl: art("footer-mark.svg"),
-        },
+        footer: { text: "Lanternfall · Patch notes", iconUrl: "" },
         timestamp: "now",
       },
     ],
   });
 }
+
+/** Nothing typed yet: the composer offers the example instead of listing problems. */
+export const isBlank = (draft: Draft) =>
+  !draft.content.trim() &&
+  draft.embeds.length <= 1 &&
+  draft.embeds.every(
+    (embed) =>
+      embed.fields.length === 0 &&
+      [
+        embed.title,
+        embed.url,
+        embed.description,
+        embed.author.name,
+        embed.author.url,
+        embed.author.iconUrl,
+        embed.image,
+        embed.thumbnail,
+        embed.footer.text,
+        embed.footer.iconUrl,
+      ].every((part) => !part.trim()),
+  );
 
 const storageKey = "embed-dash:draft";
 
@@ -107,28 +119,34 @@ export function loadDraft(): Draft {
       if (parsed.success) return withIds(parsed.data);
     }
   } catch {
-    // Unreadable storage or JSON: start from the example.
+    // Unreadable storage or JSON: start blank.
   }
-  return exampleDraft();
+  return blankDraft();
 }
 
+/*
+ * Whether the last save reached storage. It lives outside React so a failed
+ * write can be reported from the save itself, and the next change retries.
+ */
+let lastSaveWorked = true;
+const saveListeners = new Set<() => void>();
+const subscribeToSaves = (listener: () => void) => {
+  saveListeners.add(listener);
+  return () => void saveListeners.delete(listener);
+};
+const lastSave = () => lastSaveWorked;
+
 function saveDraft(draft: Draft) {
+  let worked = true;
   try {
     localStorage.setItem(storageKey, JSON.stringify(draft));
   } catch {
-    // Storage is blocked or full; the composer says so from the check below.
+    // Full, blocked or unserialisable: the draft stays in memory and the composer says so.
+    worked = false;
   }
-}
-
-/** Private modes and strict settings can refuse storage outright. */
-function storageWorks() {
-  try {
-    localStorage.setItem(`${storageKey}:check`, "");
-    localStorage.removeItem(`${storageKey}:check`);
-    return true;
-  } catch {
-    return false;
-  }
+  if (worked === lastSaveWorked) return;
+  lastSaveWorked = worked;
+  for (const listener of saveListeners) listener();
 }
 
 /* Pure edits, so the composer's buttons and their tests share one implementation. */
@@ -219,11 +237,18 @@ export const removeField = (draft: Draft, embedId: string, fieldId: string) =>
 export function locate(
   draft: Draft,
   path: string,
-): { id: string; open: string[] } {
+): { id: string; open: string[]; unfold: string[] } {
   const parts = path.split(".");
-  if (parts[0] === "content") return { id: "in-content", open: [] };
+  if (parts[0] === "content") return { id: "in-content", open: [], unfold: [] };
   const embed = draft.embeds[Number(parts[1])];
-  if (!embed) return { id: "compose-budget", open: [] };
+  if (!embed) return { id: "compose-budget", open: [], unfold: [] };
+  return { ...inEmbed(embed, parts), unfold: [`${embed.id}:folded`] };
+}
+
+function inEmbed(
+  embed: Embed,
+  parts: string[],
+): { id: string; open: string[] } {
   const e = embed.id;
   const [, , part, sub, key] = parts;
   switch (part) {
@@ -256,7 +281,7 @@ interface DraftContextValue {
   draft: Draft;
   setDraft: (change: (draft: Draft) => Draft) => void;
   issues: Issue[];
-  /** False when the browser refuses storage, so the composer can say the draft isn't kept. */
+  /** False when the latest change couldn't be written to browser storage. */
   saved: boolean;
 }
 const DraftContext = createContext<DraftContextValue | null>(null);
@@ -264,7 +289,7 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 /** Keeps the draft above the views, so switching to Send and back loses nothing, and saves it in the browser. */
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(loadDraft);
-  const [saved] = useState(storageWorks);
+  const saved = useSyncExternalStore(subscribeToSaves, lastSave);
   const issues = useMemo(() => validateMessage(draft), [draft]);
 
   useEffect(() => {

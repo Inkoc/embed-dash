@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  CircleAlert,
   Copy,
   Link as LinkIcon,
   Plus,
@@ -84,16 +86,23 @@ interface Props {
 
 export function EmbedEditor({ embed, index, count }: Props) {
   const { draft, setDraft, issues } = useDraft();
-  const { focusAfter, isTouched } = useEditorState();
+  const { focusAfter, isTouched, isOpen, setOpen } = useEditorState();
   const [moved, setMoved] = useState<string | null>(null);
   const e = embed.id;
+  // With several embeds, each can fold to one line so the message stays scannable.
+  const foldable = count > 1;
+  const folded = foldable && isOpen(`${e}:folded`);
   const at = `embeds.${index}`;
   const n = index + 1;
   const change = (patch: (embed: Embed) => Partial<Embed>) =>
     setDraft((draft) => updateEmbed(draft, e, patch));
   const hasIssue = (...paths: string[]) =>
     issues.some((issue) =>
-      paths.some((path) => issue.path.startsWith(`${at}.${path}`)),
+      paths.some((path) =>
+        path
+          ? issue.path.startsWith(`${at}.${path}`)
+          : issue.path === at || issue.path.startsWith(`${at}.`),
+      ),
     );
   const summaries = partSummaries(embed);
   const embedProblem = isTouched(`${e}-head`)
@@ -132,188 +141,211 @@ export function EmbedEditor({ embed, index, count }: Props) {
     >
       <div className={styles.head}>
         <h3 id={`${e}-head`} tabIndex={-1}>
-          Embed {n}
-          {count > 1 && <span className="visually-hidden"> of {count}</span>}
+          {foldable ? (
+            <button
+              type="button"
+              id={`${e}-fold`}
+              className={styles.fold}
+              aria-expanded={!folded}
+              aria-controls={`${e}-body`}
+              onClick={() => setOpen(`${e}:folded`, !folded)}
+            >
+              <ChevronDown className={styles.chevron} aria-hidden="true" />
+              <span>
+                Embed {n}
+                <span className="visually-hidden"> of {count}</span>
+              </span>
+              {folded && (
+                <FoldedSummary embed={embed} needsFix={hasIssue("")} />
+              )}
+            </button>
+          ) : (
+            <>Embed {n}</>
+          )}
         </h3>
-        <ColourControl
-          embed={embed}
-          path={`${at}.color`}
-          onChange={(color) => change(() => ({ color }))}
-        />
-      </div>
-      <Problem id={`${e}-problem`} message={embedProblem} />
-
-      <div className={styles.stack}>
-        <div>
-          <TextControl
-            id={`${e}-title`}
-            path={`${at}.title`}
-            label="Title"
-            max={discordLimits.title}
-            value={embed.title}
-            onChange={(title) => change(() => ({ title }))}
+        {!folded && (
+          <ColourControl
+            embed={embed}
+            path={`${at}.color`}
+            onChange={(color) => change(() => ({ color }))}
           />
-          <Disclosure
-            openKey={`${e}:url`}
-            id={`${e}-link`}
-            className={styles.linkPart}
-            headClassName={styles.linkHead}
-            needsFix={hasIssue("url")}
-            head={
-              <>
-                <LinkIcon aria-hidden="true" />
-                {embed.url.trim() ? (
-                  <span className={styles.linkText}>
-                    Title links to <b>{displayUrl(embed.url)}</b>
+        )}
+      </div>
+      <div id={`${e}-body`} className={styles.body} hidden={folded}>
+        <Problem id={`${e}-problem`} message={embedProblem} />
+
+        <div className={styles.stack}>
+          <div>
+            <TextControl
+              id={`${e}-title`}
+              path={`${at}.title`}
+              label="Title"
+              max={discordLimits.title}
+              value={embed.title}
+              onChange={(title) => change(() => ({ title }))}
+            />
+            <Disclosure
+              openKey={`${e}:url`}
+              id={`${e}-link`}
+              className={styles.linkPart}
+              headClassName={styles.linkHead}
+              needsFix={hasIssue("url")}
+              head={
+                <>
+                  <LinkIcon aria-hidden="true" />
+                  {embed.url.trim() ? (
+                    <span className={styles.linkText}>
+                      Title links to <b>{displayUrl(embed.url)}</b>
+                    </span>
+                  ) : (
+                    <span className={styles.linkText}>Title link</span>
+                  )}
+                  <span className={styles.linkAction}>
+                    {embed.url.trim() ? "Change" : "Add"}
                   </span>
-                ) : (
-                  <span className={styles.linkText}>Title link</span>
-                )}
-                <span className={styles.linkAction}>
-                  {embed.url.trim() ? "Change" : "Add"}
-                </span>
-              </>
-            }
-          >
-            <div className={styles.linkBody}>
-              <TextControl
-                id={`${e}-url`}
-                path={`${at}.url`}
-                label="Title link"
-                optional
-                link
-                placeholder="https://…"
-                value={embed.url}
-                onChange={(url) => change(() => ({ url }))}
-              />
-            </div>
-          </Disclosure>
+                </>
+              }
+            >
+              <div className={styles.linkBody}>
+                <TextControl
+                  id={`${e}-url`}
+                  path={`${at}.url`}
+                  label="Title link"
+                  optional
+                  link
+                  placeholder="https://…"
+                  value={embed.url}
+                  onChange={(url) => change(() => ({ url }))}
+                />
+              </div>
+            </Disclosure>
+          </div>
+          <TextControl
+            id={`${e}-description`}
+            path={`${at}.description`}
+            label="Description"
+            rows={5}
+            format
+            max={discordLimits.description}
+            value={embed.description}
+            onChange={(description) => change(() => ({ description }))}
+          />
         </div>
-        <TextControl
-          id={`${e}-description`}
-          path={`${at}.description`}
-          label="Description"
-          rows={5}
-          format
-          max={discordLimits.description}
-          value={embed.description}
-          onChange={(description) => change(() => ({ description }))}
-        />
-      </div>
 
-      <FieldList embed={embed} index={index} />
+        <FieldList embed={embed} index={index} />
 
-      <div className={styles.subHead}>
-        <h4>Optional parts</h4>
-      </div>
-      <div className={styles.rows}>
-        <Part
-          openKey={`${e}:author`}
-          id={`${e}-author`}
-          name="Author"
-          summary={summaries.author}
-          needsFix={hasIssue("author")}
-        >
-          <TextControl
-            id={`${e}-author-name`}
-            path={`${at}.author.name`}
-            label="Author name"
-            max={discordLimits.authorName}
-            value={embed.author.name}
-            onChange={(name) =>
-              change((embed) => ({ author: { ...embed.author, name } }))
-            }
-          />
-          <TextControl
-            id={`${e}-author-url`}
-            path={`${at}.author.url`}
-            label="Author link"
-            optional
-            link
-            placeholder="https://…"
-            value={embed.author.url}
-            onChange={(url) =>
-              change((embed) => ({ author: { ...embed.author, url } }))
-            }
-          />
-          <TextControl
-            id={`${e}-author-iconUrl`}
-            path={`${at}.author.iconUrl`}
-            label="Author icon link"
-            optional
-            link
-            placeholder="https://…"
-            value={embed.author.iconUrl}
-            onChange={(iconUrl) =>
-              change((embed) => ({ author: { ...embed.author, iconUrl } }))
-            }
-          />
-        </Part>
-        <Part
-          openKey={`${e}:images`}
-          id={`${e}-images`}
-          name="Images"
-          summary={summaries.images}
-          needsFix={hasIssue("image", "thumbnail")}
-        >
-          <TextControl
-            id={`${e}-image`}
-            path={`${at}.image`}
-            label="Large image link"
-            optional
-            link
-            placeholder="https://…"
-            focusHint="Shown full width under the text."
-            value={embed.image}
-            onChange={(image) => change(() => ({ image }))}
-          />
-          <TextControl
-            id={`${e}-thumbnail`}
-            path={`${at}.thumbnail`}
-            label="Thumbnail link"
-            optional
-            link
-            placeholder="https://…"
-            focusHint="A small image at the top right."
-            value={embed.thumbnail}
-            onChange={(thumbnail) => change(() => ({ thumbnail }))}
-          />
-        </Part>
-        <Part
-          openKey={`${e}:footer`}
-          id={`${e}-footer`}
-          name="Footer and time"
-          summary={summaries.footer}
-          needsFix={hasIssue("footer", "timestamp")}
-        >
-          <TextControl
-            id={`${e}-footer-text`}
-            path={`${at}.footer.text`}
-            label="Footer text"
-            max={discordLimits.footerText}
-            value={embed.footer.text}
-            onChange={(text) =>
-              change((embed) => ({ footer: { ...embed.footer, text } }))
-            }
-          />
-          <TextControl
-            id={`${e}-footer-iconUrl`}
-            path={`${at}.footer.iconUrl`}
-            label="Footer icon link"
-            optional
-            link
-            placeholder="https://…"
-            value={embed.footer.iconUrl}
-            onChange={(iconUrl) =>
-              change((embed) => ({ footer: { ...embed.footer, iconUrl } }))
-            }
-          />
-          <TimeControl
-            id={`${e}-time`}
-            value={embed.timestamp}
-            onChange={(timestamp) => change(() => ({ timestamp }))}
-          />
-        </Part>
+        <div className={styles.subHead}>
+          <h4>Optional parts</h4>
+        </div>
+        <div className={styles.rows}>
+          <Part
+            openKey={`${e}:author`}
+            id={`${e}-author`}
+            name="Author"
+            summary={summaries.author}
+            needsFix={hasIssue("author")}
+          >
+            <TextControl
+              id={`${e}-author-name`}
+              path={`${at}.author.name`}
+              label="Author name"
+              max={discordLimits.authorName}
+              value={embed.author.name}
+              onChange={(name) =>
+                change((embed) => ({ author: { ...embed.author, name } }))
+              }
+            />
+            <TextControl
+              id={`${e}-author-url`}
+              path={`${at}.author.url`}
+              label="Author link"
+              optional
+              link
+              placeholder="https://…"
+              value={embed.author.url}
+              onChange={(url) =>
+                change((embed) => ({ author: { ...embed.author, url } }))
+              }
+            />
+            <TextControl
+              id={`${e}-author-iconUrl`}
+              path={`${at}.author.iconUrl`}
+              label="Author icon link"
+              optional
+              link
+              placeholder="https://…"
+              value={embed.author.iconUrl}
+              onChange={(iconUrl) =>
+                change((embed) => ({ author: { ...embed.author, iconUrl } }))
+              }
+            />
+          </Part>
+          <Part
+            openKey={`${e}:images`}
+            id={`${e}-images`}
+            name="Images"
+            summary={summaries.images}
+            needsFix={hasIssue("image", "thumbnail")}
+          >
+            <TextControl
+              id={`${e}-image`}
+              path={`${at}.image`}
+              label="Large image link"
+              optional
+              link
+              placeholder="https://…"
+              focusHint="Shown full width under the text."
+              value={embed.image}
+              onChange={(image) => change(() => ({ image }))}
+            />
+            <TextControl
+              id={`${e}-thumbnail`}
+              path={`${at}.thumbnail`}
+              label="Thumbnail link"
+              optional
+              link
+              placeholder="https://…"
+              focusHint="A small image at the top right."
+              value={embed.thumbnail}
+              onChange={(thumbnail) => change(() => ({ thumbnail }))}
+            />
+          </Part>
+          <Part
+            openKey={`${e}:footer`}
+            id={`${e}-footer`}
+            name="Footer and time"
+            summary={summaries.footer}
+            needsFix={hasIssue("footer", "timestamp")}
+          >
+            <TextControl
+              id={`${e}-footer-text`}
+              path={`${at}.footer.text`}
+              label="Footer text"
+              max={discordLimits.footerText}
+              value={embed.footer.text}
+              onChange={(text) =>
+                change((embed) => ({ footer: { ...embed.footer, text } }))
+              }
+            />
+            <TextControl
+              id={`${e}-footer-iconUrl`}
+              path={`${at}.footer.iconUrl`}
+              label="Footer icon link"
+              optional
+              link
+              placeholder="https://…"
+              value={embed.footer.iconUrl}
+              onChange={(iconUrl) =>
+                change((embed) => ({ footer: { ...embed.footer, iconUrl } }))
+              }
+            />
+            <TimeControl
+              id={`${e}-time`}
+              value={embed.timestamp}
+              onChange={(timestamp) => change(() => ({ timestamp }))}
+            />
+          </Part>
+        </div>
       </div>
 
       <div className={styles.actions} role="group" aria-label={`Embed ${n}`}>
@@ -362,6 +394,50 @@ export function EmbedEditor({ embed, index, count }: Props) {
         )}
       </div>
     </section>
+  );
+}
+
+/** A folded embed in one line: its colour, what it says, how many fields, and whether it needs a fix. */
+function FoldedSummary({
+  embed,
+  needsFix,
+}: {
+  embed: Embed;
+  needsFix: boolean;
+}) {
+  const text =
+    embed.title.trim() ||
+    embed.description.trim().split("\n")[0] ||
+    embed.author.name.trim() ||
+    "Nothing written yet";
+  const fields = embed.fields.length;
+  return (
+    <>
+      <span
+        className={styles.dot}
+        style={
+          hexColor.test(embed.color)
+            ? ({ "--embed-color": embed.color } as CSSProperties)
+            : undefined
+        }
+        aria-hidden="true"
+      />
+      <span className={styles.foldText}>
+        <span className="visually-hidden">: </span>
+        {text}
+      </span>
+      {fields > 0 && (
+        <span className={styles.foldMeta}>
+          {fields} {fields === 1 ? "field" : "fields"}
+        </span>
+      )}
+      {needsFix && (
+        <span className={styles.foldFix}>
+          <CircleAlert aria-hidden="true" />
+          Needs a fix
+        </span>
+      )}
+    </>
   );
 }
 

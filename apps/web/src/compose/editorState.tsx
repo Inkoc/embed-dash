@@ -66,7 +66,11 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       const target = locate(draft, path);
       focusAfter(target.id, () => {
         setPane("edit");
-        setOpenKeys((keys) => new Set([...keys, ...target.open]));
+        setOpenKeys((keys) => {
+          const next = new Set([...keys, ...target.open]);
+          for (const key of target.unfold) next.delete(key);
+          return next;
+        });
         touch(target.id);
       });
     },

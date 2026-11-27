@@ -118,6 +118,8 @@ test("keyboard shortcuts move between views and list themselves", async ({
   page,
 }) => {
   await page.goto("/");
+  // A blank draft can't go forward; the example can.
+  await page.getByRole("button", { name: "Start from an example" }).click();
   await page.getByLabel("Title", { exact: true }).focus();
   await page.keyboard.press("Alt+2");
   await expect(page).toHaveURL(/\/$/);

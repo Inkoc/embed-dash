@@ -214,3 +214,39 @@
 .tool:focus-visible {
   outline-offset: calc(var(--line-strong) * -1);
 }
+
+/* touch screens have no printed key caps, so say where the tools are */
+.touchHint {
+  display: none;
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+@media (hover: none) and (pointer: coarse) {
+  .touchHint {
+    display: block;
+    margin-top: var(--space-1);
+  }
+  .editor:focus-within .touchHint {
+    display: none;
+  }
+}
+
+/* phones: the toolbar stays one row and scrolls sideways; arrow keys still walk it */
+@media (max-width: 640px) {
+  .trayInner {
+    flex-wrap: nowrap;
+  }
+  .toolbar {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .readout {
+    display: none;
+  }
+  .trayInner:has(.panel) {
+    flex-wrap: wrap;
+  }
+}

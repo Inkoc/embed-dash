@@ -150,3 +150,16 @@ html.theme-fade * {
     animation: none !important;
   }
 }
+
+/*
+ * Stacked compose screens pin the bar and the Edit/Preview toggle on top and
+ * an action bar at the bottom, so focus and scrolled-to forms stop clear of them.
+ */
+@media (max-width: 700px) {
+  html {
+    scroll-padding-top: calc(var(--bar-height) + var(--tap) + var(--space-4));
+    scroll-padding-bottom: calc(
+      var(--tap) + var(--space-1) + var(--space-3) * 2 + var(--space-3)
+    );
+  }
+}
