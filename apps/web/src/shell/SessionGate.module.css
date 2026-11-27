@@ -73,7 +73,12 @@
 .sheet input:hover {
   border-color: var(--ink-2);
 }
-.primary {
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   min-height: var(--tap);
   padding: var(--space-2) var(--space-4);
   border: 0;
@@ -82,6 +87,7 @@
   background: var(--accent);
   color: var(--on-accent);
   cursor: pointer;
+  text-decoration: none;
   transition:
     background-color var(--dur-fast),
     transform var(--dur-fast);
@@ -94,6 +100,64 @@
 }
 .primary:disabled {
   cursor: wait;
+}
+.secondary {
+  padding: var(--space-2) var(--space-4);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink);
+  font-weight: var(--weight-section);
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast),
+    border-color var(--dur-fast);
+}
+.secondary:hover {
+  background: var(--sheet-2);
+  border-color: var(--ink-2);
+}
+.stack {
+  display: grid;
+  gap: var(--space-3);
+}
+.stack p {
+  margin: 0;
+}
+.sheet .note {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.sheet .userId {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  padding: var(--space-3);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet-2);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.user {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  color: var(--ink-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+}
+.userName {
+  max-width: var(--name-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user img {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border-radius: var(--radius-pill);
+  object-fit: cover;
 }
 .sheet [role="alert"],
 .logoutError {
@@ -138,6 +202,12 @@
     height: var(--rule-width);
     overflow: hidden;
     clip-path: inset(50%);
+  }
+}
+@media (max-width: 860px) {
+  /* The name is in Sign out's label here; a bare avatar beside the bot's reads as a button. */
+  .user {
+    display: none;
   }
 }
 @media (max-width: 640px) {

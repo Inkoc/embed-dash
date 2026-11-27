@@ -14,6 +14,8 @@ import {
   mainChannelId,
   messageDraftSchema,
   messageEmbedTextLength,
+  sessionUserSchema,
+  snowflakeSchema,
   sanitizeFilename,
   uniqueFilename,
   uploadProblem,
@@ -501,4 +503,24 @@ test("parses the guild list the server returns", () => {
       fetchedAt: "2026-11-27T10:00:00.000Z",
     }).guilds[0].channels[0].kind,
   ).toBe("forum");
+});
+test("accepts only Discord snowflakes as user IDs", () => {
+  expect(snowflakeSchema.safeParse("123456789012345678").success).toBe(true);
+  for (const id of [
+    "",
+    "1234",
+    "12345678901234567890123",
+    "12345678901234567a",
+  ])
+    expect(snowflakeSchema.safeParse(id).success).toBe(false);
+});
+test("describes the signed-in user", () => {
+  const user = { id: "123456789012345678", name: "Ada", avatarUrl: null };
+  expect(sessionUserSchema.parse(user)).toEqual(user);
+  expect(sessionUserSchema.safeParse({ ...user, name: "" }).success).toBe(
+    false,
+  );
+  expect(sessionUserSchema.safeParse({ ...user, id: "ada" }).success).toBe(
+    false,
+  );
 });

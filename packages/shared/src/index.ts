@@ -6,6 +6,17 @@ export const botIdentitySchema = z.object({
 });
 export type BotIdentity = z.infer<typeof botIdentitySchema>;
 
+/** Discord snowflake IDs are 17 to 20 digits for every account created so far. */
+export const snowflakeSchema = z.string().regex(/^\d{17,20}$/);
+
+/** The signed-in person shown in the app after Discord login. */
+export const sessionUserSchema = z.object({
+  id: snowflakeSchema,
+  name: z.string().min(1).max(100),
+  avatarUrl: z.url().nullable(),
+});
+export type SessionUser = z.infer<typeof sessionUserSchema>;
+
 /** Discord's message and embed limits, in characters unless noted. */
 export const discordLimits = {
   content: 2000,
