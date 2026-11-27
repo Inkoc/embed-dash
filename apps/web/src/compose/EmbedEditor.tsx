@@ -25,6 +25,7 @@ import {
   type Embed,
   type EmbedField,
 } from "./draft";
+import { UploadedImagePicker } from "./Attachments";
 import { Disclosure } from "./Disclosure";
 import { useEditorState } from "./editorState";
 import { localInputValue } from "./FormatEditor";
@@ -267,18 +268,30 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 change((embed) => ({ author: { ...embed.author, url } }))
               }
             />
-            <TextControl
-              id={`${e}-author-iconUrl`}
-              path={`${at}.author.iconUrl`}
-              label="Author icon link"
-              optional
-              link
-              placeholder="https://…"
-              value={embed.author.iconUrl}
-              onChange={(iconUrl) =>
-                change((embed) => ({ author: { ...embed.author, iconUrl } }))
-              }
-            />
+            <div className={styles.media}>
+              <TextControl
+                id={`${e}-author-iconUrl`}
+                path={`${at}.author.iconUrl`}
+                label="Author icon link"
+                optional
+                link
+                placeholder="https://…"
+                value={embed.author.iconUrl}
+                onChange={(iconUrl) =>
+                  change((embed) => ({ author: { ...embed.author, iconUrl } }))
+                }
+              />
+              <UploadedImagePicker
+                id={`${e}-author-iconUrl-upload`}
+                label="author icon"
+                value={embed.author.iconUrl}
+                onPick={(link) =>
+                  change((embed) => ({
+                    author: { ...embed.author, iconUrl: link },
+                  }))
+                }
+              />
+            </div>
           </Part>
           <Part
             openKey={`${e}:images`}
@@ -287,28 +300,44 @@ export function EmbedEditor({ embed, index, count }: Props) {
             summary={summaries.images}
             needsFix={hasIssue("image", "thumbnail")}
           >
-            <TextControl
-              id={`${e}-image`}
-              path={`${at}.image`}
-              label="Large image link"
-              optional
-              link
-              placeholder="https://…"
-              focusHint="Shown full width under the text."
-              value={embed.image}
-              onChange={(image) => change(() => ({ image }))}
-            />
-            <TextControl
-              id={`${e}-thumbnail`}
-              path={`${at}.thumbnail`}
-              label="Thumbnail link"
-              optional
-              link
-              placeholder="https://…"
-              focusHint="A small image at the top right."
-              value={embed.thumbnail}
-              onChange={(thumbnail) => change(() => ({ thumbnail }))}
-            />
+            <div className={styles.media}>
+              <TextControl
+                id={`${e}-image`}
+                path={`${at}.image`}
+                label="Large image link"
+                optional
+                link
+                placeholder="https://…"
+                focusHint="Shown full width under the text."
+                value={embed.image}
+                onChange={(image) => change(() => ({ image }))}
+              />
+              <UploadedImagePicker
+                id={`${e}-image-upload`}
+                label="large image"
+                value={embed.image}
+                onPick={(link) => change(() => ({ image: link }))}
+              />
+            </div>
+            <div className={styles.media}>
+              <TextControl
+                id={`${e}-thumbnail`}
+                path={`${at}.thumbnail`}
+                label="Thumbnail link"
+                optional
+                link
+                placeholder="https://…"
+                focusHint="A small image at the top right."
+                value={embed.thumbnail}
+                onChange={(thumbnail) => change(() => ({ thumbnail }))}
+              />
+              <UploadedImagePicker
+                id={`${e}-thumbnail-upload`}
+                label="thumbnail"
+                value={embed.thumbnail}
+                onPick={(link) => change(() => ({ thumbnail: link }))}
+              />
+            </div>
           </Part>
           <Part
             openKey={`${e}:footer`}
@@ -327,18 +356,30 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 change((embed) => ({ footer: { ...embed.footer, text } }))
               }
             />
-            <TextControl
-              id={`${e}-footer-iconUrl`}
-              path={`${at}.footer.iconUrl`}
-              label="Footer icon link"
-              optional
-              link
-              placeholder="https://…"
-              value={embed.footer.iconUrl}
-              onChange={(iconUrl) =>
-                change((embed) => ({ footer: { ...embed.footer, iconUrl } }))
-              }
-            />
+            <div className={styles.media}>
+              <TextControl
+                id={`${e}-footer-iconUrl`}
+                path={`${at}.footer.iconUrl`}
+                label="Footer icon link"
+                optional
+                link
+                placeholder="https://…"
+                value={embed.footer.iconUrl}
+                onChange={(iconUrl) =>
+                  change((embed) => ({ footer: { ...embed.footer, iconUrl } }))
+                }
+              />
+              <UploadedImagePicker
+                id={`${e}-footer-iconUrl-upload`}
+                label="footer icon"
+                value={embed.footer.iconUrl}
+                onPick={(link) =>
+                  change((embed) => ({
+                    footer: { ...embed.footer, iconUrl: link },
+                  }))
+                }
+              />
+            </div>
             <TimeControl
               id={`${e}-time`}
               value={embed.timestamp}

@@ -11,6 +11,7 @@ import {
   emptyEmbed,
   messageDraftSchema,
   validateMessage,
+  type AttachmentDraft,
   type EmbedDraft,
   type EmbedFieldDraft,
   type Issue,
@@ -28,6 +29,8 @@ export interface Embed extends Omit<EmbedDraft, "fields"> {
 export interface Draft {
   content: string;
   embeds: Embed[];
+  /** Files already on the server; the draft holds only their ids and names. */
+  attachments: AttachmentDraft[];
 }
 
 let lastId = 0;
@@ -36,6 +39,7 @@ export const newId = () => `k${++lastId}`;
 
 export const withIds = (message: MessageDraft): Draft => ({
   content: message.content,
+  attachments: message.attachments,
   embeds: message.embeds.map((embed) => ({
     ...embed,
     id: newId(),
@@ -44,10 +48,11 @@ export const withIds = (message: MessageDraft): Draft => ({
 });
 
 export const blankEmbed = (): Embed =>
-  withIds({ content: "", embeds: [emptyEmbed()] }).embeds[0]!;
+  withIds({ content: "", embeds: [emptyEmbed()], attachments: [] }).embeds[0]!;
 export const blankDraft = (): Draft => ({
   content: "",
   embeds: [blankEmbed()],
+  attachments: [],
 });
 
 /**
@@ -60,6 +65,7 @@ export const blankDraft = (): Draft => ({
 export function exampleDraft(): Draft {
   return withIds({
     content: "Patch 0.9.4 lands on Thursday. Everything you need is below.",
+    attachments: [],
     embeds: [
       {
         ...emptyEmbed(),
@@ -90,6 +96,7 @@ export function exampleDraft(): Draft {
 /** Nothing typed yet: the composer offers the example instead of listing problems. */
 export const isBlank = (draft: Draft) =>
   !draft.content.trim() &&
+  draft.attachments.length === 0 &&
   draft.embeds.length <= 1 &&
   draft.embeds.every(
     (embed) =>
@@ -240,6 +247,8 @@ export function locate(
 ): { id: string; open: string[]; unfold: string[] } {
   const parts = path.split(".");
   if (parts[0] === "content") return { id: "in-content", open: [], unfold: [] };
+  if (parts[0] === "attachments")
+    return { id: "files-add", open: [], unfold: [] };
   const embed = draft.embeds[Number(parts[1])];
   if (!embed) return { id: "compose-budget", open: [], unfold: [] };
   return { ...inEmbed(embed, parts), unfold: [`${embed.id}:folded`] };
