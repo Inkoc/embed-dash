@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { expectHeaderFits } from "./header.js";
+import { expectHeaderFits, expectPhoneHeaderFits, padViews } from "./header.js";
 
 const preview = (page: Page) => page.getByTestId("preview-embed");
 const heading = (page: Page, name: string) =>
@@ -104,11 +104,27 @@ test("the signed-in bar keeps to one line without overlap from tablet to wide de
     page.getByRole("banner").getByText("Walking Skeleton Bot"),
   ).toBeVisible();
   await expectHeaderFits(page);
-  // With room to spare, Shortcuts keeps its word.
-  await page.setViewportSize({ width: 1280, height: 800 });
+  // With room to spare beside four views, Shortcuts keeps its word.
+  await page.setViewportSize({ width: 1440, height: 800 });
   await expect(
     page.getByRole("button", { name: "Shortcuts" }).getByText("Shortcuts"),
   ).toBeInViewport();
+});
+
+test("on phones the views take their own row, with or without Sign out, and hold four views", async ({
+  page,
+}) => {
+  await page.goto("/templates");
+  await expect(
+    page.getByRole("heading", { name: "Templates", exact: true }),
+  ).toBeVisible();
+  await padViews(page, 4);
+  await expectPhoneHeaderFits(page);
+  // Local mode has no Sign out; the layout mustn't depend on it.
+  await page.evaluate(() =>
+    document.querySelector("[data-session-control]")?.remove(),
+  );
+  await expectPhoneHeaderFits(page);
 });
 
 test("the theme switch is remembered and applied before first paint", async ({

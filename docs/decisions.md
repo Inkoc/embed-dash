@@ -29,6 +29,8 @@ One line per decision that shaped M1; the PRs hold the detail.
 ## Milestone 2
 
 - **Edit runs have durable client IDs.** Repeated update requests return the recorded run; copies keep their original message IDs, and interrupted requests remain unconfirmed until an operator checks Discord.
-- **Attachment retention follows Discord IDs.** Before patching a copy, fetch its attachments and retain matching filenames; upload only newly added files and omit removed files from the explicit attachment list.
+- **Attachment retention follows Discord IDs.** Each edit records which upload IDs were kept. Before patching a copy, match those files to its Discord attachment IDs; replacement uploads get new IDs even when their filenames match.
 - **Destinations and mention settings stay fixed during edits.** Only existing copies are patched; deleted copies are recorded permanently and excluded from retries.
 - **The editor protects unsaved work.** Route navigation and browser unload ask before discarding changes, while the ordinary composition draft stays separate.
+- **Templates hold on to their files.** The upload sweep and a draft's clear skip any file a template names, as they already did for sends; saving keeps only files the server still has, and a file lost anyway (a wiped data directory) is flagged on the template and in the composer when a message is started from it.
+

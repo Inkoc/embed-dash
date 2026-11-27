@@ -36,6 +36,7 @@ type Discord = {
     messageId: string,
     body: ReturnType<typeof discordMessage>,
     files: readonly MessageFile[],
+    retainedNames: readonly string[],
   ) => Promise<string>;
   listGuilds: () => Promise<GuildsResponse>;
   createMessage: (
@@ -244,6 +245,11 @@ export async function registerSends(
     const body = discordMessage(payload, sentAt);
     const editing = !!db.select().from(sends).where(eq(sends.id, sendId)).get()
       ?.editId;
+    const send = db.select().from(sends).where(eq(sends.id, sendId)).get()!;
+    const editRun = send.editId
+      ? db.select().from(editRuns).where(eq(editRuns.id, send.editId)).get()
+      : undefined;
+    const retainedNames = JSON.parse(editRun?.retainedJson ?? "[]") as string[];
     const record = (
       target: TargetRow,
       change: Partial<typeof sendTargets.$inferInsert>,
@@ -289,6 +295,7 @@ export async function registerSends(
               target.messageId!,
               body,
               files,
+              retainedNames,
             )
           : await discord.createMessage(target.channelId, body, files);
         record(target, { status: "sent", messageId, error: null });
@@ -600,7 +607,17 @@ export async function registerSends(
         (t) => t.messageId && t.error !== "MESSAGE_DELETED",
       );
       if (!copies.length) return "blocked" as const;
-      db.insert(editRuns).values({ id: parsed.data.id, sendId: id }).run();
+      db.insert(editRuns)
+        .values({
+          id: parsed.data.id,
+          sendId: id,
+          retainedJson: JSON.stringify(
+            payload.attachments
+              .filter((a) => original.attachments.some((o) => o.id === a.id))
+              .map((a) => a.filename),
+          ),
+        })
+        .run();
       db.update(sends)
         .set({
           editId: parsed.data.id,

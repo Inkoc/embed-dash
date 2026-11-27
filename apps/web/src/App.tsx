@@ -13,6 +13,7 @@ import { EditorStateProvider, useEditorState } from "./compose/editorState";
 import { SelectionProvider } from "./send/selection";
 import { SendingProvider } from "./send/sending";
 import { SendView } from "./send/SendView";
+import { TemplatesView } from "./templates/TemplatesView";
 import { SessionGate } from "./shell/SessionGate";
 import { BotStatus } from "./shell/BotStatus";
 import { ShortcutsDialog } from "./shell/ShortcutsDialog";
@@ -22,7 +23,20 @@ import { useTheme } from "./theme";
 import styles from "./App.module.css";
 
 const HistoryView = lazy(() => import("./history/HistoryView"));
-const order: Record<View, number> = { compose: 0, send: 1, history: 2 };
+const order: Record<View, number> = {
+  compose: 0,
+  send: 1,
+  history: 2,
+  templates: 3,
+};
+const viewFor = (path: string): View =>
+  path.startsWith("/history")
+    ? "history"
+    : path === "/send"
+      ? "send"
+      : path === "/templates"
+        ? "templates"
+        : "compose";
 
 export function App() {
   return (
@@ -43,11 +57,7 @@ export function App() {
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
-  const view: View = location.pathname.startsWith("/history")
-    ? "history"
-    : location.pathname === "/send"
-      ? "send"
-      : "compose";
+  const view = viewFor(location.pathname);
   const { theme, toggle } = useTheme();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const { issues, editing } = useDraft();
@@ -133,7 +143,7 @@ function Shell() {
       <main id="main">
         <h1 className="visually-hidden">embed-dash</h1>
         <BotStatus variant="notice" />
-        {editing && view !== "history" && <EditPanel />}
+        {editing && (view === "compose" || view === "send") && <EditPanel />}
         <div
           key={view}
           className={styles.view}
@@ -170,6 +180,7 @@ function Shell() {
                 </Suspense>
               }
             />
+            <Route path="/templates" element={<TemplatesView />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

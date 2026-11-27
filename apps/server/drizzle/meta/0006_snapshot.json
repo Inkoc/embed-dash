@@ -1,43 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9dcf3441-74b5-4960-8e4a-1775a4422242",
+  "id": "02ca8c7e-87a5-4e4f-b854-a08ecaaed8c5",
   "prevId": "57fac795-873b-4bb4-989a-62ec73ed584b",
   "tables": {
-    "edit_runs": {
-      "name": "edit_runs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "send_id": {
-          "name": "send_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "edit_runs_send_id_sends_id_fk": {
-          "name": "edit_runs_send_id_sends_id_fk",
-          "tableFrom": "edit_runs",
-          "tableTo": "sends",
-          "columnsFrom": ["send_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "send_targets": {
       "name": "send_targets",
       "columns": {
@@ -177,20 +143,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "edit_id": {
-          "name": "edit_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_edited_at": {
-          "name": "last_edited_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "scheduled_at": {
           "name": "scheduled_at",
           "type": "integer",
@@ -264,6 +216,44 @@
         },
         "expires_at": {
           "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "templates": {
+      "name": "templates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

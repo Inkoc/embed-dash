@@ -321,7 +321,8 @@ interface DraftContextValue {
   saved: boolean;
   /** Starts a blank draft and deletes the cleared draft's files from the server. */
   clear: () => void;
-  replace: (draft: Draft) => void;
+  /** Swaps in another message, letting go of the old draft's files the new one doesn't use. */
+  replace: (next: Draft) => void;
   /** Counts clears, so work started for an earlier draft can tell it is stale. */
   generation: number;
   isCurrent: (generation: number) => boolean;
@@ -377,8 +378,9 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     (next: Draft) => {
       const csrfToken =
         client.getQueryData<Session>(["session"])?.csrfToken ?? "";
+      const kept = new Set(next.attachments.map((file) => file.id));
       for (const file of draft.attachments)
-        void discardUpload(file.id, csrfToken);
+        if (!kept.has(file.id)) void discardUpload(file.id, csrfToken);
       latest.current += 1;
       setGeneration(latest.current);
       setDraft(next);

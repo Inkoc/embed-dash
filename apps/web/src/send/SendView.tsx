@@ -33,6 +33,7 @@ import { useSelection, withIds } from "./selection";
 import { ServerRail, ServerStrip } from "./ServerRail";
 import { useSending } from "./sending";
 import { Tray, type Flight, type TrayEntry } from "./Tray";
+import { ClosedDrawer } from "../ui/ClosedDrawer";
 import styles from "./SendView.module.css";
 
 /** Send: pick the channels the message goes to, from every server the bot is in. */
@@ -415,7 +416,7 @@ function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
   );
 }
 
-/** A closed drawer whose label says what's missing, beside the explanation. */
+/** A closed drawer whose label says what's missing, with the way back to Compose. */
 function Closed({
   label,
   title,
@@ -426,23 +427,16 @@ function Closed({
   children: ReactNode;
 }) {
   return (
-    <div className={styles.closed}>
-      <div className={styles.drawer} aria-hidden="true">
-        <span className={styles.holder}>{label}</span>
-        <span className={styles.pull} />
-      </div>
-      <div className={styles.copy}>
-        <h3>{title}</h3>
-        {children}
-        <Link to="/" className={styles.back} aria-keyshortcuts="Escape">
-          <ArrowLeft aria-hidden="true" />
-          Back to Compose
-          <kbd data-k="back" aria-hidden="true">
-            Esc
-          </kbd>
-        </Link>
-      </div>
-    </div>
+    <ClosedDrawer label={label} title={title}>
+      {children}
+      <Link to="/" className={styles.back} aria-keyshortcuts="Escape">
+        <ArrowLeft aria-hidden="true" />
+        Back to Compose
+        <kbd data-k="back" aria-hidden="true">
+          Esc
+        </kbd>
+      </Link>
+    </ClosedDrawer>
   );
 }
 

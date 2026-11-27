@@ -107,6 +107,10 @@
   --switch-inset: 2px; /* between the knob and the track's inner edge */
   --notice-max: 48rem; /* a full-width notice above a view */
   --send-max: 92rem; /* the Send view: catalogue, rail and tray */
+  --templates-max: 68rem; /* the Templates view: one ruled list */
+  --mini-w: 20rem; /* a template's small preview */
+  --mini-h: 10rem;
+  --mini-scale: 0.5; /* the real preview at the Desktop preset width (40rem), drawn at half size */
 
   /* motion: exponential ease-out for arrivals, a quick ease-in for departures */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

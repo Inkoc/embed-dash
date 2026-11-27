@@ -11,6 +11,7 @@ import { fakeGuilds, startFakeDiscord } from "../../../e2e/fake-discord.js";
 import { createApp } from "./app.js";
 import type { Config } from "./config.js";
 import { openDatabase } from "./db.js";
+import { sweepUploads } from "./uploads.js";
 import { deliveryFailure } from "./errors.js";
 import { discordMessage } from "./payload.js";
 
@@ -1375,4 +1376,67 @@ test("restart leaves only an in-flight edit unconfirmed and retries untouched co
     s.fake.messages.find((m) => m.channelId === results)!.payload.content,
   ).toBe("Recovered edit");
   expect((await edit(resumed, initial.id)).statusCode).toBe(409);
+});
+
+test("removing edit attachments preserves files held by templates and other sends", async () => {
+  const s = await setup();
+  const templateFile = await upload(s, "template.png");
+  const otherFile = await upload(s, "other.png");
+  const initial = await sent(s, [news], {
+    attachments: [templateFile, otherFile],
+  });
+  await sent(s, [results], { attachments: [otherFile] });
+  const template = await s.app.inject({
+    method: "POST",
+    url: "/api/templates",
+    headers: s.headers,
+    payload: {
+      name: "Bulletin",
+      message: { content: "Reusable", embeds: [], attachments: [templateFile] },
+    },
+  });
+  expect(template.statusCode).toBe(201);
+  expect((await edit(s, initial.id, { attachments: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  for (const file of [templateFile, otherFile])
+    await s.app.inject({
+      method: "DELETE",
+      url: `/api/uploads/${file.id}`,
+      headers: s.headers,
+    });
+  const db = database(s.dir);
+  try {
+    sweepUploads(s.dir, db, 14, Date.now() + 30 * 86400000);
+  } finally {
+    db.close();
+  }
+  for (const file of [templateFile, otherFile])
+    expect(
+      (
+        await s.app.inject({
+          url: `/api/uploads/${file.id}`,
+          headers: s.headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+});
+
+test("a replacement upload with the same filename replaces the Discord attachment", async () => {
+  const s = await setup();
+  const oldFile = await upload(s, "chart.png");
+  const initial = await sent(s, [news], { attachments: [oldFile] });
+  const oldAttachments = s.fake.messages[0].attachments;
+  const replacement = await upload(
+    s,
+    "chart.png",
+    Buffer.concat([png, Buffer.alloc(16)]),
+  );
+  expect(
+    (await edit(s, initial.id, { attachments: [replacement] })).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  expect(s.fake.messages[0].attachments).not.toEqual(oldAttachments);
+  expect(s.fake.messages[0].attachments).toEqual([
+    { id: 0, filename: "chart.png" },
+  ]);
 });

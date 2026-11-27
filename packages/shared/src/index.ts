@@ -73,6 +73,32 @@ export type EmbedFieldDraft = z.infer<typeof embedFieldSchema>;
 export type EmbedDraft = z.infer<typeof embedDraftSchema>;
 export type MessageDraft = z.infer<typeof messageDraftSchema>;
 
+/** A saved message to start new ones from. Its message is a draft: it may still break a Discord limit. */
+export const templateNameMax = 100;
+export const templateNameSchema = z.string().trim().min(1).max(templateNameMax);
+export const templateInputSchema = z.object({
+  name: templateNameSchema,
+  message: messageDraftSchema,
+});
+/** Rename, overwrite the message, or both. */
+export const templateUpdateSchema = z
+  .object({
+    name: templateNameSchema.optional(),
+    message: messageDraftSchema.optional(),
+  })
+  .refine(
+    (update) => update.name !== undefined || update.message !== undefined,
+  );
+export const templateSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  updatedAt: z.iso.datetime(),
+  message: messageDraftSchema,
+  /** Ids of the template's files the server no longer has. */
+  missingFiles: z.array(z.string()),
+});
+export type Template = z.infer<typeof templateSchema>;
+
 export const uploadLimits = {
   attachmentsPerMessage: 10,
   /** All files of one message together. */

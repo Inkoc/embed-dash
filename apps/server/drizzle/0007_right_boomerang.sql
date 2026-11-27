@@ -1,4 +1,5 @@
 CREATE TABLE `edit_runs` (
+	`retained_json` text,
 	`id` text PRIMARY KEY NOT NULL,
 	`send_id` text NOT NULL,
 	FOREIGN KEY (`send_id`) REFERENCES `sends`(`id`) ON UPDATE no action ON DELETE cascade

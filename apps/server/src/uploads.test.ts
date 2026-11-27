@@ -279,7 +279,7 @@ test("deleting removes the row and the file", async () => {
   expect(readdirSync(join(dir, "uploads"))).toEqual([]);
 });
 
-test("the sweep removes files past retention that no send refers to, and keeps the rest", () => {
+test("the sweep removes files past retention that no send or template refers to, and keeps the rest", () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-sweep-"));
   const db = openDatabase(dir);
   try {
@@ -296,11 +296,15 @@ test("the sweep removes files past retention that no send refers to, and keeps t
     };
     add("old-unused", old);
     add("old-sent", old);
+    add("old-template", old);
     // A draft left for nearly two weeks still has its file.
     add("recent", now - 13 * day);
     db.prepare(
       "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('s', ?, '', 'done', 1, 1)",
     ).run(JSON.stringify({ attachments: [{ id: "old-sent" }] }));
+    db.prepare(
+      "INSERT INTO templates (id, name, payload_json, updated_at) VALUES ('t', 'Weekly', ?, 1)",
+    ).run(JSON.stringify({ attachments: [{ id: "old-template" }] }));
     // Left by an interrupted upload: a file with no record.
     writeFileSync(join(uploads, "stray-old"), png);
     utimesSync(join(uploads, "stray-old"), old / 1000, old / 1000);
@@ -310,11 +314,13 @@ test("the sweep removes files past retention that no send refers to, and keeps t
 
     expect(readdirSync(uploads).sort()).toEqual([
       "old-sent",
+      "old-template",
       "recent",
       "stray-new",
     ]);
     expect(db.prepare("SELECT id FROM uploads ORDER BY id").all()).toEqual([
       { id: "old-sent" },
+      { id: "old-template" },
       { id: "recent" },
     ]);
   } finally {

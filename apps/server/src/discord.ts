@@ -57,6 +57,7 @@ export function createDiscord(
     messageId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
+    retainedNames: readonly string[],
   ) => Promise<string>;
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
@@ -226,6 +227,7 @@ export function createDiscord(
     messageId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
+    retainedNames: readonly string[],
   ) {
     const turn = (channelTurns.get(channelId) ?? Promise.resolve()).then(
       async () => {
@@ -237,7 +239,7 @@ export function createDiscord(
             route,
           )) as RESTPostAPIChannelMessageResult;
           const retained = current.attachments.filter((a) =>
-            files.some((f) => f.name === a.filename),
+            retainedNames.includes(a.filename),
           );
           const added = files.filter(
             (f) => !retained.some((a) => a.filename === f.name),

@@ -195,7 +195,8 @@
     --track-width: var(--tap);
   }
 }
-@media (max-width: 400px) {
+/* Below 720px the brand is its mark alone, so four views still fit on one row at 640px. */
+@media (max-width: 719.98px) {
   .brandName {
     position: absolute;
     width: 1px;
@@ -206,28 +207,39 @@
   }
 }
 
-/* Phones: the control takes a row of its own once Sign out joins the cluster, or on the narrowest screens. */
-@media (max-width: 640px) {
+/*
+ * Phones, in every sign-in mode: the control takes a full-width row of its own
+ * under the brand and the cluster, with equal segments, so any number of views
+ * fits without crowding the cluster. The bar's measured height (--bar-height)
+ * covers both rows, so sticky controls below it stay clear.
+ */
+@media (max-width: 639.98px) {
   .bar {
     grid-template-columns: auto minmax(0, 1fr);
     height: auto;
     padding-block: var(--space-2);
-    row-gap: var(--space-1);
-  }
-  .bar .views {
-    grid-row: 2;
-    grid-column: 1 / -1;
-  }
-}
-@media (max-width: 340px) {
-  .bar {
-    grid-template-columns: auto minmax(0, 1fr);
-    height: auto;
-    padding-block: var(--space-2);
-    row-gap: var(--space-1);
+    row-gap: var(--space-2);
   }
   .views {
     grid-row: 2;
     grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+  .views > * {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .views a {
+    min-width: 0;
+    padding-inline: var(--space-1);
+    white-space: nowrap;
+  }
+}
+/* the narrowest phones: labels step down the type scale rather than cut off */
+@media (max-width: 400px) {
+  .views a {
+    padding-inline: 0;
+    font-size: var(--text-meta);
   }
 }

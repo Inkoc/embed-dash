@@ -85,8 +85,16 @@ export const sendTargets = sqliteTable(
 );
 
 export const editRuns = sqliteTable("edit_runs", {
+  retainedJson: text("retained_json"),
   id: text("id").primaryKey(),
   sendId: text("send_id")
     .notNull()
     .references(() => sends.id, { onDelete: "cascade" }),
+});
+
+export const templates = sqliteTable("templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
