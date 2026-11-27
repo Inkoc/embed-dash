@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { emptyEmbed, type MessageDraft } from "@embed-dash/shared";
 import { createApp } from "./app.js";
+import { openDatabase } from "./db.js";
+import { sweepUploads } from "./uploads.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -286,4 +288,63 @@ test("every template route needs a session, and changes need the CSRF token", as
     payload: { name: "A", message: message("A") },
   });
   expect(withoutToken.statusCode).toBe(403);
+});
+
+test("a file is released for the sweep once no template or send names it any more", async () => {
+  const { app, dir, headers } = await fixture();
+  const onlyDeleted = await upload(app, headers, "deleted.png");
+  const onlyOverwritten = await upload(app, headers, "overwritten.png");
+  const shared = await upload(app, headers, "shared.png");
+  const sent = await upload(app, headers, "sent.png");
+  const save = async (name: string, files: (typeof shared)[]) =>
+    (
+      await app.inject({
+        method: "POST",
+        url: "/api/templates",
+        headers,
+        payload: { name, message: message(name, files) },
+      })
+    ).json() as { id: string };
+  const deleted = await save("Deleted", [onlyDeleted, shared, sent]);
+  const overwritten = await save("Overwritten", [onlyOverwritten]);
+  await save("Kept", [shared]);
+  const database = openDatabase(dir);
+  try {
+    // A send that names a file keeps it, as before.
+    database
+      .prepare(
+        "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('s', ?, '', 'done', 1, 1)",
+      )
+      .run(JSON.stringify({ attachments: [{ id: sent.id }] }));
+
+    await app.inject({
+      method: "DELETE",
+      url: `/api/templates/${deleted.id}`,
+      headers,
+    });
+    await app.inject({
+      method: "PATCH",
+      url: `/api/templates/${overwritten.id}`,
+      headers,
+      payload: { message: message("Overwritten, no files") },
+    });
+
+    // Well past the retention period.
+    sweepUploads(dir, database, 14, Date.now() + 15 * 24 * 60 * 60 * 1000);
+
+    const stored = (file: { id: string }) =>
+      existsSync(join(dir, "uploads", file.id));
+    expect(stored(onlyDeleted)).toBe(false);
+    expect(stored(onlyOverwritten)).toBe(false);
+    expect(stored(shared)).toBe(true);
+    expect(stored(sent)).toBe(true);
+    expect(
+      database
+        .prepare("SELECT id FROM uploads ORDER BY id")
+        .all()
+        .map((row) => (row as { id: string }).id),
+    ).toEqual([shared.id, sent.id].sort());
+  } finally {
+    database.close();
+  }
 });

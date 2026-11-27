@@ -168,7 +168,7 @@ test("a failed load says why and retries", async () => {
   const calls = serve([rules], { listStatus: 500 });
   renderTemplates();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "The templates couldn’t be loaded. Try again.",
+    "The server couldn’t read the saved templates. Check that embed-dash is running and its data folder is reachable, then try again.",
   );
   serve([rules]);
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));

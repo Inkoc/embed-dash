@@ -10,7 +10,7 @@
   gap: var(--space-3) var(--space-5);
   padding: var(--space-6) 0 var(--space-4);
 }
-.head h2 {
+.head > h2 {
   font-size: var(--text-display);
   font-weight: var(--weight-display);
   letter-spacing: var(--tracking-display);

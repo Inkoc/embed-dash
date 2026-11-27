@@ -19,7 +19,7 @@
   gap: var(--space-3) var(--space-5);
   padding: var(--space-6) 0 var(--space-5);
 }
-.head h2 {
+.head > h2 {
   margin-right: auto;
   font-size: var(--text-display);
   font-weight: var(--weight-display);

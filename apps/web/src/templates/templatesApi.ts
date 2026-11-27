@@ -50,7 +50,7 @@ export function useTemplates() {
       const response = await call(
         "/api/templates",
         {},
-        "The templates couldn’t be loaded. Try again.",
+        "The server couldn’t read the saved templates. Check that embed-dash is running and its data folder is reachable, then try again.",
       );
       return listSchema.parse(await response.json());
     },
