@@ -25,13 +25,16 @@ import {
   X,
 } from "lucide-react";
 import { useBot } from "../bot";
+import { asAppError } from "../errors";
+import { FailureDetail } from "../ui/FailureDetail";
 import { useDraft } from "../compose/draft";
 import { searchCatalogue } from "./catalogue";
 import { Catalogue, drawerId } from "./Catalogue";
 import { useGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
 import { ServerRail, ServerStrip } from "./ServerRail";
-import { useSending } from "./sending";
+import { MessageSlip } from "./MessageSlip";
+import { useSending, type Received } from "./sending";
 import { Tray, type Flight, type TrayEntry } from "./Tray";
 import styles from "./SendView.module.css";
 
@@ -41,7 +44,7 @@ export function SendView() {
   const guilds = useGuilds();
   const [selected, setSelected] = useSelection();
   const [dropped, setDropped] = useState(0);
-  const { busy } = useSending();
+  const { busy, received } = useSending();
   // A refresh can take channels away from the bot; they leave the tray instead of lingering unseen.
   const refresh = async () => {
     const fresh = await guilds.refresh();
@@ -56,7 +59,6 @@ export function SendView() {
     setDropped(gone.length);
     setSelected((set) => withIds(set, gone, false));
   };
-  const title = draft.embeds[0]?.title.trim();
   const data = guilds.data;
   const channelCount = data?.guilds.reduce((n, g) => n + g.channels.length, 0);
 
@@ -65,7 +67,12 @@ export function SendView() {
   else if (!data)
     body = (
       <Closed label="Not listed" title="The servers couldn’t be listed">
-        <p role="alert">{guilds.error?.message}</p>
+        {guilds.error && (
+          <div role="alert">
+            <p>{asAppError("load-servers", guilds.error).message}</p>
+            <FailureDetail error={asAppError("load-servers", guilds.error)} />
+          </div>
+        )}
         <button
           type="button"
           className={styles.primary}
@@ -98,7 +105,10 @@ export function SendView() {
     );
   else if (data.guilds.length === 0)
     body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
-  else body = <Picker guilds={data.guilds} locked={!!busy} />;
+  else
+    body = (
+      <Picker guilds={data.guilds} locked={!!busy} received={received(draft)} />
+    );
 
   return (
     <section className={styles.send} aria-labelledby="send-title">
@@ -106,9 +116,6 @@ export function SendView() {
         <h2 id="send-title" tabIndex={-1}>
           Send
         </h2>
-        <p className={styles.meta}>
-          Choose where {title ? <b>{title}</b> : "this embed"} goes.
-        </p>
         {data && data.guilds.length > 0 && (
           <div className={styles.listed}>
             <p>
@@ -135,12 +142,18 @@ export function SendView() {
           </div>
         )}
       </div>
+      <MessageSlip draft={draft} />
       {data && guilds.isError && (
-        <p className={styles.problem} role="alert">
+        <div className={styles.problem} role="alert">
           <X aria-hidden="true" />
-          {guilds.error.message} The list below is from{" "}
-          {new Date(data.fetchedAt).toLocaleTimeString()}.
-        </p>
+          <div>
+            <p>
+              {asAppError("load-servers", guilds.error).message} The list below
+              is from {new Date(data.fetchedAt).toLocaleTimeString()}.
+            </p>
+            <FailureDetail error={asAppError("load-servers", guilds.error)} />
+          </div>
+        </div>
       )}
       {dropped > 0 && (
         <p className={styles.unavailable} role="status">
@@ -180,7 +193,15 @@ export function SendView() {
   );
 }
 
-function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
+function Picker({
+  guilds,
+  locked,
+  received,
+}: {
+  guilds: Guild[];
+  locked: boolean;
+  received: ReadonlyMap<string, Received>;
+}) {
   const [selected, setSelected] = useSelection();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -382,6 +403,7 @@ function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
             collapsed={collapsed}
             onToggleCollapsed={onToggleCollapsed}
             locked={locked}
+            received={received}
             onTick={onTick}
             onTickMany={onTickMany}
             onLeaveTop={() => search.current?.focus()}
@@ -408,6 +430,7 @@ function Picker({ guilds, locked }: { guilds: Guild[]; locked: boolean }) {
       </div>
       <Tray
         entries={entries}
+        received={received}
         flightRef={flight}
         onRemove={(id) => setSelected((set) => withIds(set, [id], false))}
       />

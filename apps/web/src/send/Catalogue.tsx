@@ -15,6 +15,7 @@ import {
 import {
   Check,
   ChevronDown,
+  CopyCheck,
   Hash,
   Lock,
   Megaphone,
@@ -27,6 +28,7 @@ import {
   type DrawerHit,
 } from "./catalogue";
 import { Marked } from "./Marked";
+import type { Received } from "./sending";
 import { ServerMark } from "./ServerMark";
 import styles from "./Catalogue.module.css";
 
@@ -38,6 +40,11 @@ const kindIcon = {
   announcement: Megaphone,
   forum: MessagesSquare,
 } as const;
+
+const receivedLabel: Record<Received, string> = {
+  sent: "Already has this message",
+  unknown: "May already have this message: Discord didn’t confirm it",
+};
 
 export const drawerId = (guildId: string) => `drawer-${guildId}`;
 
@@ -65,6 +72,8 @@ interface Props {
   onToggleCollapsed: (guildId: string) => void;
   /** A send is being delivered: the ticked channels are the ones it goes to, so they stay as they are. */
   locked: boolean;
+  /** Channels that already have the message being sent, or may have it. */
+  received: ReadonlyMap<string, Received>;
   onTick: (channel: GuildChannel, on: boolean, row: HTMLElement) => void;
   onTickMany: (ids: string[], on: boolean) => void;
   onLeaveTop: () => void;
@@ -83,6 +92,7 @@ export function Catalogue({
   collapsed,
   onToggleCollapsed,
   locked,
+  received,
   onTick,
   onTickMany,
   onLeaveTop,
@@ -192,6 +202,7 @@ export function Catalogue({
             setExpanded((set) => new Set(set).add(drawer.guild.id))
           }
           locked={locked}
+          received={received}
           onTick={onTick}
           onTickMany={onTickMany}
         />
@@ -218,6 +229,7 @@ function Drawer({
   onToggleOpen,
   onExpand,
   locked,
+  received,
   onTick,
   onTickMany,
 }: {
@@ -230,6 +242,7 @@ function Drawer({
   onToggleOpen: () => void;
   onExpand: () => void;
   locked: boolean;
+  received: Props["received"];
   onTick: Props["onTick"];
   onTickMany: Props["onTickMany"];
 }) {
@@ -310,6 +323,7 @@ function Drawer({
                   main={mainIds.has(hit.channel.id)}
                   tabbable={tabbable === hit.channel.id}
                   locked={locked}
+                  has={received.get(hit.channel.id)}
                   onTick={onTick}
                 />
               ))}
@@ -338,6 +352,7 @@ const Row = memo(function Row({
   main,
   tabbable,
   locked,
+  has,
   onTick,
 }: {
   hit: ChannelHit;
@@ -346,6 +361,7 @@ const Row = memo(function Row({
   main: boolean;
   tabbable: boolean;
   locked: boolean;
+  has: Received | undefined;
   onTick: Props["onTick"];
 }) {
   const { channel } = hit;
@@ -404,6 +420,7 @@ const Row = memo(function Row({
             , {guild.name}, ID {channel.id}
             {reason && `. ${reason}`}
             {noFiles && ". Bot is missing Attach Files here"}
+            {has && `. ${receivedLabel[has]}`}
           </span>
         </span>
       </label>
@@ -411,6 +428,12 @@ const Row = memo(function Row({
         <p className={styles.why} aria-hidden="true">
           <Lock />
           {reason}
+        </p>
+      )}
+      {has && !reason && (
+        <p className={styles.why} data-has="" aria-hidden="true">
+          <CopyCheck />
+          {receivedLabel[has]}
         </p>
       )}
     </li>

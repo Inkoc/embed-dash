@@ -14,7 +14,9 @@ import type { SessionUser } from "@embed-dash/shared";
 import { DiscordEntry, NotAllowed, UserBadge } from "./DiscordSignIn";
 import { ThemeSwitch } from "./ThemeSwitch";
 import headerStyles from "./TopBar.module.css";
+import { AppError, connectionFailure, failureFrom } from "../errors";
 import { useTheme } from "../theme";
+import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./SessionGate.module.css";
 
 export interface Session {
@@ -31,7 +33,7 @@ const AccessContext = createContext<{
   insecure: boolean;
   user: SessionUser | null;
   busy: boolean;
-  error: string;
+  error: AppError | null;
   logout: () => void;
 } | null>(null);
 
@@ -76,7 +78,7 @@ export function SessionControls() {
       {access.error && (
         <p className={styles.logoutError} role="alert">
           <X aria-hidden="true" />
-          {access.error}
+          {access.error.message}
         </p>
       )}
     </>
@@ -89,7 +91,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const location = useLocation();
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
   const session = useQuery<Session>({
     queryKey: ["session"],
@@ -112,7 +114,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!password.trim()) {
-      setError("Enter the instance password.");
+      setError(new AppError("Enter the instance password."));
       return;
     }
     if (await change("/api/auth/login", { password })) setPassword("");
@@ -120,7 +122,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }
   async function change(url: string, body?: object) {
     setBusy(true);
-    setError("");
+    setError(null);
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -135,11 +137,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
       const alreadyOut = url === "/api/auth/logout" && response.status === 401;
       if (!response.ok && !alreadyOut) {
         setError(
-          response.status === 429
-            ? "Too many attempts. Wait a minute, then try again."
-            : response.status === 401
-              ? "Incorrect password. Try again."
-              : "Your session changed. Refresh and try again.",
+          await failureFrom(
+            url === "/api/auth/logout" ? "sign-out" : "sign-in",
+            response,
+          ),
         );
         await session.refetch();
         return false;
@@ -150,7 +151,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
       await session.refetch();
       return true;
     } catch {
-      setError("Unable to connect. Check your connection and try again.");
+      setError(
+        connectionFailure(url === "/api/auth/logout" ? "sign-out" : "sign-in"),
+      );
       return false;
     } finally {
       setBusy(false);
@@ -221,18 +224,22 @@ export function SessionGate({ children }: { children: ReactNode }) {
               aria-invalid={!!error}
               aria-describedby={error ? "login-error" : undefined}
               onBlur={() => {
-                if (!password) setError("Enter the instance password.");
+                if (!password)
+                  setError(new AppError("Enter the instance password."));
               }}
               onChange={(event) => {
                 setPassword(event.target.value);
-                setError("");
+                setError(null);
               }}
             />
             {error && (
-              <p id="login-error" role="alert">
-                <X aria-hidden="true" />
-                {error}
-              </p>
+              <div id="login-error" className={styles.failure} role="alert">
+                <p>
+                  <X aria-hidden="true" />
+                  {error.message}
+                </p>
+                <FailureDetail error={error} />
+              </div>
             )}
             <button className={styles.primary} disabled={busy}>
               {busy ? "Signing in…" : "Sign in"}

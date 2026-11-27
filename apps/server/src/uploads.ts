@@ -218,7 +218,9 @@ export async function registerUploads(
       }
       if (size === 0) {
         rmSync(path, { force: true });
-        return reply.code(400).send({ error: "That file is empty." });
+        return reply
+          .code(400)
+          .send({ code: "EMPTY_FILE", error: "That file is empty." });
       }
       const row = {
         id,

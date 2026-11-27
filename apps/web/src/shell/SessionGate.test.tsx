@@ -79,9 +79,9 @@ test("unauthenticated visitors reach login with password focus", async () => {
   );
 });
 test.each([
-  [401, "Incorrect password"],
-  [429, "Too many attempts"],
-  [403, "Your session changed"],
+  [401, "Couldn’t sign in: the password is incorrect"],
+  [429, "Couldn’t sign in: too many attempts"],
+  [403, "Couldn’t sign in: your session changed"],
 ])(
   "login failure %s preserves password and restores focus",
   async (status, message) => {
@@ -135,8 +135,37 @@ test("connection errors and empty-password validation explain how to recover", a
   });
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
-    "Unable to connect",
+    "Couldn’t sign in: embed-dash can’t be reached",
   );
+});
+test("a sign-in refused behind an untrusted HTTPS proxy says what to configure, with the server's words behind Details", async () => {
+  const fetcher = vi
+    .fn()
+    .mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "/api/session"
+          ? Response.json(anonymous)
+          : Response.json(
+              { code: "PROXY_NOT_TRUSTED", error: "Proxy not trusted" },
+              { status: 403 },
+            ),
+      ),
+    );
+  setup(fetcher, anonymous);
+  fireEvent.change(screen.getByLabelText("Instance password"), {
+    target: { value: "typed" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert.querySelector("p")!.textContent).toContain(
+    "Set TRUST_PROXY to the address the proxy connects from, or PUBLIC_URL",
+  );
+  expect(alert.querySelector("p")!.textContent).not.toContain(
+    "Proxy not trusted",
+  );
+  const details = alert.querySelector("details")!;
+  expect(details.open).toBe(false);
+  expect(details.textContent).toContain("HTTP 403 · PROXY_NOT_TRUSTED");
 });
 
 const discord = { ...anonymous, authMode: "discord" };

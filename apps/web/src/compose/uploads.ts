@@ -1,23 +1,12 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { attachmentSchema, type AttachmentDraft } from "@embed-dash/shared";
+import { connectionFailure, failureFrom } from "../errors";
 
 /** Only images are served back; they are what the preview can show. */
 export const contentUrl = (id: string) => `/api/uploads/${id}/content`;
 export const isImage = (file: Pick<AttachmentDraft, "contentType">) =>
   file.contentType.startsWith("image/");
-
-const failure = (status: number) =>
-  status === 413
-    ? "The server refused the file as too large."
-    : status === 415
-      ? "The server refused the upload's format."
-      : status === 401 || status === 403
-        ? "Your session changed. Refresh the page and try again."
-        : "The upload failed. Try again.";
-
-/** The server's catch-all answer, which says nothing a person can act on. */
-const genericError = "Request failed";
 
 export async function uploadFile(
   file: File,
@@ -34,16 +23,9 @@ export async function uploadFile(
       body,
     });
   } catch {
-    throw new Error("Unable to connect. Check your connection and try again.");
+    throw connectionFailure("upload");
   }
-  if (!response.ok) {
-    const { error } = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    throw new Error(
-      error && error !== genericError ? error : failure(response.status),
-    );
-  }
+  if (!response.ok) throw await failureFrom("upload", response);
   return attachmentSchema.parse(await response.json());
 }
 

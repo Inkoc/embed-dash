@@ -3,14 +3,21 @@ import {
   sendResultSchema,
   type SendResult,
 } from "@embed-dash/shared";
+import {
+  AppError,
+  connectionFailure,
+  describeFailure,
+  type Action,
+  type FailureBody,
+} from "../errors";
 
 /** How often a running send is asked how far it has got. */
 export const pollIntervalMs = 1000;
 
 /** A send that didn't produce results, with what the app should do about it besides saying so. */
-export class SendFailure extends Error {
+export class SendFailure extends AppError {
   constructor(
-    message: string,
+    error: AppError,
     readonly details: {
       /** Channel IDs the server refused; nothing was sent anywhere. */
       unavailable?: string[];
@@ -22,12 +29,12 @@ export class SendFailure extends Error {
       gone?: boolean;
     } = {},
   ) {
-    super(message);
+    super(error.message, error.detail, error.code);
   }
 }
 
-const lost = () =>
-  new SendFailure("The connection to embed-dash dropped.", { lost: true });
+const lost = (action: Action) =>
+  new SendFailure(connectionFailure(action), { lost: true });
 
 /** A random v4 id; `crypto.randomUUID` isn't there on plain-HTTP origins. */
 export function newSendId(): string {
@@ -38,55 +45,49 @@ export function newSendId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-async function request(url: string, init: RequestInit): Promise<Response> {
+async function request(
+  action: Action,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, init);
   } catch {
-    throw lost();
+    throw lost(action);
   }
   if (response.ok) return response;
-  const failure = (await response.json().catch(() => null)) as {
-    code?: string;
-    error?: unknown;
-    missingFiles?: string[];
-  } | null;
+  const body = (await response.json().catch(() => null)) as
+    (FailureBody & { missingFiles?: unknown }) | null;
   // A proxy's error page is not an answer from the app: the request may still have run.
-  if (response.status >= 500 && typeof failure?.error !== "string")
-    throw lost();
-  if (response.status === 401)
-    throw new SendFailure(
-      "Your session ended. Refresh the page and sign in again.",
-    );
-  if (response.status === 403)
-    throw new SendFailure(
-      "Your session changed. Refresh the page and try again.",
-    );
-  if (response.status === 404)
-    throw new SendFailure("That send doesn’t exist.", { gone: true });
-  const error =
-    typeof failure?.error === "string"
-      ? failure.error
-      : "The send failed. Check the connection, then try again.";
+  if (response.status >= 500 && typeof body?.error !== "string")
+    throw lost(action);
+  const error = describeFailure(action, response.status, body);
+  if (response.status === 404) throw new SendFailure(error, { gone: true });
   if (response.status === 409) {
-    const refused = channelsUnavailableSchema.safeParse(failure);
+    const refused = channelsUnavailableSchema.safeParse(body);
     if (refused.success)
       throw new SendFailure(error, {
         unavailable: refused.data.channels.map((channel) => channel.id),
       });
   }
-  if (response.status === 422 && Array.isArray(failure?.missingFiles))
-    throw new SendFailure(error, { missingFiles: failure.missingFiles });
+  if (response.status === 422 && Array.isArray(body?.missingFiles))
+    throw new SendFailure(error, {
+      missingFiles: body.missingFiles.filter(
+        (id): id is string => typeof id === "string",
+      ),
+    });
   throw new SendFailure(error);
 }
 
 /** Starts a send or a retry; the server answers once it has recorded it, and delivers on its own. */
 export async function startSend(
+  action: "send" | "retry",
   url: string,
   body: object,
   csrfToken: string,
 ): Promise<{ id: string }> {
-  const response = await request(url, {
+  const response = await request(action, url, {
     method: "POST",
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify(body),
@@ -95,6 +96,6 @@ export async function startSend(
 }
 
 export async function fetchSend(id: string): Promise<SendResult> {
-  const response = await request(`/api/sends/${id}`, {});
+  const response = await request("follow", `/api/sends/${id}`, {});
   return sendResultSchema.parse(await response.json());
 }

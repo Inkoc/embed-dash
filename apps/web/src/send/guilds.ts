@@ -4,23 +4,16 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { guildsResponseSchema } from "@embed-dash/shared";
-
-export const guildsErrorMessage =
-  "Unable to list the bot's servers. Check the connection to Discord, then retry.";
+import { connectionFailure, failureFrom } from "../errors";
 
 async function loadGuilds(refresh: boolean) {
-  const response = await fetch(
-    refresh ? "/api/guilds?refresh=1" : "/api/guilds",
-  );
-  if (!response.ok) {
-    // The server sends a fixed, safe message for each kind of Discord failure.
-    const body = (await response.json().catch(() => null)) as {
-      error?: unknown;
-    } | null;
-    throw new Error(
-      typeof body?.error === "string" ? body.error : guildsErrorMessage,
-    );
+  let response: Response;
+  try {
+    response = await fetch(refresh ? "/api/guilds?refresh=1" : "/api/guilds");
+  } catch {
+    throw connectionFailure("load-servers");
   }
+  if (!response.ok) throw await failureFrom("load-servers", response);
   return guildsResponseSchema.parse(await response.json());
 }
 
