@@ -417,7 +417,14 @@ export function ComposeActionBar() {
           onClick={() => reveal(issues[0]!.path)}
         >
           <CircleAlert aria-hidden="true" />
-          <span id="problems-count">{plural(issues.length)} to fix</span>
+          {/* Short enough to sit beside the action on a phone; the noun is still read out. */}
+          <span id="problems-count">
+            {issues.length}
+            <span className="visually-hidden">
+              {issues.length === 1 ? " problem" : " problems"}
+            </span>{" "}
+            to fix
+          </span>
         </button>
       ) : (
         <p id="action-meta" className={styles.actionMeta}>

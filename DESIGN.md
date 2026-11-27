@@ -295,7 +295,7 @@ Message text, description and field values are plain textareas holding Discord m
 
 ### Validation
 
-Every Discord rule lives in `validateMessage` in `packages/shared`. A control shows its problem (✗ icon and words, red border, `aria-invalid`) once it has been left; counts still turn red the moment text passes a limit. While anything is wrong, the next-step card becomes "✗ 3 problems to fix before sending" with each problem as a ruled row ("Embed 1, field 5 value: Add a value; …") that opens whatever hides the control, shows its message and focuses it. **Choose channels** stays visible but `aria-disabled`, greyed, described by the summary, and pressing it (or Ctrl/⌘ ↵) goes to the first problem. On stacked screens the action bar's count becomes "✗ 3 problems to fix", which does the same.
+Every Discord rule lives in `validateMessage` in `packages/shared`. A control shows its problem (✗ icon and words, red border, `aria-invalid`) once it has been left; counts still turn red the moment text passes a limit. While anything is wrong, the next-step card becomes "✗ 3 problems to fix before sending" with each problem as a ruled row ("Embed 1, field 5 value: Add a value; …") that opens whatever hides the control, shows its message and focuses it. **Choose channels** stays visible but `aria-disabled`, greyed, described by the summary, and pressing it (or Ctrl/⌘ ↵) goes to the first problem. On stacked screens the action bar's count becomes "✗ 3 to fix" (read out as "3 problems to fix"), which does the same.
 
 ### Preview column
 
