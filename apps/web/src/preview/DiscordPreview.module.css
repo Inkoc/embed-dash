@@ -143,6 +143,7 @@
 }
 .fieldName {
   margin-bottom: var(--dc-nudge);
+  overflow-wrap: anywhere;
   color: var(--dc-head);
   font-weight: var(--dc-weight-strong);
 }
@@ -206,4 +207,10 @@
 .authorIcon.broken,
 .footerIcon.broken {
   display: inline-block;
+}
+/* Long unbroken names wrap inside their line instead of running past the embed. */
+.author > span,
+.footer > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

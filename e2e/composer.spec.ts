@@ -229,6 +229,61 @@ test("the composer passes axe and loads cleanly under the CSP", async ({
   expect(errors).toEqual([]);
 });
 
+test("at 360 px long field names wrap beside a thumbnail, and a linked title stays legible", async ({
+  page,
+}) => {
+  const word = "Antidisestablishmentarianism";
+  const embed = {
+    color: "#e8a33d",
+    title: "Opens `v2` <t:1700000000:R> ||soon||",
+    url: "https://example.com/notes",
+    description: "",
+    author: { name: "", url: "", iconUrl: "" },
+    // A file that isn't attached: the thumbnail placeholder takes the right
+    // edge without any network request.
+    thumbnail: "attachment://missing.png",
+    image: "",
+    fields: [
+      { name: word, value: `${word}${word}`, inline: true },
+      { name: word, value: "Two", inline: true },
+      { name: `${word}${word}`, value: "Full", inline: false },
+    ],
+    footer: { text: word.repeat(3), iconUrl: "" },
+    timestamp: "",
+  };
+  await page.addInitScript(
+    (draft) => localStorage.setItem("embed-dash:draft", JSON.stringify(draft)),
+    { content: "", attachments: [], embeds: [embed] },
+  );
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  await page
+    .getByRole("group", { name: "Show" })
+    .getByRole("button", { name: "Preview" })
+    .click();
+  await expect(preview(page)).toBeVisible();
+  await preview(page)
+    .getByRole("button", { name: "Spoiler, select to show" })
+    .click();
+  const overflowing = () =>
+    preview(page).evaluate((root) =>
+      [...root.querySelectorAll("[style*='grid-column'] > *, p")]
+        .filter((el) => el.scrollWidth > el.clientWidth)
+        .map((el) => el.textContent),
+    );
+  expect(await overflowing()).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(await axe(page)).toEqual([]);
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await axe(page)).toEqual([]);
+});
+
 test("at 360 px the composer stacks without horizontal scroll", async ({
   page,
 }) => {
