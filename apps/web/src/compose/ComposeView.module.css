@@ -122,7 +122,7 @@
 }
 .handle:focus-visible .grip {
   outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline-offset: var(--ring-width);
 }
 
 .previewColumn {
@@ -363,7 +363,7 @@
   background: var(--sheet-2);
 }
 .problems button:focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(var(--ring-width) * -1);
 }
 .problems b {
   color: var(--ink);
@@ -465,7 +465,7 @@
     color: var(--ink-2);
   }
   .actionBar .primary {
-    flex: 0 1 18rem;
+    flex: 0 1 var(--side-measure);
   }
 }
 

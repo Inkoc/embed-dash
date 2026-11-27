@@ -118,16 +118,16 @@ const characters = (n: number) =>
 const hexColor = /^#[0-9a-f]{6}$/i;
 
 /**
- * Title and author links open in a browser, so they must be web links; images
- * and icons may also point at a file uploaded with the message.
- */
-/**
  * An uploaded file is referenced as `attachment://filename`; Discord only
  * matches filenames made of ASCII letters, digits, dots, dashes and underscores.
  */
 const attachmentReference = /^attachment:\/\/(?!\.+$)[\w.-]+$/;
 
-/** Whether Discord would accept the link; empty counts as acceptable, since every link is optional. */
+/**
+ * Whether Discord would accept the link; empty counts as acceptable, since every link is optional.
+ * Title and author links open in a browser, so they must be web links; images
+ * and icons may also point at a file uploaded with the message.
+ */
 export function isAcceptedLink(url: string, media: boolean): boolean {
   return linkProblem(url, media) === null;
 }

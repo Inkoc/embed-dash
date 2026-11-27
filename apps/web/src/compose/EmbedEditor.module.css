@@ -2,6 +2,8 @@
 .embed {
   --bleed: var(--space-5);
   display: grid;
+  /* minmax(0, …) lets the column shrink below a folded summary's one-line width. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   padding: var(--space-5);
   border-top: var(--rule-width) solid var(--rule);
@@ -277,7 +279,7 @@
 .when {
   display: grid;
   gap: var(--space-2);
-  max-width: 18rem;
+  max-width: var(--side-measure);
 }
 .when label {
   font-size: var(--text-label);

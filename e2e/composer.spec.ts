@@ -216,6 +216,19 @@ test("at 360 px the composer stacks without horizontal scroll", async ({
     "true",
   );
   await expect(page.getByRole("banner")).toContainText("Walking Skeleton Bot");
+  // A folded embed's one-line summary must not widen the page either.
+  await page.getByRole("button", { name: "Start from an example" }).click();
+  await page.getByRole("button", { name: "Add embed" }).click();
+  const fold = page
+    .locator('button[aria-expanded][aria-controls$="-body"]')
+    .first();
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("an embed is built with fields, and a limit breach blocks sending", async ({

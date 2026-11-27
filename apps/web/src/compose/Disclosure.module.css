@@ -17,7 +17,7 @@
   background: var(--sheet-2);
 }
 .head:focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(var(--ring-width) * -1);
 }
 /* the open/closed cue: a chevron that turns over when the row opens */
 .chevron {
