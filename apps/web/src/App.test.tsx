@@ -94,7 +94,7 @@ test("provides a working retry after a failed connection", async () => {
 test("the preview shows every part of the embed in Discord's order", () => {
   render(
     <DiscordPreview
-      draft={exampleDraft}
+      draft={exampleDraft()}
       bot={undefined}
       botPending={false}
       time="Today at 18:00"

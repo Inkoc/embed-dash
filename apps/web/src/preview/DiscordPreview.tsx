@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { BotIdentity } from "@embed-dash/shared";
-import type { Draft } from "../compose/draft";
+import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
 import styles from "./DiscordPreview.module.css";
 
@@ -9,20 +9,32 @@ interface Props {
   /** Undefined while the bot is loading or unreachable. */
   bot: BotIdentity | undefined;
   botPending: boolean;
+  /** When the message is shown as sent, such as "Today at 18:00". */
   time: string;
+}
+
+/** Only links Discord would show; anything else would also fail validation. */
+const shown = (url: string) =>
+  /^(https?:\/\/|attachment:\/\/)/i.test(url.trim()) ? url.trim() : "";
+
+/** Discord writes an embed's time as "Today at 18:00" or as a date and time. */
+export function embedTime(timestamp: string, sent: string, now = new Date()) {
+  if (timestamp === "now") return sent;
+  const date = new Date(timestamp);
+  if (!timestamp || Number.isNaN(date.getTime())) return "";
+  const clock = date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (date.toDateString() === now.toDateString()) return `Today at ${clock}`;
+  return `${date.toLocaleDateString()} ${clock}`;
 }
 
 /**
  * One message as Discord's chat shows it. Text is rendered as plain text for
- * now; Discord markdown arrives with the full editor.
+ * now; Discord markdown arrives with the full preview.
  */
 export function DiscordPreview({ draft, bot, botPending, time }: Props) {
-  const hasThumbnail = Boolean(draft.thumbnail);
-  const rows = fieldRows(draft.fields, hasThumbnail);
-  const title = draft.title.trim();
-  const description = draft.description.trim();
-  const footer = draft.footer.text.trim();
-  const author = draft.author.name.trim();
   const content = draft.content.trim();
   const botName = bot?.name ?? "Your bot";
 
@@ -58,96 +70,105 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
           <time className={styles.time}>{time}</time>
         </p>
         {content && <p className={styles.content}>{content}</p>}
-        <div
-          className={styles.embed}
-          style={{ "--embed-color": draft.color } as CSSProperties}
-          data-testid="preview-embed"
-        >
-          <span className={styles.bar} aria-hidden="true" />
-          <div
-            className={styles.grid}
-            data-thumbnail={hasThumbnail || undefined}
-          >
-            {author && (
-              <p className={styles.author}>
-                {draft.author.iconUrl && (
-                  <img
-                    src={draft.author.iconUrl}
-                    alt=""
-                    width="24"
-                    height="24"
-                  />
-                )}
-                <span>{author}</span>
-              </p>
-            )}
-            {title && (
-              <p className={styles.title}>
-                {draft.url ? (
-                  <span className={styles.link}>{title}</span>
-                ) : (
-                  title
-                )}
-              </p>
-            )}
-            {description && <p className={styles.description}>{description}</p>}
-            {rows.length > 0 && (
-              <div className={styles.fields}>
-                {rows.flat().map(({ field, start, end }, index) => (
-                  <div
-                    key={index}
-                    className={styles.field}
-                    style={{ gridColumn: `${start} / ${end}` }}
-                  >
-                    <p className={styles.fieldName}>{field.name.trim()}</p>
-                    <p className={styles.fieldValue}>{field.value.trim()}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {draft.image && (
-              <img
-                className={styles.image}
-                src={draft.image}
-                alt="Embed image"
-                width="400"
-                height="200"
-                loading="lazy"
-              />
-            )}
-            {hasThumbnail && (
-              <img
-                className={styles.thumbnail}
-                src={draft.thumbnail}
-                alt="Embed thumbnail"
-                width="80"
-                height="80"
-              />
-            )}
-            {(footer || draft.timestamp) && (
-              <p className={styles.footer}>
-                {draft.footer.iconUrl && (
-                  <img
-                    src={draft.footer.iconUrl}
-                    alt=""
-                    width="20"
-                    height="20"
-                  />
-                )}
-                <span>
-                  {footer}
-                  {footer && draft.timestamp && (
-                    <span className={styles.dot} aria-hidden="true">
-                      •
-                    </span>
-                  )}
-                  {draft.timestamp && time}
-                </span>
-              </p>
-            )}
-          </div>
-        </div>
+        {draft.embeds.map((embed) => (
+          <PreviewEmbed key={embed.id} embed={embed} time={time} />
+        ))}
       </div>
     </article>
+  );
+}
+
+function PreviewEmbed({ embed, time }: { embed: Embed; time: string }) {
+  const thumbnail = shown(embed.thumbnail);
+  const image = shown(embed.image);
+  const rows = fieldRows(embed.fields, Boolean(thumbnail));
+  const title = embed.title.trim();
+  const description = embed.description.trim();
+  const footer = embed.footer.text.trim();
+  const author = embed.author.name.trim();
+  const authorIcon = shown(embed.author.iconUrl);
+  const footerIcon = shown(embed.footer.iconUrl);
+  const when = embedTime(embed.timestamp, time);
+  const color = /^#[0-9a-f]{6}$/i.test(embed.color) ? embed.color : undefined;
+
+  return (
+    <div
+      className={styles.embed}
+      style={color ? ({ "--embed-color": color } as CSSProperties) : undefined}
+      data-testid="preview-embed"
+    >
+      <span className={styles.bar} aria-hidden="true" />
+      <div className={styles.grid} data-thumbnail={thumbnail ? "" : undefined}>
+        {author && (
+          <p className={styles.author}>
+            {authorIcon && (
+              <img src={authorIcon} alt="" width="24" height="24" />
+            )}
+            <span data-link={embed.author.url.trim() ? "" : undefined}>
+              {author}
+            </span>
+          </p>
+        )}
+        {title && (
+          <p className={styles.title}>
+            {embed.url.trim() ? (
+              <span className={styles.link}>{title}</span>
+            ) : (
+              title
+            )}
+          </p>
+        )}
+        {description && <p className={styles.description}>{description}</p>}
+        {rows.length > 0 && (
+          <div className={styles.fields}>
+            {rows.flat().map(({ field, start, end }) => (
+              <div
+                key={field.id}
+                className={styles.field}
+                style={{ gridColumn: `${start} / ${end}` }}
+              >
+                <p className={styles.fieldName}>{field.name.trim()}</p>
+                <p className={styles.fieldValue}>{field.value.trim()}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {image && (
+          <img
+            className={styles.image}
+            src={image}
+            alt="Embed image"
+            width="400"
+            height="200"
+            loading="lazy"
+          />
+        )}
+        {thumbnail && (
+          <img
+            className={styles.thumbnail}
+            src={thumbnail}
+            alt="Embed thumbnail"
+            width="80"
+            height="80"
+          />
+        )}
+        {(footer || when) && (
+          <p className={styles.footer}>
+            {footer && footerIcon && (
+              <img src={footerIcon} alt="" width="20" height="20" />
+            )}
+            <span>
+              {footer}
+              {footer && when && (
+                <span className={styles.dot} aria-hidden="true">
+                  •
+                </span>
+              )}
+              {when}
+            </span>
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
