@@ -2,11 +2,16 @@ import { describe, expect, test } from "vitest";
 import {
   attachmentName,
   botIdentitySchema,
+  canPost,
+  channelPermissions,
   countedLength,
   discordLimits,
-  emptyEmbed,
   embedTextLength,
+  emptyEmbed,
+  guildsResponseSchema,
+  inviteUrl,
   isAcceptedLink,
+  mainChannelId,
   messageDraftSchema,
   messageEmbedTextLength,
   sanitizeFilename,
@@ -15,6 +20,7 @@ import {
   validateMessage,
   type AttachmentDraft,
   type EmbedDraft,
+  type GuildChannel,
   type MessageDraft,
 } from "./index.js";
 
@@ -433,4 +439,66 @@ describe("upload limits", () => {
     const ten = Array.from({ length: 10 }, () => ({ size: 1 }));
     expect(uploadProblem({ name: "c", size: 1 }, ten, limit)).toContain("10");
   });
+});
+
+test("names the permissions to check and builds an invite with them", () => {
+  expect(channelPermissions.map((p) => p.label)).toEqual([
+    "View Channel",
+    "Send Messages",
+    "Embed Links",
+    "Attach Files",
+  ]);
+  // 1024 + 2048 + 16384 + 32768
+  expect(inviteUrl("42")).toBe(
+    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
+  );
+});
+
+test("Attach Files alone doesn't stop the bot posting", () => {
+  expect(canPost({ missing: [] })).toBe(true);
+  expect(canPost({ missing: ["attachFiles"] })).toBe(true);
+  expect(canPost({ missing: ["embedLinks"] })).toBe(false);
+});
+
+test("the main channel is the system channel, then announcements, then text", () => {
+  const ch = (
+    id: string,
+    kind: GuildChannel["kind"],
+    missing: GuildChannel["missing"] = [],
+  ): GuildChannel => ({ id, name: id, kind, missing });
+  const channels = [
+    ch("forum", "forum"),
+    ch("text", "text"),
+    ch("news", "announcement"),
+    ch("system", "text"),
+  ];
+  expect(mainChannelId(channels, "system")).toBe("system");
+  expect(mainChannelId(channels, null)).toBe("news");
+  expect(
+    mainChannelId(
+      [ch("news", "announcement", ["sendMessages"]), ...channels.slice(0, 2)],
+      "gone",
+    ),
+  ).toBe("text");
+  expect(mainChannelId([ch("system", "text", ["viewChannel"])], "system")).toBe(
+    null,
+  );
+});
+
+test("parses the guild list the server returns", () => {
+  expect(
+    guildsResponseSchema.parse({
+      guilds: [
+        {
+          id: "1",
+          name: "Lanternfall",
+          iconUrl: null,
+          mainChannelId: null,
+          channels: [{ id: "2", name: "news", kind: "forum", missing: [] }],
+        },
+      ],
+      unavailable: [],
+      fetchedAt: "2026-11-27T10:00:00.000Z",
+    }).guilds[0].channels[0].kind,
+  ).toBe("forum");
 });

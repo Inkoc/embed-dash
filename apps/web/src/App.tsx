@@ -9,6 +9,7 @@ import {
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
+import { SelectionProvider } from "./send/selection";
 import { SendView } from "./send/SendView";
 import { SessionGate } from "./shell/SessionGate";
 import { BotStatus } from "./shell/BotStatus";
@@ -25,7 +26,9 @@ export function App() {
     <SessionGate>
       <DraftProvider>
         <EditorStateProvider>
-          <Shell />
+          <SelectionProvider>
+            <Shell />
+          </SelectionProvider>
         </EditorStateProvider>
       </DraftProvider>
     </SessionGate>
