@@ -74,7 +74,10 @@ test("files can be added with the keyboard and a refused file says why", async (
   await page.goto("/");
   const choose = page.getByRole("button", { name: "Choose files" });
   const chooser = page.waitForEvent("filechooser");
-  // Focus and key press in one step: the app may still move focus while it settles.
+  // Not a separate focus() and keyboard.press(): Playwright turns on file
+  // chooser interception asynchronously after waitForEvent, and a key sent at
+  // once can open the chooser before that, so the event never fires. The
+  // locator's actionability checks give it time; focus itself stays put.
   await choose.press("Enter");
   await (
     await chooser

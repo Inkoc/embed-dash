@@ -198,3 +198,42 @@ test("unknown paths fall back to the composer", () => {
   renderApp("/nowhere");
   expect(screen.getByRole("heading", { name: "Compose" })).toBeTruthy();
 });
+
+test("the composer keeps its elements and focus when the session check settles again", async () => {
+  let csrfToken = "first";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url === "/api/session"
+        ? Response.json({
+            authMode: "password",
+            authenticated: true,
+            insecure: false,
+            csrfToken,
+            user: null,
+            deniedUserId: null,
+            maxUploadMb: 10,
+          })
+        : Response.json(bot),
+    ),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const choose = await screen.findByRole("button", { name: "Choose files" });
+  choose.focus();
+  csrfToken = "rotated";
+  await act(() => client.refetchQueries({ queryKey: ["session"] }));
+  expect(
+    client.getQueryData<{ csrfToken: string }>(["session"])?.csrfToken,
+  ).toBe("rotated");
+  expect(screen.getByRole("button", { name: "Choose files" })).toBe(choose);
+  expect(document.activeElement).toBe(choose);
+});
