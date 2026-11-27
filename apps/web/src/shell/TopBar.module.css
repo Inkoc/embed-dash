@@ -1,12 +1,14 @@
-.bar {
+.header {
   position: sticky;
   top: 0;
   z-index: 20;
+}
+.bar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-4);
-  height: var(--bar-height);
+  height: var(--nav-height);
   padding: 0 var(--space-5);
   border-bottom: var(--rule-width) solid var(--rule);
   background: var(--sheet);
@@ -53,6 +55,9 @@
   font-size: var(--text-label);
   font-weight: var(--weight-label);
   cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    background-color var(--dur-fast);
 }
 .quiet:hover {
   background: var(--sheet-2);
@@ -73,6 +78,9 @@
   font-size: var(--text-label);
   font-weight: var(--weight-label);
   cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    background-color var(--dur-fast);
 }
 .theme:hover {
   background: var(--sheet-2);
@@ -172,5 +180,18 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .bar:has([data-session-control]) {
+    grid-template-columns: auto 1fr;
+    height: auto;
+    padding-block: var(--space-2);
+    row-gap: var(--space-1);
+  }
+  .bar:has([data-session-control]) .views {
+    grid-row: 2;
+    grid-column: 1 / -1;
   }
 }

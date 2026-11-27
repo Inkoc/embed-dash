@@ -41,6 +41,7 @@ test("health, real Discord REST identity, safe failures and SPA fallback", async
   });
   const app = await createApp(
     {
+      authMode: "none",
       botToken: token,
       host: "127.0.0.1",
       port: 8742,
@@ -119,6 +120,7 @@ test("client parsing errors keep their HTTP status", async () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-client-errors-"));
   const app = await createApp(
     {
+      authMode: "none",
       botToken: "fixture-token",
       port: 8742,
       host: "127.0.0.1",
@@ -169,6 +171,7 @@ test("unreachable Discord is diagnosed without exposing the token", async () => 
   });
   const app = await createApp(
     {
+      authMode: "none",
       botToken: "offline-private-token",
       port: 8742,
       host: "127.0.0.1",
@@ -182,6 +185,34 @@ test("unreachable Discord is diagnosed without exposing the token", async () => 
     expect(response.json().code).toBe("DISCORD_UNREACHABLE");
     expect(logs).toContain("ECONNREFUSED");
     expect(logs + response.body).not.toContain("offline-private-token");
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("local mode warns when bound beyond loopback", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "embed-local-warning-"));
+  let logs = "";
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      logs += String(chunk);
+      callback();
+    },
+  });
+  const app = await createApp(
+    {
+      authMode: "none",
+      botToken: "fixture",
+      port: 8742,
+      host: "0.0.0.0",
+      dataDir: dir,
+      discordApiBase: "http://127.0.0.1:1/api",
+    },
+    { logger: { stream } },
+  );
+  try {
+    expect(logs).toContain("No-login mode is bound beyond loopback");
   } finally {
     await app.close();
     rmSync(dir, { recursive: true });

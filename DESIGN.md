@@ -199,6 +199,7 @@ A cool, nearly neutral desk with a single committed teal; status colours appear 
 
 - **Danger** (`--danger`, `--danger-wash`): errors only, always with an ✗ icon and words.
 - **Warn** (`--warn`): "near the limit" only.
+- **Access warning** (`--access-warning`): amber ink with a triangle icon on the ruled header notice for open instances. It stays visible with the header; composer sticky offsets include its measured height.
 - **Mark** (`--mark`): search-hit highlight in the catalogue.
 
 ### Discord preview (fixed, not themable)
@@ -323,6 +324,7 @@ All motion uses `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) for arrivals; `--
 
 | Transition                  | What it does and why                                                                                                                                                                                            | Reduced motion                        |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Login sheet arrival         | The index sheet rises 0.75rem and inks in over 320ms with `--ease-out`, orienting the operator to the instance address.                                                                                         | Instant; no animation.                |
 | View change                 | The incoming view slides 2.5rem in from the side of its tab and fades in (320ms), so Compose → Send reads as moving right and back as moving left.                                                              | Instant swap.                         |
 | Segmented thumb             | The thumb slides to the chosen item (320ms); placed without animation on load.                                                                                                                                  | Instant.                              |
 | Theme wipe                  | The new theme is clipped in from the top down over the old (560ms), like a card pulled over the desk. Without View Transitions, colours fade (200ms).                                                           | Instant swap, no wipe.                |
@@ -360,3 +362,5 @@ All motion uses `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) for arrivals; `--
 - **Don't** use View Transitions or delays for navigation, and never let an animation swallow a click or key press.
 - **Don't** bind shortcuts the browser or screen readers reserve, such as Alt+number.
 - **Don't** use Discord's logo, proprietary font or chrome outside the preview.
+
+The login uses a wider index sheet, hairline rules, and the instance address as a mono identifier. Sign out sits in the header beside the shared sun/moon theme switch.
