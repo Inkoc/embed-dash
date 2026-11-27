@@ -1,5 +1,17 @@
 import { expect, type Page } from "@playwright/test";
 
+/**
+ * Waits two frames after a resize, so the resize observers have refitted the
+ * bar (they run once per frame) before anything is measured.
+ */
+const settled = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(done)),
+      ),
+  );
+
 /** Widths from tablet to wide desktop, including common laptop sizes. */
 export const headerWidths = [
   768, 860, 861, 960, 1024, 1100, 1180, 1280, 1366, 1400, 1440, 1480, 1536,
@@ -13,6 +25,7 @@ export const headerWidths = [
 export async function expectHeaderFits(page: Page) {
   for (const width of headerWidths) {
     await page.setViewportSize({ width, height: 800 });
+    await settled(page);
     const layout = await page.evaluate(() => {
       const nav = document.querySelector("header nav[aria-label='Main']")!;
       const bar = nav.parentElement!;
@@ -75,13 +88,8 @@ export async function padViews(page: Page, count: number) {
 export async function expectPhoneHeaderFits(page: Page) {
   for (const width of phoneWidths) {
     await page.setViewportSize({ width, height: 800 });
-    // Let the resize observers measure the new layout.
-    await page.evaluate(
-      () =>
-        new Promise((done) =>
-          requestAnimationFrame(() => requestAnimationFrame(done)),
-        ),
-    );
+    await settled(page);
+
     const layout = await page.evaluate(() => {
       const nav = document.querySelector("header nav[aria-label='Main']")!;
       const bar = nav.parentElement!;
