@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expectHeaderFits } from "./header.js";
 
 const baseURL = `http://127.0.0.1:${Number(process.env.E2E_PORT ?? 28742) + 1}`;
 test.use({ baseURL, storageState: { cookies: [], origins: [] } });
@@ -9,8 +10,8 @@ test("an approved Discord account signs in, shows in the bar and signs out", asy
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  // Wide enough for the name badge, which narrower bars fold into Sign out.
-  await page.setViewportSize({ width: 1440, height: 900 });
+  // Wide enough that the bar has room for the name badge.
+  await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
   const signIn = page.getByRole("link", { name: "Sign in with Discord" });
@@ -26,6 +27,8 @@ test("an approved Discord account signs in, shows in the bar and signs out", asy
   await expect(page.getByText("Ada Lovelace")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Ada Lovelace")).toBeVisible();
+  // The widest cluster: bot, Shortcuts, name badge, Sign out and theme switch.
+  await expectHeaderFits(page);
   await page.getByRole("button", { name: "Sign out Ada Lovelace" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(signIn).toBeVisible();

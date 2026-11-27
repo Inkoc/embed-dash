@@ -205,13 +205,21 @@
   padding: var(--space-4);
   border: var(--rule-width) solid var(--danger);
 }
-@media (max-width: 1400px) {
-  /* Sign out names the person in its label and title, so the badge can go first. */
+/* Shed by the top bar when its cluster is short of room; Sign out names the person in its label and title, so the badge can go. */
+[data-shed-badge] .user {
+  display: none;
+}
+[data-shed-sign-out] .signOutLabel {
+  position: absolute;
+  width: var(--rule-width);
+  height: var(--rule-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (max-width: 860px) {
   .user {
     display: none;
   }
-}
-@media (max-width: 1100px) {
   .signOutLabel {
     position: absolute;
     width: var(--rule-width);
