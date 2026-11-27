@@ -35,8 +35,17 @@ export function formatTimestamp(
   if (style !== "R")
     return new Intl.DateTimeFormat(locale, formats[style]).format(date);
   const seconds = (date.getTime() - now.getTime()) / 1000;
-  const [unit, size] =
-    units.find(([, size]) => Math.abs(seconds) >= size) ?? units.at(-1)!;
+  let i = units.findIndex(([, size]) => Math.abs(seconds) >= size);
+  if (i === -1) i = units.length - 1;
+  // 59.5 minutes reads as "1 hour" and 364 days as "1 year", not 60 and 12.
+  const larger = units[i - 1];
+  if (
+    larger &&
+    Math.abs(Math.round(seconds / units[i]![1])) >=
+      Math.round(larger[1] / units[i]![1])
+  )
+    i--;
+  const [unit, size] = units[i]!;
   return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(
     Math.round(seconds / size),
     unit,

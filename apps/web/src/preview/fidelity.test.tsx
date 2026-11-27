@@ -80,6 +80,11 @@ describe("timestamps", () => {
     expect(rel(2 * 86400)).toBe("in 2 days");
     expect(rel(-60 * 86400)).toBe("2 months ago");
     expect(rel(-3 * 365 * 86400)).toBe("3 years ago");
+    expect(rel(59.5 * 60)).toBe("in 1 hour");
+    expect(rel(59.4 * 60)).toBe("in 59 minutes");
+    expect(rel(23.6 * 3600)).toBe("tomorrow");
+    expect(rel(364 * 86400)).toBe("next year");
+    expect(rel(-59.6)).toBe("1 minute ago");
   });
 });
 
