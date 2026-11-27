@@ -8,6 +8,7 @@ import { isTypingTarget, pressKey, shortcutFor } from "./shortcuts";
 afterEach(() => vi.useRealTimers());
 
 const field = (name: string, inline: boolean, value = "v") => ({
+  id: name,
   name,
   value,
   inline,

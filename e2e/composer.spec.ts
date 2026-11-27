@@ -36,20 +36,21 @@ test("editing title, description and colour updates the preview live", async ({
   await page.getByLabel("Title", { exact: true }).fill("Server maintenance");
   await expect(preview(page)).toContainText("Server maintenance");
   await page
-    .getByLabel("Description")
+    .getByLabel("Description", { exact: true })
     .fill("The server restarts at 06:00 UTC.");
   await expect(preview(page)).toContainText(
     "The server restarts at 06:00 UTC.",
   );
-  await page.getByLabel("Side colour").fill("#3366ff");
+  const hex = page.getByLabel("Side colour", { exact: true });
+  await hex.fill("#3366ff");
   await expect(preview(page)).toHaveAttribute(
     "style",
     /--embed-color: #3366ff/,
   );
-  await expect(page.getByText("#3366FF")).toBeVisible();
+  await expect(hex).toHaveValue("#3366FF");
   // Counts stay hidden until a control has focus.
-  const count = page.locator("#in-title-count");
-  await page.getByLabel("Description").focus();
+  const count = page.locator("[id$='-title-count']");
+  await page.getByLabel("Description", { exact: true }).focus();
   await expect(count).toHaveCSS("opacity", "0");
   await page.getByLabel("Title", { exact: true }).focus();
   await expect(count).toHaveCSS("opacity", "1");
@@ -117,6 +118,8 @@ test("keyboard shortcuts move between views and list themselves", async ({
   page,
 }) => {
   await page.goto("/");
+  // A blank draft can't go forward; the example can.
+  await page.getByRole("button", { name: "Start from an example" }).click();
   await page.getByLabel("Title", { exact: true }).focus();
   await page.keyboard.press("Alt+2");
   await expect(page).toHaveURL(/\/$/);
@@ -213,4 +216,80 @@ test("at 360 px the composer stacks without horizontal scroll", async ({
     "true",
   );
   await expect(page.getByRole("banner")).toContainText("Walking Skeleton Bot");
+  // A folded embed's one-line summary must not widen the page either.
+  await page.getByRole("button", { name: "Start from an example" }).click();
+  await page.getByRole("button", { name: "Add embed" }).click();
+  const fold = page
+    .locator('button[aria-expanded][aria-controls$="-body"]')
+    .first();
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("an embed is built with fields, and a limit breach blocks sending", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await page
+    .getByRole("dialog", { name: "Clear the draft?" })
+    .getByRole("button", { name: "Clear draft" })
+    .click();
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("");
+
+  await page.getByLabel("Title", { exact: true }).fill("Weekly raid");
+  const description = page.getByLabel("Description", { exact: true });
+  await description.fill("Bring potions");
+  await description.press("ControlOrMeta+a");
+  await description.press("ControlOrMeta+b");
+  await expect(description).toHaveValue("**Bring potions**");
+
+  for (const [name, value] of [
+    ["When", "Friday 20:00"],
+    ["Where", "The Sunken Keep"],
+  ]) {
+    await page.getByRole("button", { name: "Add field" }).click();
+    await page.keyboard.type(name);
+    await page
+      .getByRole("textbox", { name: "Value", exact: true })
+      .last()
+      .fill(value);
+  }
+  await expect(page.getByText("2 of 25")).toBeVisible();
+  await expect(preview(page)).toContainText("When");
+  await expect(preview(page)).toContainText("The Sunken Keep");
+  await expect(page.getByText("Looks right?")).toBeVisible();
+
+  // Over the limit: the count turns red at once, the message shows on blur.
+  const name = page.getByRole("textbox", { name: "Name", exact: true }).last();
+  await name.fill("x".repeat(260));
+  await expect(
+    page.locator(`#${await name.getAttribute("id")}-count`),
+  ).toHaveAttribute("data-level", "over");
+  await name.blur();
+  await expect(
+    page.getByText("4 characters over the 256 limit.").first(),
+  ).toBeVisible();
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("1 problem to fix before sending")).toBeVisible();
+  const forward = page.getByRole("button", { name: /Choose channels/ }).first();
+  await expect(forward).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Control+Enter");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(name).toBeFocused();
+
+  // The draft survives a reload.
+  await page.reload();
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    "Weekly raid",
+  );
+  await expect(page.getByText("1 problem to fix before sending")).toBeVisible();
+  expect(errors).toEqual([]);
 });

@@ -16,8 +16,7 @@
   font-weight: var(--weight-body);
   color: var(--ink-2);
 }
-.control input,
-.control textarea {
+.field {
   display: block;
   width: 100%;
   min-height: var(--tap);
@@ -32,15 +31,13 @@
     border-color var(--dur-fast),
     box-shadow var(--dur-fast);
 }
-.control textarea {
+textarea.field {
   resize: vertical;
 }
-.control input:hover,
-.control textarea:hover {
+.field:hover {
   border-color: var(--ink-2);
 }
-.control input:focus-visible,
-.control textarea:focus-visible {
+.field:focus-visible {
   outline: none;
   border-color: var(--ring);
   box-shadow:
@@ -87,4 +84,23 @@
 .control:focus-within .hint {
   grid-template-rows: 1fr;
   opacity: 1;
+}
+.field[aria-invalid="true"],
+.field[aria-invalid="true"]:hover {
+  border-color: var(--danger);
+}
+/* a problem is always an icon and words, never the red border alone */
+.problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--danger);
+}
+.problem svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-top: var(--space-hair);
 }

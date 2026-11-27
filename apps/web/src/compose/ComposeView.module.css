@@ -38,7 +38,6 @@
   box-shadow: var(--shadow-2);
 }
 .section {
-  --bleed: var(--space-5);
   padding: var(--space-5);
 }
 .section + .section {
@@ -62,122 +61,6 @@
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
-}
-.stack {
-  display: grid;
-  gap: var(--space-4);
-}
-
-/* the side colour sits on the embed's own heading, like the bar it paints */
-.colour {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.colour label {
-  font-size: var(--text-label);
-  font-weight: var(--weight-label);
-  color: var(--ink-2);
-}
-.colour input {
-  width: var(--tap);
-  height: var(--tap);
-  padding: var(--space-1);
-  border: var(--rule-width) solid var(--field-line);
-  border-radius: var(--radius-md);
-  background: var(--field);
-  cursor: pointer;
-}
-.colour input:hover {
-  border-color: var(--ink-2);
-}
-.colour input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-.colour input::-webkit-color-swatch {
-  border: 0;
-  border-radius: var(--radius-xs);
-}
-.colour input::-moz-color-swatch {
-  border: 0;
-  border-radius: var(--radius-xs);
-}
-.colour output {
-  min-width: 4.5em;
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  color: var(--ink);
-}
-.linkline {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--tap);
-  font-size: var(--text-label);
-  color: var(--ink-2);
-}
-.linkline svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-.linkline b {
-  color: var(--ink);
-  font-weight: var(--weight-medium);
-  overflow-wrap: anywhere;
-}
-
-/* fields and optional parts are ruled lists that run to the sheet's edges, not boxes inside it */
-.rows {
-  margin: 0 calc(var(--bleed) * -1);
-  border-top: var(--rule-width) solid var(--rule);
-  border-bottom: var(--rule-width) solid var(--rule);
-}
-.fieldRow,
-.partRow {
-  display: grid;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--row-min);
-  padding: var(--space-2) var(--bleed);
-}
-.fieldRow + .fieldRow,
-.partRow + .partRow {
-  border-top: var(--rule-width) solid var(--rule);
-}
-.fieldRow {
-  grid-template-columns: 2rem minmax(0, 9.5rem) minmax(0, 1fr) auto;
-}
-.fieldNo {
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-2);
-}
-.fieldText {
-  display: contents;
-}
-.fieldName,
-.partRow dt {
-  overflow: hidden;
-  font-weight: var(--weight-label);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.fieldValue,
-.partRow dd {
-  overflow: hidden;
-  font-size: var(--text-label);
-  color: var(--ink-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.fieldTag {
-  font-size: var(--text-meta);
-  color: var(--ink-2);
-}
-.partRow {
-  grid-template-columns: 9rem minmax(0, 1fr);
 }
 
 /* the resize handle: a ruled edge with a grip, dragged or moved with arrow keys */
@@ -239,7 +122,7 @@
 }
 .handle:focus-visible .grip {
   outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline-offset: var(--ring-width);
 }
 
 .previewColumn {
@@ -323,6 +206,9 @@
 }
 .primary {
   display: inline-flex;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
@@ -340,7 +226,15 @@
 .primary:hover {
   background: var(--accent-hover);
 }
-.primary:active {
+/* blocked: still focusable and explained, but plainly not the way forward yet */
+.primary[aria-disabled="true"] {
+  background: var(--rule);
+  color: var(--ink-2);
+}
+.primary[aria-disabled="true"] kbd {
+  opacity: 0.7;
+}
+.primary:not([aria-disabled="true"]):active {
   transform: translateY(var(--press-shift));
 }
 .primary > svg {
@@ -357,6 +251,147 @@
   display: none;
 }
 
+/* the draft's own state: where it is kept, and the way to start over */
+.draftState {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.saved {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+.quiet:hover {
+  background: var(--sheet-2);
+  color: var(--ink);
+}
+.quiet svg,
+.add svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.addSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: var(--rule-width) solid var(--rule);
+}
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  margin-left: calc(var(--space-3) * -1);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.add:hover {
+  background: var(--accent-wash);
+}
+.full {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+
+/* the problem list takes the next-step card's place until the draft can be sent */
+.next[data-blocked] {
+  display: grid;
+  justify-content: stretch;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.problemsTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--danger);
+  font-size: var(--text-body);
+  font-weight: var(--weight-strong);
+}
+.problemsTitle svg,
+.fixFirst svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.problems {
+  margin: 0 calc(var(--space-5) * -1);
+  border-top: var(--rule-width) solid var(--rule);
+}
+.problems li + li {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.problems button {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-5);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--text-label);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.problems button:hover {
+  background: var(--sheet-2);
+}
+.problems button:focus-visible {
+  outline-offset: calc(var(--ring-width) * -1);
+}
+.problems b {
+  color: var(--ink);
+  font-weight: var(--weight-label);
+}
+.next .more {
+  font-size: var(--text-meta);
+}
+.next[data-blocked] .primary {
+  justify-self: end;
+}
+.fixFirst {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--danger);
+  font-size: var(--text-label);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
 /*
  * Tablet: editor and preview stay side by side with tighter gutters. The
  * preview scrolls with the page here, because at this width it is often
@@ -368,13 +403,6 @@
   }
   .previewColumn {
     position: static;
-  }
-  .fieldRow {
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
-  }
-  .fieldText {
-    display: grid;
-    min-width: 0;
   }
 }
 
@@ -437,7 +465,7 @@
     color: var(--ink-2);
   }
   .actionBar .primary {
-    flex: 0 1 18rem;
+    flex: 0 1 var(--side-measure);
   }
 }
 
@@ -460,16 +488,12 @@
     border-radius: var(--radius-md);
   }
   .section {
-    --bleed: var(--space-4);
     padding: var(--space-4);
   }
-  .fieldRow {
-    grid-template-columns: var(--icon-md) minmax(0, 1fr) auto;
+  .addSection {
+    padding-inline: var(--space-4);
   }
-  .partRow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
+
   .actionBar {
     padding-inline: var(--space-3);
   }
@@ -482,5 +506,58 @@
   from {
     opacity: 0;
     transform: translateY(var(--space-2));
+  }
+}
+
+/* save failure: the status turns red, and a notice says what it means and what to do */
+.saved[data-failed] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+}
+.saved svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.saveFailed {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--rule-width) solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-wash);
+  color: var(--ink);
+  font-size: var(--text-label);
+}
+.saveFailed b {
+  color: var(--danger);
+  font-weight: var(--weight-strong);
+}
+
+/* the blank composer's one quiet line: what this is, and a way to see it filled in */
+.starter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--sheet-2);
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.starter b {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+.starter .add {
+  margin-left: 0;
+}
+@media (max-width: 640px) {
+  .starter {
+    padding-inline: var(--space-4);
   }
 }

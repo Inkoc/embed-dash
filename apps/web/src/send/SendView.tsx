@@ -36,9 +36,9 @@ import styles from "./SendView.module.css";
 
 /** Send: pick the channels the message goes to, from every server the bot is in. */
 export function SendView() {
-  const [draft] = useDraft();
+  const { draft } = useDraft();
   const guilds = useGuilds();
-  const title = draft.title.trim();
+  const title = draft.embeds[0]?.title.trim();
   const data = guilds.data;
   const channelCount = data?.guilds.reduce((n, g) => n + g.channels.length, 0);
 

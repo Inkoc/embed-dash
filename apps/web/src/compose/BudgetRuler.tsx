@@ -3,10 +3,10 @@ import styles from "./BudgetRuler.module.css";
 
 const format = (n: number) => n.toLocaleString("en-GB");
 
-/** Discord's 6,000-character embed budget as a ruler with a tick per 1,000. */
+/** Discord's 6,000-character budget for all embeds together, as a ruler with a tick per 1,000. */
 export function BudgetRuler({ total, max }: { total: number; max: number }) {
   return (
-    <div className={styles.budget}>
+    <div id="compose-budget" className={styles.budget} tabIndex={-1}>
       <span>Embed text</span>
       <span className={styles.number}>
         <b>{format(total)}</b>
