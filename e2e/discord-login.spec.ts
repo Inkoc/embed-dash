@@ -25,7 +25,7 @@ test("an approved Discord account signs in, shows in the bar and signs out", asy
   await expect(page.getByText("Ada Lovelace")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Ada Lovelace")).toBeVisible();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out Ada Lovelace" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(signIn).toBeVisible();
   expect(errors).toEqual([]);
@@ -42,6 +42,9 @@ test("an account that is not approved sees its ID and stays out", async ({
   await expect(
     page.getByRole("heading", { name: "Not allowed" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Not allowed" }),
+  ).toBeFocused();
   await expect(page.getByText("222222222222222222")).toBeVisible();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });

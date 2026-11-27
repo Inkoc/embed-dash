@@ -196,13 +196,18 @@
   border: var(--rule-width) solid var(--danger);
 }
 @media (max-width: 860px) {
-  .signOutLabel,
-  .userName {
+  .signOutLabel {
     position: absolute;
     width: var(--rule-width);
     height: var(--rule-width);
     overflow: hidden;
     clip-path: inset(50%);
+  }
+}
+@media (max-width: 860px) {
+  /* The name is in Sign out's label here; a bare avatar beside the bot's reads as a button. */
+  .user {
+    display: none;
   }
 }
 @media (max-width: 640px) {

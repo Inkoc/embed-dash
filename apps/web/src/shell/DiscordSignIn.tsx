@@ -8,6 +8,7 @@ const reasons: Record<string, string> = {
   expired:
     "That sign-in expired or was started in another browser. Start it again here.",
   cancelled: "Sign-in was cancelled on Discord. Try again when you are ready.",
+  busy: "Too many sign-in attempts from this address. Wait a minute, then try again.",
   failed:
     "Discord sign-in did not complete. Try again, or ask the operator to check the server log.",
 };
@@ -25,8 +26,8 @@ export function DiscordEntry({ reason }: { reason: string | null }) {
       </p>
       <p className={styles.note}>
         Discord is asked only to confirm who you are (the identify scope). The
-        instance cannot post as you, read your servers or messages, or keep
-        access to your account.
+        instance cannot post as you or read your servers or messages, and it
+        ends the authorization with Discord as soon as it has read your name.
       </p>
       {message && (
         <p role="alert">

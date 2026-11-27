@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -57,7 +58,14 @@ export function SessionControls() {
         data-session-control
         disabled={access.busy}
         onClick={access.logout}
-        aria-label={access.busy ? "Signing out…" : "Sign out"}
+        aria-label={
+          access.busy
+            ? "Signing out…"
+            : access.user
+              ? `Sign out ${access.user.name}`
+              : "Sign out"
+        }
+        title={access.user ? `Signed in as ${access.user.name}` : undefined}
       >
         <LogOut aria-hidden="true" className={styles.icon} />
         <span className={styles.signOutLabel}>
@@ -76,6 +84,7 @@ export function SessionControls() {
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const passwordInput = useRef<HTMLInputElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const client = useQueryClient();
   const location = useLocation();
   const [password, setPassword] = useState("");
@@ -91,6 +100,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
     refetchInterval: 60_000,
     retry: false,
   });
+  const discord = session.data?.authMode === "discord";
+  const denied = discord ? session.data?.deniedUserId : null;
+  // The sheet only mounts once the redirect to /login has happened.
+  const onLogin = location.pathname === "/login";
+  // After the redirect back from Discord, start reading at the explanation.
+  useEffect(() => {
+    if (denied && onLogin) heading.current?.focus();
+  }, [denied, onLogin]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!password.trim()) {
@@ -153,8 +170,6 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }
   if (session.data && location.pathname !== "/login")
     return <Navigate to="/login" replace />;
-  const discord = session.data?.authMode === "discord";
-  const denied = discord ? session.data?.deniedUserId : null;
   return (
     <main id="main" className={styles.login}>
       <div className={styles.heading}>
@@ -163,7 +178,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <LoginThemeSwitch />
       </div>
       <section className={styles.sheet} aria-labelledby="login-title">
-        <h1 id="login-title">{denied ? "Not allowed" : "Sign in"}</h1>
+        <h1 id="login-title" ref={heading} tabIndex={-1}>
+          {denied ? "Not allowed" : "Sign in"}
+        </h1>
         <p className={styles.address}>{window.location.host}</p>
         {session.isPending ? (
           <p role="status">Checking your session…</p>

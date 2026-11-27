@@ -152,13 +152,15 @@ test.each([
   ["expired", "expired or was started in another browser"],
   ["cancelled", "cancelled on Discord"],
   ["failed", "did not complete"],
+  ["busy", "Too many sign-in attempts"],
 ])("Discord sign-in %s is explained on the login screen", (reason, message) => {
   setup(vi.fn(), discord, `/login?auth=${reason}`);
   expect(screen.getByRole("alert").textContent).toContain(message);
 });
 test("an account that is not allowed sees its ID and can try another", () => {
   setup(vi.fn(), { ...discord, deniedUserId: "222222222222222222" });
-  expect(screen.getByRole("heading", { name: "Not allowed" })).toBeTruthy();
+  const heading = screen.getByRole("heading", { name: "Not allowed" });
+  expect(heading).toBe(document.activeElement);
   expect(screen.getByText("222222222222222222")).toBeTruthy();
   expect(screen.getByText(/not on the approved list/)).toBeTruthy();
   expect(
@@ -194,7 +196,10 @@ test("the signed-in Discord user shows by name and avatar until sign out", async
   expect(avatar.getAttribute("src")).toBe("https://cdn.example/avatar.png");
   fireEvent.error(avatar);
   expect(document.querySelector("img")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  // Narrow layouts hide the badge, so the name must also reach assistive tech here.
+  const signOut = screen.getByRole("button", { name: "Sign out Ada Lovelace" });
+  expect(signOut.getAttribute("title")).toBe("Signed in as Ada Lovelace");
+  fireEvent.click(signOut);
   expect(await screen.findByText("Sign in with Discord")).toBeTruthy();
   expect(fetcher).toHaveBeenCalledWith(
     "/api/auth/logout",
