@@ -1,4 +1,9 @@
-import Fastify, { LogController, type FastifyServerOptions } from "fastify";
+import Fastify, {
+  LogController,
+  type FastifyReply,
+  type FastifyRequest,
+  type FastifyServerOptions,
+} from "fastify";
 import fastifyStatic from "@fastify/static";
 import type { Config } from "./config.js";
 import { createDiscord } from "./discord.js";
@@ -23,15 +28,28 @@ export async function createApp(
     database.close();
   });
   app.get("/health", async () => ({ status: "ok" }));
-  app.get("/api/bot", async (_request, reply) => {
-    try {
-      return await discord.getBot();
-    } catch (error) {
-      const { code, message, statusCode, ...details } = discordFailure(error);
-      app.log.warn({ code, ...details }, "Discord bot lookup failed");
-      return reply.code(statusCode).send({ code, error: message });
-    }
-  });
+  const fromDiscord =
+    <T>(what: string, load: (request: FastifyRequest) => Promise<T>) =>
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        return await load(request);
+      } catch (error) {
+        const { code, message, statusCode, ...details } = discordFailure(error);
+        app.log.warn({ code, ...details }, `Discord ${what} failed`);
+        return reply.code(statusCode).send({ code, error: message });
+      }
+    };
+  app.get(
+    "/api/bot",
+    fromDiscord("bot lookup", () => discord.getBot()),
+  );
+  app.get(
+    "/api/guilds",
+    fromDiscord("guild listing", (request) => {
+      const { refresh } = request.query as { refresh?: string };
+      return discord.listGuilds({ refresh: refresh === "1" });
+    }),
+  );
   // Upstream errors may contain credentials, so only fixed messages reach logs and clients.
   app.setErrorHandler((error, _request, reply) => {
     const status =
