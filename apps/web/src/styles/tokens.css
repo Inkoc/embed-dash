@@ -39,6 +39,10 @@
   --font-mono: "Atkinson Mono", ui-monospace, Menlo, monospace;
   --font-preview:
     "Preview Sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Discord's own code stack: system faces only, nothing bundled */
+  --font-preview-code:
+    Consolas, "Andale Mono WT", "Andale Mono", "Lucida Console",
+    "DejaVu Sans Mono", "Liberation Mono", Monaco, "Courier New", monospace;
 
   --text-display: 1.75rem; /* view titles */
   --text-count: 2.5rem; /* the tray's numeral */
@@ -134,6 +138,26 @@
   --dc-tag-leading: 0.9375rem;
   --dc-nudge: 2px;
   --dc-name-skeleton: 7rem;
+  --dc-h1: 1.5rem;
+  --dc-h2: 1.25rem;
+  --dc-h3: 1rem;
+  --dc-heading-leading: 1.375;
+  --dc-weight-heading: 700;
+  --dc-text-sub: 0.8125rem;
+  --dc-leading-sub: 1.125rem;
+  --dc-code-inline: 0.85em;
+  --dc-text-code: 0.875rem;
+  --dc-leading-code: 1.125rem;
+  --dc-emoji: 1.375em;
+  --dc-emoji-gap: 0.05em;
+  --dc-chip-pad: 0.125em;
+  --dc-code-pad: 0.5em;
+  --dc-code-max: 90%;
+  --dc-underline-offset: 0.15em;
+  --dc-list-indent: 1rem;
+  --dc-quote-bar: 4px;
+  --dc-image-h: 300px;
+  --dc-broken-icon: 2rem;
   --dc-selection: rgb(0 168 252 / 0.35);
   --dc-app: #5865f2;
   --dc-on-app: #ffffff;
@@ -191,6 +215,16 @@
   --dc-muted: #5c5e66;
   --dc-link: #0063d3;
   --dc-placeholder: #e3e5e8;
+  --dc-code-bg: #f2f3f5;
+  --dc-code-bg-embed: #e3e5e8;
+  --dc-code-line: #e3e5e8;
+  --dc-quote: #c4c9ce;
+  --dc-spoiler: #c4c9ce;
+  --dc-spoiler-shown: rgb(6 6 7 / 0.08);
+  --dc-mention-bg: rgb(88 101 242 / 0.15);
+  --dc-mention: #4752c4;
+  --dc-stamp-bg: rgb(6 6 7 / 0.08);
+  --dc-link-tint: rgb(6 6 7 / 0.04);
 }
 
 /* Dark: a blue-black desk, sheets one step lighter, the tray one step above that. */
@@ -243,4 +277,14 @@
   --dc-muted: #949ba4;
   --dc-link: #00a8fc;
   --dc-placeholder: #3f4147;
+  --dc-code-bg: #2b2d31;
+  --dc-code-bg-embed: #1e1f22;
+  --dc-code-line: #1e1f22;
+  --dc-quote: #4e5058;
+  --dc-spoiler: #1e1f22;
+  --dc-spoiler-shown: rgb(255 255 255 / 0.1);
+  --dc-mention-bg: rgb(88 101 242 / 0.3);
+  --dc-mention: #c9cdfb;
+  --dc-stamp-bg: rgb(255 255 255 / 0.06);
+  --dc-link-tint: rgb(255 255 255 / 0.04);
 }
