@@ -1,0 +1,77 @@
+/* The message being filed: a single ruled slip under the view title. */
+.slip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+  margin-bottom: var(--space-4);
+}
+.what {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) 0;
+}
+.label {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.dot {
+  flex: none;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--embed-color, var(--rule-2));
+  box-shadow: 0 0 0 var(--rule-width) var(--rule-2);
+}
+.headline {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--weight-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slip[data-blank] .what b {
+  font-weight: var(--weight-label);
+  color: var(--ink-2);
+}
+.parts {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.n {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.edit {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  text-decoration: none;
+  transition: background var(--dur-fast);
+}
+.edit:hover {
+  background: var(--accent-wash);
+}
+.edit svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}

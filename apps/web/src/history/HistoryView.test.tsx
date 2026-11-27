@@ -56,7 +56,7 @@ test("failed history can be retried", async () => {
   vi.stubGlobal("fetch", fetcher);
   show();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "History could not be loaded",
+    "Couldn’t load history: embed-dash didn’t answer.",
   );
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("Your history starts here")).toBeVisible();

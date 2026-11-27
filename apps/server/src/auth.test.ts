@@ -270,6 +270,60 @@ test.each([
     ).statusCode,
   ).toBe(403);
 });
+test.each([
+  ["an HTTPS page on the same host", { origin: "https://localhost" }],
+  [
+    "forwarded headers from the proxy",
+    { origin: "https://embed.example", "x-forwarded-proto": "https" },
+  ],
+])(
+  "a refused sign-in behind an untrusted HTTPS proxy (%s) names the settings to configure",
+  async (_, extra) => {
+    const { app } = await fixture();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { ...(await session(app)), ...extra },
+      payload: { password: "fixture-password" },
+    });
+    expect(response.statusCode).toBe(403);
+    const body = response.json<{ code: string; error: string }>();
+    expect(body.code).toBe("PROXY_NOT_TRUSTED");
+    expect(body.error).toContain("TRUST_PROXY");
+    expect(body.error).toContain("PUBLIC_URL");
+    // Nothing about the request or the instance is echoed back.
+    expect(body.error).not.toMatch(/embed\.example|localhost|127\.0\.0\.1/);
+  },
+);
+test.each<[string, Partial<Config>, Record<string, string>]>([
+  ["a cross-site origin", {}, { origin: "https://evil.example" }],
+  [
+    "PUBLIC_URL already set",
+    { publicUrl: "https://embed.example" },
+    { origin: "https://other.example", "x-forwarded-proto": "https" },
+  ],
+  [
+    "TRUST_PROXY already set",
+    { trustProxy: ["10.0.0.0/8"] },
+    { origin: "https://localhost", "x-forwarded-proto": "https" },
+  ],
+])(
+  "other refused origins (%s) keep the plain refusal",
+  async (_, config, extra) => {
+    const { app } = await fixture(config);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { ...(await session(app)), ...extra },
+      payload: { password: "fixture-password" },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      code: "ORIGIN_REFUSED",
+      error: "Request origin is not allowed",
+    });
+  },
+);
 test("accepts a same-origin Referer and configured public origin", async () => {
   const { app } = await fixture({ publicUrl: "https://embed.example" });
   const headers = await session(app);

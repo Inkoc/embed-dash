@@ -14,7 +14,9 @@ import { useBot } from "../bot";
 import { isBlank, toMessage, useDraft, withIds } from "../compose/draft";
 import { useEditorState } from "../compose/editorState";
 import { DiscordPreview } from "../preview/DiscordPreview";
+import { asAppError, type Action, type AppError } from "../errors";
 import { ClosedDrawer } from "../ui/ClosedDrawer";
+import { FailureDetail } from "../ui/FailureDetail";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { NameDialog } from "./NameDialog";
 import { SavedNote, SaveTemplate } from "./SaveTemplate";
@@ -51,7 +53,10 @@ export function TemplatesView() {
   const remove = useDeleteTemplate();
   const [pending, setPending] = useState<Pending>(null);
   const [saved, setSaved] = useState<Template | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    what: string;
+    error: AppError;
+  } | null>(null);
   const list = useRef<HTMLUListElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const composerBlank = isBlank(draft);
@@ -86,15 +91,18 @@ export function TemplatesView() {
     void navigate("/", { state: { started } });
   };
 
-  const fail = (what: string) => (error: Error) =>
-    setFailure(`${what} ${error.message}`);
+  const fail = (what: string, action: Action) => (error: Error) =>
+    setFailure({ what, error: asAppError(action, error) });
 
   let body;
   if (templates.isPending) body = <Loading />;
   else if (templates.isError)
     body = (
       <ClosedDrawer label="Not loaded" title="The templates couldn’t be loaded">
-        <p role="alert">{templates.error.message}</p>
+        <p role="alert">
+          {asAppError("load-templates", templates.error).reason}
+        </p>
+        <FailureDetail error={asAppError("load-templates", templates.error)} />
         <button
           type="button"
           className={styles.primary}
@@ -171,10 +179,15 @@ export function TemplatesView() {
       </div>
       <SavedNote saved={saved} />
       {failure && (
-        <p className={styles.problem} role="alert">
+        <div className={styles.problem}>
           <CircleAlert aria-hidden="true" />
-          {failure}
-        </p>
+          <div>
+            <p role="alert">
+              {failure.what} {failure.error.reason}
+            </p>
+            <FailureDetail error={failure.error} />
+          </div>
+        </div>
       )}
       {body}
 
@@ -202,7 +215,10 @@ export function TemplatesView() {
             { id: target.id, message: toMessage(draft) },
             {
               onSuccess: (template) => settle(template.id),
-              onError: fail(`“${target.name}” wasn’t overwritten.`),
+              onError: fail(
+                `“${target.name}” wasn’t overwritten.`,
+                "change-template",
+              ),
             },
           );
         }}
@@ -223,7 +239,10 @@ export function TemplatesView() {
           setPending(null);
           remove.mutate(target.id, {
             onSuccess: () => heading.current?.focus(),
-            onError: fail(`“${target.name}” wasn’t deleted.`),
+            onError: fail(
+              `“${target.name}” wasn’t deleted.`,
+              "delete-template",
+            ),
           });
         }}
         onCancel={() => setPending(null)}
@@ -239,7 +258,7 @@ export function TemplatesView() {
         initialName={target?.name ?? ""}
         submitLabel="Rename"
         pending={rename.isPending}
-        error={rename.error?.message}
+        error={rename.error && asAppError("change-template", rename.error)}
         onCancel={() => {
           setPending(null);
           rename.reset();

@@ -1,16 +1,22 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
+  Bell,
   BellOff,
   Check,
   CircleHelp,
+  CopyCheck,
   ExternalLink,
+  SquarePen,
   LoaderCircle,
+  Paperclip,
   RotateCcw,
   TriangleAlert,
+  Undo2,
   X,
 } from "lucide-react";
 import {
+  megabytes,
   messageLink,
   pingKinds,
   type Issue,
@@ -19,8 +25,10 @@ import {
   type SendTarget,
 } from "@embed-dash/shared";
 import type { Draft } from "../compose/draft";
+import type { AppError } from "../errors";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { useSending } from "./sending";
+import { FailureDetail } from "../ui/FailureDetail";
+import { useSending, type Received } from "./sending";
 import { messageSummary, plural, progress, tally } from "./summary";
 import type { TrayEntry } from "./Tray";
 import styles from "./SendPanel.module.css";
@@ -222,36 +230,58 @@ const progressText = (
   return `${done} of ${total}`;
 };
 
-/** The Send button and its confirmation, or after a send the summary and the retry. */
+/** A failure the tray reports, with its technical side behind "Details". */
+function Problem({ error }: { error: AppError }) {
+  return (
+    <div className={styles.problem}>
+      <X aria-hidden="true" />
+      <div>
+        <p role="alert">{error.message}</p>
+        <FailureDetail error={error} />
+      </div>
+    </div>
+  );
+}
+
+/** The Send button and its confirmation, or after a send the summary and what to do next. */
 export function SendControls({
   draft,
   entries,
+  received,
   blocked,
   describedBy,
-  onDismiss,
+  onKeep,
 }: {
   draft: Draft;
   entries: TrayEntry[];
+  /** Ticked channels that already have this message, or may have it. */
+  received: ReadonlyMap<string, Received>;
   /** Why sending isn't possible right now, or null. */
   blocked: string | null;
   describedBy: string;
-  onDismiss: () => void;
+  onKeep: () => void;
 }) {
-  const { busy, result, problem, prepare, send, retry, pings, silent } =
-    useSending();
+  const {
+    busy,
+    result,
+    problem,
+    prepare,
+    send,
+    retry,
+    pings,
+    silent,
+    startOver,
+  } = useSending();
+  const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const servers = new Set(entries.map((entry) => entry.guild.id));
   const count = plural(entries.length, "channel", "channels");
-  const alert =
-    problem && !busy ? (
-      <p className={styles.problem} role="alert">
-        <X aria-hidden="true" />
-        {problem}
-      </p>
-    ) : null;
+  const alert = problem && !busy ? <Problem error={problem} /> : null;
 
   if (result) {
     const outcome = tally(result);
+    const channels = new Set(result.targets.map((t) => t.channelId)).size;
     return (
       <div className={styles.controls} data-controls>
         {alert}
@@ -267,14 +297,44 @@ export function SendControls({
               : `Retry ${outcome.failed} failed`}
           </button>
         )}
-        <button
-          type="button"
-          className={styles.again}
-          disabled={!!busy}
-          onClick={onDismiss}
+        <div className={styles.next} role="group" aria-label="Next">
+          <button
+            type="button"
+            className={outcome.failed > 0 || busy ? styles.again : styles.go}
+            disabled={!!busy}
+            onClick={() => setRestarting(true)}
+          >
+            <SquarePen aria-hidden="true" />
+            Compose a new message
+          </button>
+          <button
+            type="button"
+            className={styles.again}
+            disabled={!!busy}
+            onClick={onKeep}
+          >
+            <Undo2 aria-hidden="true" />
+            Keep this draft
+          </button>
+        </div>
+        <ConfirmDialog
+          open={restarting}
+          tone="primary"
+          title="Start a new message?"
+          confirmLabel="Clear and compose"
+          onCancel={() => setRestarting(false)}
+          onConfirm={() => {
+            setRestarting(false);
+            startOver();
+            void navigate("/");
+          }}
         >
-          New send
-        </button>
+          <p>
+            This clears the composer and takes the{" "}
+            {plural(channels, "channel", "channels")} out of the tray. The
+            copies already posted stay in Discord.
+          </p>
+        </ConfirmDialog>
       </div>
     );
   }
@@ -284,6 +344,7 @@ export function SendControls({
     guild: entries.find((entry) => entry.guild.id === id)!.guild,
     channels: entries.filter((entry) => entry.guild.id === id),
   }));
+  const again = entries.filter((entry) => received.has(entry.channel.id));
   return (
     <div className={styles.controls} data-controls>
       <button
@@ -319,6 +380,17 @@ export function SendControls({
             <b>{summary.headline}</b>
             {summary.parts && <small>{summary.parts}</small>}
           </p>
+          {draft.attachments.length > 0 && (
+            <ul className={styles.files} aria-label="Files">
+              {draft.attachments.map((file) => (
+                <li key={file.id}>
+                  <Paperclip aria-hidden="true" />
+                  <span>{file.filename}</span>
+                  <small>{megabytes(file.size)}</small>
+                </li>
+              ))}
+            </ul>
+          )}
           <p>
             This posts to <b>{count}</b> in{" "}
             <b>{plural(servers.size, "server", "servers")}</b>.
@@ -333,6 +405,19 @@ export function SendControls({
               </li>
             ))}
           </ul>
+          {again.length > 0 && (
+            <p className={styles.warning}>
+              <CopyCheck aria-hidden="true" />
+              <span>
+                {again.length === 1
+                  ? "1 of these channels already has"
+                  : `${again.length} of these channels already have`}{" "}
+                this message:{" "}
+                {again.map((entry) => `#${entry.channel.name}`).join(", ")}.
+                They’ll get a second copy.
+              </span>
+            </p>
+          )}
           {pings.length > 0 ? (
             <p className={styles.warning}>
               <TriangleAlert aria-hidden="true" />
@@ -351,12 +436,19 @@ export function SendControls({
               Mentions won’t notify anyone.
             </p>
           )}
-          {silent && (
-            <p className={styles.quietNote}>
-              <BellOff aria-hidden="true" />
-              Sent silently: no push or desktop notification.
-            </p>
-          )}
+          <p className={styles.quietNote}>
+            {silent ? (
+              <>
+                <BellOff aria-hidden="true" />
+                Sent silently: no push or desktop notification.
+              </>
+            ) : (
+              <>
+                <Bell aria-hidden="true" />
+                Sent with the usual push and desktop notification.
+              </>
+            )}
+          </p>
         </div>
       </ConfirmDialog>
     </div>

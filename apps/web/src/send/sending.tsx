@@ -7,8 +7,14 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { PingKind, SendResult } from "@embed-dash/shared";
-import { toMessage, useDraft } from "../compose/draft";
+import type {
+  MessageDraft,
+  PingKind,
+  SendResult,
+  SendTarget,
+} from "@embed-dash/shared";
+import { toMessage, useDraft, type Draft } from "../compose/draft";
+import { AppError } from "../errors";
 import type { Session } from "../shell/SessionGate";
 import { refreshGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
@@ -37,15 +43,41 @@ interface Sending {
   /** The send so far; its copies fill in as they complete. */
   result: SendResult | null;
   /** Why the last attempt produced no results. */
-  problem: string | null;
+  problem: AppError | null;
+  /**
+   * Channels that already have the message now in the composer, or may have
+   * it (no answer from Discord), from this session's sends. Editing the
+   * message makes it a different one, so the marks go.
+   */
+  received: (draft: Draft) => ReadonlyMap<string, Received>;
   /** Call when the confirmation opens: that attempt gets its own id, so repeating it can't post twice. */
   prepare: () => void;
   send: (channelIds: string[]) => Promise<void>;
   /** Re-sends the failed copies, or only the given ones. */
   retry: (targetIds?: string[]) => Promise<void>;
-  /** Leaves the results and goes back to choosing channels. */
-  dismiss: () => void;
+  /**
+   * Leaves the results and goes back to choosing channels for the same
+   * message; the channels that got it are unticked, so sending there again
+   * takes a deliberate tick.
+   */
+  keepDraft: () => void;
+  /** Clears the results, the selection, the delivery options and the draft. */
+  startOver: () => void;
 }
+
+export type Received = "sent" | "unknown";
+
+/** The message itself, without who it may notify, so two sends of it compare equal. */
+export const messageKey = (message: MessageDraft) =>
+  JSON.stringify([message.content, message.embeds, message.attachments]);
+
+/** Which channels a send reached, or may have reached. */
+const reachedBy = (targets: readonly SendTarget[]) =>
+  targets.flatMap((target): [string, Received][] =>
+    target.status === "sent" || target.status === "unknown"
+      ? [[target.channelId, target.status]]
+      : [],
+  );
 
 const SendingContext = createContext<Sending | null>(null);
 
@@ -60,6 +92,11 @@ interface InFlight {
   id: string;
   /** The target IDs being retried, or null for the first send. */
   retrying: string[] | null;
+  /**
+   * The sent message's fingerprint, so a reload can still tell which channels
+   * have it; the composer may have been edited since.
+   */
+  message: string | null;
 }
 
 const rememberInFlight = (value: InFlight | null) => {
@@ -86,7 +123,7 @@ function recallInFlight(): InFlight | null {
  */
 export function SendingProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
-  const { draft } = useDraft();
+  const { draft, clear } = useDraft();
   const [, setSelected] = useSelection();
   const [pings, setPings] = useState<readonly PingKind[]>([]);
   const [silent, setSilent] = useState(false);
@@ -101,7 +138,24 @@ export function SendingProvider({ children }: { children: ReactNode }) {
   );
   const [reconnecting, setReconnecting] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<AppError | null>(null);
+  // Which message the current results are for, and the channels it reached across sends.
+  const sentKey = useRef<string | null>(resumed?.message ?? null);
+  const [reached, setReached] = useState<{
+    key: string;
+    channels: ReadonlyMap<string, Received>;
+  } | null>(null);
+  const showResult = (next: SendResult) => {
+    setResult(next);
+    const key = sentKey.current;
+    if (!key) return;
+    setReached((before) => {
+      const channels = new Map(before?.key === key ? before.channels : []);
+      for (const [id, status] of reachedBy(next.targets))
+        if (channels.get(id) !== "sent") channels.set(id, status);
+      return { key, channels };
+    });
+  };
   const running = useRef(false);
   const attempt = useRef<string | null>(null);
   const csrf = () => client.getQueryData<Session>(["session"])?.csrfToken ?? "";
@@ -118,7 +172,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       try {
         const next = await fetchSend(id);
         setReconnecting(false);
-        setResult(next);
+        showResult(next);
         if (!next.targets.some(inFlight)) return;
       } catch (error) {
         if (!(error instanceof SendFailure)) throw error;
@@ -145,7 +199,8 @@ export function SendingProvider({ children }: { children: ReactNode }) {
     reloaded = false,
   ) {
     const retrying = flight.retrying !== null;
-    const post = () => startSend(flight.url, flight.body, csrf());
+    const post = () =>
+      startSend(retrying ? "retry" : "send", flight.url, flight.body, csrf());
     try {
       if (!(reloaded && retrying))
         try {
@@ -160,14 +215,19 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       const failure =
         error instanceof SendFailure
           ? error
-          : new SendFailure("The send failed. Try again.");
+          : new SendFailure(
+              new AppError(
+                `${retrying ? "Couldn’t retry" : "Couldn’t send"}: something went wrong in the app. Look at the channels in Discord before trying again.`,
+                error instanceof Error ? error.name : null,
+              ),
+            );
       for (const missing of failure.details.missingFiles ?? [])
         client.setQueryData(["upload", missing], false);
       if (failure.details.unavailable) {
         setSelected((set) => withIds(set, failure.details.unavailable!, false));
         void refreshGuilds(client);
       }
-      setProblem(failure.message);
+      setProblem(failure);
     } finally {
       rememberInFlight(null);
       running.current = false;
@@ -196,6 +256,12 @@ export function SendingProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function dismiss() {
+    attempt.current = null;
+    setResult(null);
+    setProblem(null);
+  }
+
   const value: Sending = {
     pings,
     setPing: (kind, on) =>
@@ -212,20 +278,27 @@ export function SendingProvider({ children }: { children: ReactNode }) {
     reconnecting,
     result,
     problem,
+    received: (current) =>
+      reached && reached.key === messageKey(toMessage(current))
+        ? reached.channels
+        : new Map(),
     prepare: () => {
       attempt.current = newSendId();
     },
     send: (channelIds) => {
       const id = (attempt.current ??= newSendId());
+      const message = toMessage(draft);
+      sentKey.current = messageKey(message);
       return run({
         url: "/api/sends",
         body: {
           id,
-          payload: { ...toMessage(draft), pings, silent },
+          payload: { ...message, pings, silent },
           channelIds,
         },
         id,
         retrying: null,
+        message: sentKey.current,
       });
     },
     retry: (targetIds) => {
@@ -238,12 +311,22 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         body: targetIds ? { targetIds } : {},
         id: result?.id ?? "",
         retrying: ids,
+        message: sentKey.current,
       });
     },
-    dismiss: () => {
-      attempt.current = null;
-      setResult(null);
-      setProblem(null);
+    keepDraft: () => {
+      const got = result ? reachedBy(result.targets).map(([id]) => id) : [];
+      setSelected((set) => withIds(set, got, false));
+      dismiss();
+    },
+    startOver: () => {
+      dismiss();
+      sentKey.current = null;
+      setReached(null);
+      setSelected(new Set());
+      setPings([]);
+      setSilent(false);
+      clear();
     },
   };
   return <SendingContext value={value}>{children}</SendingContext>;

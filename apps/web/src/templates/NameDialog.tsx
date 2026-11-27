@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CircleAlert } from "lucide-react";
 import { templateNameMax } from "@embed-dash/shared";
 import { countLevel } from "../compose/TextControl";
+import type { AppError } from "../errors";
+import { FailureDetail } from "../ui/FailureDetail";
 import dialogStyles from "../ui/ConfirmDialog.module.css";
 import fieldStyles from "../compose/TextControl.module.css";
 import styles from "./NameDialog.module.css";
@@ -14,8 +16,8 @@ interface Props {
   submitLabel: string;
   /** While the server is answering: the only time the submit button is disabled. */
   pending: boolean;
-  /** The server's refusal, in words. */
-  error?: string;
+  /** Why the server refused the name or the save, with its detail. */
+  error?: AppError | null;
   onSubmit: (name: string) => void;
   onCancel: () => void;
 }
@@ -135,9 +137,10 @@ export function NameDialog({
               role="alert"
             >
               <CircleAlert aria-hidden="true" />
-              <span>{error}</span>
+              <span>{error.message}</span>
             </p>
           )}
+          {error && <FailureDetail error={error} />}
         </div>
         <div className={dialogStyles.actions}>
           <button

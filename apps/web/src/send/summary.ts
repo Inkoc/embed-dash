@@ -13,6 +13,11 @@ const excerpt = (text: string, max = 80) => {
 export function messageSummary(draft: Draft): {
   headline: string;
   parts: string;
+  /** The first embed's side colour, so the summary can be told apart at a glance. */
+  color: string | null;
+  text: boolean;
+  embeds: number;
+  files: number;
 } {
   const first = draft.embeds.find((embed) => embed.title.trim());
   const headline =
@@ -29,7 +34,14 @@ export function messageSummary(draft: Draft): {
       ? plural(draft.attachments.length, "file", "files")
       : null,
   ].filter(Boolean);
-  return { headline, parts: parts.join(" · ") };
+  return {
+    headline,
+    parts: parts.join(" · "),
+    color: draft.embeds[0]?.color || null,
+    text: !!draft.content.trim(),
+    embeds: draft.embeds.length,
+    files: draft.attachments.length,
+  };
 }
 
 /** A copy that has no outcome yet: queued, or its post is under way. */

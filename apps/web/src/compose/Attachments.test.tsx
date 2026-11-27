@@ -133,13 +133,16 @@ test("a file over the limit is refused in the browser without a request", () => 
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a server refusal shows on the file's row", async () => {
+test("a server refusal shows on the file's row, with the server's words behind Details", async () => {
   uploadResponse = () =>
     Response.json({ error: "Files can be at most 1 MB." }, { status: 413 });
   renderApp();
   choose(png());
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "Files can be at most 1 MB.",
+    "Couldn’t upload the file: the server refused the file as too large.",
+  );
+  expect(screen.getByText("Details").closest("details")!.textContent).toContain(
+    "HTTP 413 · Server said: “Files can be at most 1 MB.”",
   );
 });
 
@@ -198,7 +201,7 @@ test("a generic server refusal is replaced by the reason its status gives", asyn
   renderApp();
   choose(png());
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "The server refused the upload's format.",
+    "Couldn’t upload the file: the server doesn’t accept this file format.",
   );
 });
 

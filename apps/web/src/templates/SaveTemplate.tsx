@@ -6,6 +6,7 @@ import { toMessage, useDraft } from "../compose/draft";
 import { NameDialog } from "./NameDialog";
 import { useSaveTemplate } from "./templatesApi";
 import styles from "./SaveTemplate.module.css";
+import { asAppError } from "../errors";
 
 /** The first words of the draft, so a new template starts with a sensible name. */
 function suggestedName(title: string, content: string) {
@@ -46,7 +47,7 @@ export function SaveTemplate({
         initialName={suggestedName(draft.embeds[0]?.title ?? "", draft.content)}
         submitLabel="Save template"
         pending={save.isPending}
-        error={save.error?.message}
+        error={save.error && asAppError("save-template", save.error)}
         onCancel={() => setOpen(false)}
         onSubmit={(name) =>
           save.mutate(

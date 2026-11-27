@@ -62,6 +62,34 @@ function sameOrigin(request: FastifyRequest, publicUrl?: string) {
   }
 }
 
+/**
+ * A refused origin that looks like an HTTPS reverse proxy the server wasn't
+ * told about: the page is on HTTPS (or the proxy says so in forwarded
+ * headers) while the server, not trusting the proxy, sees plain HTTP. Only
+ * worth saying when neither TRUST_PROXY nor PUBLIC_URL could have fixed it.
+ */
+function untrustedProxy(request: FastifyRequest, config: Config) {
+  if (config.publicUrl || config.trustProxy) return false;
+  const headers = request.headers;
+  if (
+    headers["x-forwarded-proto"] ||
+    headers["x-forwarded-host"] ||
+    headers.forwarded
+  )
+    return true;
+  const source = headers.origin ?? headers.referer;
+  try {
+    return (
+      !!source &&
+      request.protocol === "http" &&
+      new URL(source).protocol === "https:" &&
+      new URL(source).host === headers.host
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function registerAuth(
   app: FastifyInstance,
   config: Config,
@@ -137,9 +165,10 @@ export async function registerAuth(
   };
   app.addHook("onRequest", async (request, reply) => {
     if (config.authMode === "none" && !loopbackHost(request.headers.host))
-      return reply
-        .code(403)
-        .send({ error: "Local mode requires a loopback Host" });
+      return reply.code(403).send({
+        code: "LOCAL_ONLY",
+        error: "Local mode requires a loopback Host",
+      });
     // Routing decodes paths. Use the matched route, and protect unmatched API paths too.
     const route = request.routeOptions.url;
     if (!isApi(route ?? "") && !isApi(decodedPath(request.url))) return;
@@ -152,10 +181,23 @@ export async function registerAuth(
       `${discordPath}/callback`,
     ].includes(route ?? "");
     if (!publicRoute && config.authMode !== "none" && !session)
-      return reply.code(401).send({ error: "Sign in to continue" });
+      return reply
+        .code(401)
+        .send({ code: "SIGNED_OUT", error: "Sign in to continue" });
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       if (!sameOrigin(request, config.publicUrl))
-        return reply.code(403).send({ error: "Request origin is not allowed" });
+        return reply.code(403).send(
+          untrustedProxy(request, config)
+            ? {
+                code: "PROXY_NOT_TRUSTED",
+                error:
+                  "This page was opened through an HTTPS proxy the server isn't set up for. Set TRUST_PROXY to the proxy's address, or PUBLIC_URL to the address in the browser, then restart.",
+              }
+            : {
+                code: "ORIGIN_REFUSED",
+                error: "Request origin is not allowed",
+              },
+        );
       const token = request.headers["x-csrf-token"];
       const expected = session?.csrfToken ?? request.cookies[csrfCookieName];
       if (
@@ -165,6 +207,7 @@ export async function registerAuth(
         !equal(token, expected)
       )
         return reply.code(403).send({
+          code: "CSRF_INVALID",
           error: "Session token missing or invalid. Refresh and try again.",
         });
     }
@@ -215,9 +258,10 @@ export async function registerAuth(
         return reply.code(400).send({ error: "Password login is disabled" });
       const { password } = request.body as { password: string };
       if (!(await verify(passwordHash, password)))
-        return reply
-          .code(401)
-          .send({ error: "Incorrect password. Try again." });
+        return reply.code(401).send({
+          code: "WRONG_PASSWORD",
+          error: "Incorrect password. Try again.",
+        });
       remove(request);
       create(request, reply, "password");
       return { ok: true };

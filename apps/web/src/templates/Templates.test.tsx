@@ -168,7 +168,10 @@ test("a failed load says why and retries", async () => {
   const calls = serve([rules], { listStatus: 500 });
   renderTemplates();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "The server couldn’t read the saved templates. Check that embed-dash is running and its data folder is reachable, then try again.",
+    "The server had a problem. Try again; if it keeps happening, check the server’s log.",
+  );
+  expect(screen.getByText("Details").closest("details")).toHaveTextContent(
+    "HTTP 500 · Server said: “Request failed”",
   );
   serve([rules]);
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -346,7 +349,10 @@ test("a refused change is reported with the template's name", async () => {
     "fetch",
     vi.fn(async () =>
       Response.json(
-        { error: "That template no longer exists." },
+        {
+          code: "TEMPLATE_NOT_FOUND",
+          error: "That template no longer exists.",
+        },
         { status: 404 },
       ),
     ),
@@ -354,7 +360,10 @@ test("a refused change is reported with the template's name", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   fireEvent.click(screen.getByRole("button", { name: "Delete template" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "“Rules” wasn’t deleted. That template no longer exists.",
+    "“Rules” wasn’t deleted. The template no longer exists. Someone may have deleted it; refresh the list.",
+  );
+  expect(screen.getByText("Details").closest("details")).toHaveTextContent(
+    "HTTP 404 · TEMPLATE_NOT_FOUND",
   );
 });
 
@@ -368,13 +377,16 @@ test("saving from Compose suggests a name and shows the server's refusal in the 
     "fetch",
     vi.fn(async () =>
       Response.json(
-        { error: "Give the template a name of 1 to 100 characters." },
+        {
+          code: "INVALID_TEMPLATE_NAME",
+          error: "Give the template a name of 1 to 100 characters.",
+        },
         { status: 400 },
       ),
     ),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save template" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Give the template a name of 1 to 100 characters.",
+    "Couldn’t save the template: give it a name of 1 to 100 characters.",
   );
 });

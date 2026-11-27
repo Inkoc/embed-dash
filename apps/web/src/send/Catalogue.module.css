@@ -298,6 +298,10 @@
   font-size: var(--text-meta);
   color: var(--ink-2);
 }
+.why[data-has] {
+  color: var(--accent);
+  font-weight: var(--weight-label);
+}
 .why svg {
   width: var(--icon-sm);
   height: var(--icon-sm);

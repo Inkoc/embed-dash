@@ -1,0 +1,36 @@
+/* Sits inside an error notice on any surface, so it takes that notice's ink. */
+.details {
+  font-size: var(--text-meta);
+}
+.details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  list-style: none;
+}
+.details summary::-webkit-details-marker {
+  display: none;
+}
+.details summary svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.details[open] summary svg {
+  transform: rotate(180deg);
+}
+.details p {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .details summary svg {
+    transition: none;
+  }
+}

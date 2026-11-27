@@ -9,6 +9,7 @@ import {
   type MessageDraft,
   type Template,
 } from "@embed-dash/shared";
+import { connectionFailure, failureFrom, type Action } from "../errors";
 import type { Session } from "../shell/SessionGate";
 
 const listSchema = templateSchema.array();
@@ -17,29 +18,19 @@ const listKey = ["templates"];
 const csrf = (client: QueryClient) =>
   client.getQueryData<Session>(["session"])?.csrfToken ?? "";
 
-/** The server's catch-all answer, which says nothing a person can act on. */
-const genericError = "Request failed";
-
 async function call(
+  action: Action,
   url: string,
   init: RequestInit,
-  fallback: string,
 ): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, init);
   } catch {
-    throw new Error("Unable to connect. Check your connection and try again.");
+    throw connectionFailure(action);
   }
   if (response.ok) return response;
-  if (response.status === 401)
-    throw new Error("Your session ended. Refresh the page and sign in again.");
-  if (response.status === 403)
-    throw new Error("Your session changed. Refresh the page and try again.");
-  const { error } = (await response.json().catch(() => ({}))) as {
-    error?: string;
-  };
-  throw new Error(error && error !== genericError ? error : fallback);
+  throw await failureFrom(action, response);
 }
 
 export function useTemplates() {
@@ -47,11 +38,7 @@ export function useTemplates() {
     queryKey: listKey,
     retry: false,
     queryFn: async () => {
-      const response = await call(
-        "/api/templates",
-        {},
-        "The server couldn’t read the saved templates. Check that embed-dash is running and its data folder is reachable, then try again.",
-      );
+      const response = await call("load-templates", "/api/templates", {});
       return listSchema.parse(await response.json());
     },
   });
@@ -68,18 +55,14 @@ export function useSaveTemplate() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (input: { name: string; message: MessageDraft }) => {
-      const response = await call(
-        "/api/templates",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-csrf-token": csrf(client),
-          },
-          body: JSON.stringify(input),
+      const response = await call("save-template", "/api/templates", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": csrf(client),
         },
-        "The template couldn’t be saved. Try again.",
-      );
+        body: JSON.stringify(input),
+      });
       return templateSchema.parse(await response.json());
     },
     onSuccess: (template) => putFirst(client, template),
@@ -97,18 +80,14 @@ export function useUpdateTemplate() {
       name?: string;
       message?: MessageDraft;
     }) => {
-      const response = await call(
-        `/api/templates/${id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-            "x-csrf-token": csrf(client),
-          },
-          body: JSON.stringify(change),
+      const response = await call("change-template", `/api/templates/${id}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": csrf(client),
         },
-        "The template couldn’t be changed. Try again.",
-      );
+        body: JSON.stringify(change),
+      });
       return templateSchema.parse(await response.json());
     },
     onSuccess: (template) => putFirst(client, template),
@@ -119,11 +98,10 @@ export function useDeleteTemplate() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await call(
-        `/api/templates/${id}`,
-        { method: "DELETE", headers: { "x-csrf-token": csrf(client) } },
-        "The template couldn’t be deleted. Try again.",
-      );
+      await call("delete-template", `/api/templates/${id}`, {
+        method: "DELETE",
+        headers: { "x-csrf-token": csrf(client) },
+      });
       return id;
     },
     onSuccess: (id) =>

@@ -195,13 +195,15 @@ test("refuses a missing or overlong name and a malformed message", async () => {
   for (const name of ["", "   ", "x".repeat(101)]) {
     const response = await post({ name, message: message("A") });
     expect(response.statusCode).toBe(400);
-    expect(response.json().error).toBe(
-      "Give the template a name of 1 to 100 characters.",
-    );
+    expect(response.json()).toEqual({
+      code: "INVALID_TEMPLATE_NAME",
+      error: "Give the template a name of 1 to 100 characters.",
+    });
   }
   const broken = await post({ name: "A", message: { content: 1 } });
   expect(broken.statusCode).toBe(400);
   expect(broken.json().error).toContain("couldn’t be read");
+  expect(broken.json().code).toBe("INVALID_TEMPLATE_MESSAGE");
   const created = (await post({ name: "A", message: message("A") })).json();
   const empty = await app.inject({
     method: "PATCH",
