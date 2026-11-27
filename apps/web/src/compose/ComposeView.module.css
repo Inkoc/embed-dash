@@ -257,6 +257,7 @@
 /* the draft's own state: where it is kept, and the way to start over */
 .draftState {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
@@ -563,4 +564,32 @@
   .starter {
     padding-inline: var(--space-4);
   }
+}
+
+/* where a message started from a template came from; a lost file makes it a problem to fix */
+.started {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-label);
+  color: var(--ink-2);
+}
+.started b {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+.started[data-missing] {
+  padding: var(--space-3) var(--space-4);
+  border: var(--rule-width) solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-wash);
+  color: var(--ink);
+}
+.started svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-top: var(--space-hair);
+  color: var(--danger);
 }

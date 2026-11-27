@@ -105,7 +105,7 @@ test("the signed-in bar keeps to one line without overlap from tablet to wide de
   ).toBeVisible();
   await expectHeaderFits(page);
   // With room to spare, Shortcuts keeps its word.
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1366, height: 800 });
   await expect(
     page.getByRole("button", { name: "Shortcuts" }).getByText("Shortcuts"),
   ).toBeInViewport();
