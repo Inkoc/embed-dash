@@ -684,3 +684,53 @@ export const messageLink = (target: {
   messageId: string;
 }) =>
   `https://discord.com/channels/${target.guildId}/${target.channelId}/${target.messageId}`;
+
+/** History uses inclusive calendar dates in UTC and bounded pages. */
+export const historyQuerySchema = z
+  .object({
+    q: z.string().trim().max(500).default(""),
+    guildId: z.string().min(1).max(100).optional(),
+    channelId: z.string().min(1).max(100).optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    status: z.enum(["sending", "done", "partial", "failed"]).optional(),
+    page: z.coerce.number().int().min(1).max(1000000).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict()
+  .refine((query) => !query.from || !query.to || query.from <= query.to, {
+    message: "The start date must be on or before the end date.",
+    path: ["to"],
+  });
+export const historyEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  color: z.string(),
+  createdAt: z.number(),
+  channelCount: z.number(),
+  status: sendResultSchema.shape.status,
+});
+export const historyResponseSchema = z.object({
+  entries: z.array(historyEntrySchema),
+  hasMore: z.boolean(),
+  destinations: z.array(
+    z.object({
+      guildId: z.string(),
+      guildName: z.string(),
+      channelId: z.string(),
+      channelName: z.string(),
+    }),
+  ),
+});
+export type HistoryResponse = z.infer<typeof historyResponseSchema>;
+export const historyDetailSchema = sendResultSchema.extend({
+  payload: messagePayloadSchema,
+  createdAt: z.number(),
+});
+export type HistoryDetail = z.infer<typeof historyDetailSchema>;
+
+export {
+  importMessageJson,
+  exportMessageJson,
+  type JsonImportResult,
+} from "./messageJson.js";

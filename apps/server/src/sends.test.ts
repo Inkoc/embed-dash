@@ -1065,3 +1065,138 @@ test("repeated refusals from one server skip its remaining channels, not other s
   expect(send.targets[4].error.message).toContain("several channels");
   expect(s.fake.messages.map((m) => m.channelId)).toEqual([modding]);
 });
+
+test("history searches stored text and destinations, filters and paginates behind auth", async () => {
+  const context = await setup();
+  const { app, headers, dir } = context;
+  const first = (
+    await post(context, [news], {
+      content: "First literal 100%",
+      embeds: [{ ...emptyEmbed(), title: "Zircon launch" }],
+    })
+  ).json().id as string;
+  await settle(context, first);
+  const second = (
+    await post(context, [general], { content: "Second bulletin" })
+  ).json().id as string;
+  await settle(context, second);
+  const database = new Database(join(dir, "embed-dash.db"));
+  database
+    .prepare("UPDATE sends SET created_at = ? WHERE id = ?")
+    .run(Date.parse("2026-11-20T12:00:00Z"), first);
+  database
+    .prepare("UPDATE sends SET created_at = ?, status = 'partial' WHERE id = ?")
+    .run(Date.parse("2026-11-21T12:00:00Z"), second);
+  const target = database
+    .prepare("SELECT * FROM send_targets WHERE send_id = ?")
+    .get(first) as {
+    guild_id: string;
+    guild_name: string;
+    channel_name: string;
+  };
+  database.close();
+  const list = async (query = "") => {
+    const response = await app.inject({ url: `/api/sends${query}`, headers });
+    expect(response.statusCode).toBe(200);
+    return response.json();
+  };
+  expect(
+    (await list()).entries.map((entry: { id: string }) => entry.id),
+  ).toEqual([second, first]);
+  for (const q of ["zircon", "100%", target.guild_name, target.channel_name]) {
+    expect(
+      (await list(`?q=${encodeURIComponent(q)}`)).entries.map(
+        (entry: { id: string }) => entry.id,
+      ),
+    ).toContain(first);
+  }
+  expect((await list("?q=100_")).entries).toEqual([]);
+  for (const filter of [
+    `guildId=${target.guild_id}`,
+    `channelId=${news}`,
+    "status=done",
+    "from=2026-11-20&to=2026-11-20",
+  ]) {
+    expect(
+      (await list(`?${filter}`)).entries.map(
+        (entry: { id: string }) => entry.id,
+      ),
+    ).toEqual([first]);
+  }
+  expect((await list("?status=failed")).entries).toEqual([]);
+  expect(
+    (await list("?from=2026-11-21")).entries.map(
+      (entry: { id: string }) => entry.id,
+    ),
+  ).toEqual([second]);
+  expect((await list("?limit=1")).hasMore).toBe(true);
+  expect((await list("?limit=1&page=2")).entries[0].id).toBe(first);
+  expect((await list("?limit=1&page=2")).hasMore).toBe(false);
+  expect((await list("?page=20")).entries).toEqual([]);
+  for (const query of [
+    "page=0",
+    "limit=101",
+    "status=draft",
+    "from=bad",
+    "from=2026-11-22&to=2026-11-20",
+    "q=a&q=b",
+  ]) {
+    expect(
+      (await app.inject({ url: `/api/sends?${query}`, headers })).statusCode,
+    ).toBe(400);
+  }
+  expect((await app.inject("/api/sends")).statusCode).toBe(401);
+  expect((await app.inject(`/api/sends/${first}`)).statusCode).toBe(401);
+  const detail = await app.inject({ url: `/api/sends/${first}`, headers });
+  expect(detail.json().payload.content).toBe("First literal 100%");
+  expect(detail.json().createdAt).toBe(Date.parse("2026-11-20T12:00:00Z"));
+});
+
+test("history folds Unicode text and destination names and accepts channel prefixes", async () => {
+  const context = await setup();
+  const first = (
+    await post(context, [news], {
+      content: "ŽIVOT ΚΑΛΗМΕРА Привет",
+      embeds: [{ ...emptyEmbed(), title: "ÉTÉ release" }],
+    })
+  ).json().id as string;
+  await settle(context, first);
+  const second = (
+    await post(context, [general], { content: "Another bulletin" })
+  ).json().id as string;
+  await settle(context, second);
+  const database = new Database(join(context.dir, "embed-dash.db"));
+  database
+    .prepare(
+      "UPDATE send_targets SET guild_name = ?, channel_name = ? WHERE send_id = ?",
+    )
+    .run("Čakovec Αθήνα Москва", "ŠTĚSTÍ_100%!", first);
+  database.close();
+  for (const term of [
+    "život",
+    "Été",
+    "čAKOVEC",
+    "αθήνα",
+    "москва",
+    "ПРИВЕТ",
+    "#štěstí_100%!",
+    "##ŠTĚSTÍ",
+    "100%!",
+  ]) {
+    const response = await context.app.inject({
+      url: `/api/sends?q=${encodeURIComponent(term)}`,
+      headers: context.headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json().entries.map((entry: { id: string }) => entry.id),
+    ).toEqual([first]);
+  }
+  for (const term of ["štěstíX100%!", "100_!"]) {
+    const response = await context.app.inject({
+      url: `/api/sends?q=${encodeURIComponent(term)}`,
+      headers: context.headers,
+    });
+    expect(response.json().entries).toEqual([]);
+  }
+});

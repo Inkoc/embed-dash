@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import styles from "./ConfirmDialog.module.css";
 
 interface Props {
@@ -22,6 +22,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const titleId = useId();
+  const bodyId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
 
@@ -39,16 +41,16 @@ export function ConfirmDialog({
     <dialog
       ref={dialog}
       className={styles.dialog}
-      aria-labelledby="confirm-title"
-      aria-describedby="confirm-body"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
       onClose={onCancel}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
     >
       <div className={styles.sheet}>
-        <h2 id="confirm-title">{title}</h2>
-        <div id="confirm-body" className={styles.body}>
+        <h2 id={titleId}>{title}</h2>
+        <div id={bodyId} className={styles.body}>
           {children}
         </div>
         <div className={styles.actions}>

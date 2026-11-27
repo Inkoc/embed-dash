@@ -315,6 +315,7 @@ interface DraftContextValue {
   saved: boolean;
   /** Starts a blank draft and deletes the cleared draft's files from the server. */
   clear: () => void;
+  replace: (draft: Draft) => void;
   /** Counts clears, so work started for an earlier draft can tell it is stale. */
   generation: number;
   isCurrent: (generation: number) => boolean;
@@ -339,23 +340,36 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const [generation, setGeneration] = useState(0);
   // Read by upload callbacks that finish after a render, so they see the latest clear.
   const latest = useRef(0);
-  const clear = useCallback(() => {
-    const csrfToken =
-      client.getQueryData<Session>(["session"])?.csrfToken ?? "";
-    for (const file of draft.attachments)
-      void discardUpload(file.id, csrfToken);
-    latest.current += 1;
-    setGeneration(latest.current);
-    setDraft(blankDraft());
-  }, [client, draft.attachments]);
+  const replace = useCallback(
+    (next: Draft) => {
+      const csrfToken =
+        client.getQueryData<Session>(["session"])?.csrfToken ?? "";
+      for (const file of draft.attachments)
+        void discardUpload(file.id, csrfToken);
+      latest.current += 1;
+      setGeneration(latest.current);
+      setDraft(next);
+    },
+    [client, draft.attachments],
+  );
+  const clear = useCallback(() => replace(blankDraft()), [replace]);
   const isCurrent = useCallback(
     (value: number) => value === latest.current,
     [],
   );
 
   const value = useMemo(
-    () => ({ draft, setDraft, issues, saved, clear, generation, isCurrent }),
-    [draft, issues, saved, clear, generation, isCurrent],
+    () => ({
+      draft,
+      setDraft,
+      issues,
+      saved,
+      clear,
+      replace,
+      generation,
+      isCurrent,
+    }),
+    [draft, issues, saved, clear, replace, generation, isCurrent],
   );
   return <DraftContext value={value}>{children}</DraftContext>;
 }
