@@ -6,7 +6,7 @@ A self-hosted web app for building Discord embeds with a pixel-accurate live pre
 
 ## Setup
 
-Install Docker with Compose. Create `secrets/bot_token.txt` containing your Discord bot token and `secrets/admin_password.txt` containing a strong instance password (one line each); this file stays outside version control. Compose file secrets retain host permissions: make it readable by container uid 1000 with `chmod 644 secrets/bot_token.txt secrets/admin_password.txt`, or assign ownership to uid 1000 and keep restrictive permissions. Then run:
+Install Docker with Compose. Create `secrets/bot_token.txt` containing your Discord bot token and `secrets/admin_password.txt` containing a strong instance password (one line each); this file stays outside version control. Compose file secrets keep their host permissions, and the container runs as uid 1000, so give the files to that user and keep them private: `sudo chown 1000:1000 secrets/*.txt && chmod 600 secrets/*.txt` (if `id -u` already prints 1000, `chmod 600 secrets/*.txt` is enough). Avoid world-readable permissions such as 644: any account on the host could read the token. Then run:
 
 ```sh
 mkdir -p secrets
