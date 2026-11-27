@@ -1,5 +1,5 @@
 import { RotateCw, X } from "lucide-react";
-import { botErrorMessage, useBot } from "../bot";
+import { botErrorMessage, botInitial, useBot } from "../bot";
 import styles from "./BotStatus.module.css";
 
 /**
@@ -50,7 +50,7 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
         <>
           <span className={styles.dot} aria-hidden="true" />
           <span className={styles.initial} aria-hidden="true">
-            {bot.data.name.slice(0, 1).toUpperCase()}
+            {botInitial(bot.data.name)}
           </span>
         </>
       )}
