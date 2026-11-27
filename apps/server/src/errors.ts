@@ -119,11 +119,7 @@ const missingAccess = 50001;
 const missingPermissions = 50013;
 const unknownChannel = 10003;
 /** Failures that happen before anything leaves this machine, so nothing can have been posted. */
-const neverSent = new Set<string>([
-  "ECONNREFUSED",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-]);
+const neverSent = new Set<string>(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
 /**
  * What a failed post means for one copy. Without an answer from Discord the

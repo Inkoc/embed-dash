@@ -74,10 +74,7 @@ export async function createApp(
       status < 500
         ? status
         : 500;
-    app.log.error(
-      { statusCode, ...safeErrorDetails(error) },
-      "Request failed",
-    );
+    app.log.error({ statusCode, ...safeErrorDetails(error) }, "Request failed");
     return reply.code(statusCode).send({ error: "Request failed" });
   });
   if (options.spaRoot) {

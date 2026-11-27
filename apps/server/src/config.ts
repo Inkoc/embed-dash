@@ -21,6 +21,16 @@ export interface Config {
   maxUploadMb?: number;
   discordApiBase: string;
 }
+/** An IP address, or a CIDR range such as `172.18.0.0/16` for a proxy on a Docker network. */
+function isProxyAddress(value: string) {
+  const [address = "", prefix, ...rest] = value.split("/");
+  const family = isIP(address);
+  if (!family || rest.length) return false;
+  if (prefix === undefined) return true;
+  return (
+    /^\d{1,3}$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128)
+  );
+}
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const baseDir = env.INIT_CWD ?? process.cwd();
   let botToken = env.BOT_TOKEN ?? "";
@@ -99,10 +109,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : env.TRUST_PROXY.split(",").map((value) => value.trim());
   if (
     trustProxy &&
-    (!trustProxy.length || trustProxy.some((value) => !isIP(value)))
+    (!trustProxy.length || trustProxy.some((value) => !isProxyAddress(value)))
   )
     throw new Error(
-      "TRUST_PROXY must be off or a comma-separated list of proxy IP addresses",
+      "TRUST_PROXY must be off or a comma-separated list of proxy IP addresses or CIDR ranges",
     );
   let publicUrl: string | undefined;
   // Compose passes unset variables through as empty strings.

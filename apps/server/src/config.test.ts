@@ -119,25 +119,36 @@ test("auth mode defaults to password, rejects unsupported modes and reads passwo
   }
 });
 
-test.each(["-1", "true", "1.5", "11", "", "abc"])(
-  "rejects invalid proxy trust %s",
-  (TRUST_PROXY) => {
-    expect(() =>
-      readConfig({ BOT_TOKEN: "fixture", AUTH_MODE: "none", TRUST_PROXY }),
-    ).toThrow("TRUST_PROXY");
-  },
-);
+test.each([
+  "-1",
+  "true",
+  "1.5",
+  "11",
+  "",
+  "abc",
+  "10.0.0.0/33",
+  "::/129",
+  "10.0.0.0/",
+  "10.0.0.0/8/8",
+  "10.0.0.0/-1",
+  "10.0.0.0/1.5",
+  "/8",
+])("rejects invalid proxy trust %s", (TRUST_PROXY) => {
+  expect(() =>
+    readConfig({ BOT_TOKEN: "fixture", AUTH_MODE: "none", TRUST_PROXY }),
+  ).toThrow("TRUST_PROXY");
+});
 test("proxy trust is opt-in and public origins are validated", () => {
   const base = { BOT_TOKEN: "fixture", AUTH_MODE: "none" };
   expect(readConfig(base).trustProxy).toBeUndefined();
   expect(
     readConfig({
       ...base,
-      TRUST_PROXY: "127.0.0.1,::1",
+      TRUST_PROXY: "127.0.0.1, ::1,172.18.0.0/16,fd00::/8,0.0.0.0/0",
       PUBLIC_URL: "https://embed.example/",
     }),
   ).toMatchObject({
-    trustProxy: ["127.0.0.1", "::1"],
+    trustProxy: ["127.0.0.1", "::1", "172.18.0.0/16", "fd00::/8", "0.0.0.0/0"],
     publicUrl: "https://embed.example",
   });
   for (const PUBLIC_URL of [

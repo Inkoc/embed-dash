@@ -4,7 +4,8 @@ services:
     ports:
       - "127.0.0.1:8742:8742"
     environment:
-      # Trust only the IP addresses of proxies that replace forwarded headers.
+      # Trust only proxies that replace forwarded headers: their IPs or their
+      # Docker network's CIDR range (see the README).
       TRUST_PROXY: ${TRUST_PROXY:-off}
       AUTH_MODE: ${AUTH_MODE:-password}
       # Used only with AUTH_MODE=discord; see the README.

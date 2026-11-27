@@ -56,8 +56,16 @@ this is the connection address, so clients behind a proxy share its budget.
 Sessions persist in SQLite for 12 hours, rotate on login and are removed on
 sign out. Cookies are HttpOnly and SameSite=Lax, with Secure enabled for HTTPS.
 Proxy trust defaults to off (`TRUST_PROXY=off`). Set `TRUST_PROXY` to a
-comma-separated list of the proxy connection IPs (for example
-`127.0.0.1,::1`). Only those peers may supply forwarded client IPs and protocol.
+comma-separated list of the addresses the proxy connects from, as IPs or CIDR
+ranges. Only those peers may supply forwarded client IPs and protocol. With
+Compose, the container sees the proxy at a Docker network address, not
+`127.0.0.1`: whether the proxy runs on the host (through the published port, via
+the network's gateway) or in a container on the same network. That address can
+change when the network is recreated, so trust the network's subnet. `docker
+network inspect <project>_default --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'`
+prints it, where `<project>` is the Compose project name (the checkout's folder
+name by default); for example `TRUST_PROXY=172.18.0.0/16`. Without Docker, a proxy on the
+same machine is `127.0.0.1,::1`.
 The proxy must replace `X-Forwarded-For` and `X-Forwarded-Proto`, and direct
 backend access must be blocked. Trusted forwarded client addresses receive
 separate login budgets. Cookies use Secure only when the trusted request
