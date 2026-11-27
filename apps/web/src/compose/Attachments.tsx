@@ -40,7 +40,7 @@ let lastKey = 0;
 
 /** The part of the sheet where files are added, listed and removed. */
 export function Attachments() {
-  const { draft, setDraft } = useDraft();
+  const { draft, setDraft, generation, isCurrent } = useDraft();
   const { focusAfter } = useEditorState();
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
@@ -48,10 +48,11 @@ export function Attachments() {
   const [dragging, setDragging] = useState(false);
   const files = draft.attachments;
   const session = () => client.getQueryData<Session>(["session"]);
+  // The session names the limit; the shared default covers a render before it has loaded.
+  const maxUploadMb = session()?.maxUploadMb ?? uploadLimits.defaultFileMb;
 
   const add = (chosen: File[]) => {
-    const maxFileBytes =
-      (session()?.maxUploadMb ?? uploadLimits.defaultFileMb) * 1024 * 1024;
+    const maxFileBytes = maxUploadMb * 1024 * 1024;
     // Count files still uploading, so a batch can't slip past the message total.
     const counted: { size: number }[] = [
       ...files,
@@ -77,6 +78,11 @@ export function Attachments() {
       setPending((list) => [...list, { key, name, size: file.size }]);
       uploadFile(file, name, session()?.csrfToken ?? "").then(
         (stored) => {
+          // The draft it was meant for was cleared while it uploaded.
+          if (!isCurrent(generation)) {
+            void discardUpload(stored.id, session()?.csrfToken ?? "");
+            return;
+          }
           client.setQueryData(["upload", stored.id], true);
           setDraft((current) => ({
             ...current,
@@ -155,9 +161,8 @@ export function Attachments() {
         />
       </div>
       <p className={styles.limits}>
-        Up to {uploadLimits.attachmentsPerMessage} files,{" "}
-        {session()?.maxUploadMb ?? uploadLimits.defaultFileMb} MB each and{" "}
-        {megabytes(uploadLimits.messageBytes)} together.
+        Up to {uploadLimits.attachmentsPerMessage} files, {maxUploadMb} MB each
+        and {megabytes(uploadLimits.messageBytes)} together.
         {files.length > 0 && (
           <>
             {" "}
@@ -264,7 +269,11 @@ function FileRow({
   );
 }
 
-/** "Use an uploaded image": fills a link field with `attachment://` for one of the attached images. */
+/**
+ * "Use an uploaded image": fills a link field with `attachment://` for one of
+ * the attached images. It stays one line under the link field; with nothing
+ * uploaded it points to Files instead of showing an empty choice.
+ */
 export function UploadedImagePicker({
   id,
   value,
@@ -278,29 +287,41 @@ export function UploadedImagePicker({
   onPick: (link: string) => void;
 }) {
   const { draft } = useDraft();
+  const { focusAfter } = useEditorState();
   const images = draft.attachments.filter(isImage);
   const chosen = images.find(
     (file) => value.trim() === `attachment://${file.filename}`,
   );
+  if (images.length === 0)
+    return (
+      <p className={styles.picker}>
+        <span className={styles.pickerNote}>Or use an uploaded image.</span>
+        <button
+          type="button"
+          id={id}
+          className={styles.link}
+          onClick={() => focusAfter("files-add", () => {})}
+        >
+          <Upload aria-hidden="true" />
+          Upload in Files{" "}
+          <span className="visually-hidden">for the {label}</span>
+        </button>
+      </p>
+    );
   return (
     <div className={styles.picker}>
-      <label htmlFor={id}>
+      <label htmlFor={id} className={styles.pickerNote}>
         Use an uploaded image
         <span className="visually-hidden"> for {label}</span>
       </label>
       <select
         id={id}
         value={chosen?.filename ?? ""}
-        disabled={images.length === 0}
         onChange={(event) => {
           if (event.target.value) onPick(`attachment://${event.target.value}`);
         }}
       >
-        <option value="">
-          {images.length === 0
-            ? "Upload an image under Files first"
-            : "Choose a file…"}
-        </option>
+        <option value="">Choose a file…</option>
         {images.map((file) => (
           <option key={file.id} value={file.filename}>
             {file.filename}

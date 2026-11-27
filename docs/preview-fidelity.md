@@ -113,6 +113,7 @@ Deliberate, or not covered yet:
 - **Chips in a linked title.** A timestamp, inline code or revealed spoiler in a title with a link uses a lighter tint than elsewhere, so the link-coloured text keeps AA contrast.
 - **Light-theme mention ink** is a little darker than Discord's so it passes AA contrast on the embed, like the light link colour.
 - **Mention names.** With no server context, user, role and channel mentions show Discord's fallback labels ("@unknown-user", "@deleted-role", "#unknown"). The ID is in the chip's tooltip. Readers in the server see the real names.
+- **Narrow inline fields.** When the fields area is narrower than 20rem (a narrow preview beside the editor on a tablet), inline fields sit two per row instead of three, so ordinary words don't split mid-word in columns too thin to hold them.
 - **Code blocks** aren't syntax-highlighted.
 - **Unicode emoji** use the system emoji font, not Discord's emoji images, and are not enlarged when a message is only emoji.
 - **Slash-command and server-navigation links** (`</name:id>`, `<id:customize>`) show as typed; they need a server to resolve.

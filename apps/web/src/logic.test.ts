@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from "vitest";
+import { botInitial } from "./bot";
 import { countLevel } from "./compose/TextControl";
 import { previewMax } from "./compose/usePreviewWidth";
 import { fieldRows } from "./preview/fieldRows";
@@ -108,4 +109,17 @@ test("the preview may take the editor's spare width, within its limits", () => {
   // stacked, the editor is elsewhere and the column is the limit
   expect(previewMax({ column: 336, editor: 0 }, true)).toBe(336);
   expect(previewMax({ column: 200, editor: 0 }, true)).toBe(320);
+});
+
+test.each([
+  ["walking bot", "W"],
+  ["🤖 Helper", "🤖"],
+  ["🏳️‍🌈 Pride", "🏳️‍🌈"],
+  ["👩‍👩‍👧 Family", "👩‍👩‍👧"],
+  ["𝒜lpha", "𝒜"],
+  ["e\u0301clair", "E\u0301"],
+  ["  spaced", "S"],
+  ["", "?"],
+])("the bot initial of %j is %j", (name, initial) => {
+  expect(botInitial(name)).toBe(initial);
 });

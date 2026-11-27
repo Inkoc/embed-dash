@@ -1,5 +1,5 @@
 import { RotateCw, X } from "lucide-react";
-import { botErrorMessage, useBot } from "../bot";
+import { botErrorMessage, botInitial, useBot } from "../bot";
 import styles from "./BotStatus.module.css";
 
 /**
@@ -13,7 +13,9 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
     return variant === "bar" ? (
       <p className={styles.bar} data-state="loading" role="status">
         <span className={styles.dot} aria-hidden="true" />
-        <span className={styles.label}>Connecting to Discord…</span>
+        <span className={styles.label} data-gives-way>
+          Connecting to Discord…
+        </span>
       </p>
     ) : null;
   if (bot.isError)
@@ -50,11 +52,11 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
         <>
           <span className={styles.dot} aria-hidden="true" />
           <span className={styles.initial} aria-hidden="true">
-            {bot.data.name.slice(0, 1).toUpperCase()}
+            {botInitial(bot.data.name)}
           </span>
         </>
       )}
-      <span className={styles.label}>
+      <span className={styles.label} data-gives-way>
         Bot <b>{bot.data.name}</b>
       </span>
     </p>

@@ -10,9 +10,14 @@ export const isImage = (file: Pick<AttachmentDraft, "contentType">) =>
 const failure = (status: number) =>
   status === 413
     ? "The server refused the file as too large."
-    : status === 401 || status === 403
-      ? "Your session changed. Refresh the page and try again."
-      : "The upload failed. Try again.";
+    : status === 415
+      ? "The server refused the upload's format."
+      : status === 401 || status === 403
+        ? "Your session changed. Refresh the page and try again."
+        : "The upload failed. Try again.";
+
+/** The server's catch-all answer, which says nothing a person can act on. */
+const genericError = "Request failed";
 
 export async function uploadFile(
   file: File,
@@ -35,7 +40,9 @@ export async function uploadFile(
     const { error } = (await response.json().catch(() => ({}))) as {
       error?: string;
     };
-    throw new Error(error ?? failure(response.status));
+    throw new Error(
+      error && error !== genericError ? error : failure(response.status),
+    );
   }
   return attachmentSchema.parse(await response.json());
 }

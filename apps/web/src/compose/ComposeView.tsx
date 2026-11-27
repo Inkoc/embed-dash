@@ -29,14 +29,7 @@ import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
-import {
-  addEmbed,
-  blankDraft,
-  blankEmbed,
-  exampleDraft,
-  isBlank,
-  useDraft,
-} from "./draft";
+import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
 import { useEditorState } from "./editorState";
 import { EmbedEditor } from "./EmbedEditor";
 import { TextControl } from "./TextControl";
@@ -46,7 +39,7 @@ import styles from "./ComposeView.module.css";
 const format = (n: number) => n.toLocaleString("en-GB");
 
 export function ComposeView({ theme }: { theme: Theme }) {
-  const { draft, setDraft, saved } = useDraft();
+  const { draft, setDraft, saved, clear: clearDraft, generation } = useDraft();
   const { pane, setPane, focusAfter, reset, reveal } = useEditorState();
   const bot = useBot();
   const location = useLocation();
@@ -92,7 +85,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
     setConfirmClear(false);
     focusAfter("in-content", () => {
       reset();
-      setDraft(() => blankDraft());
+      clearDraft();
     });
   };
 
@@ -260,7 +253,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
                 {uploadLimits.attachmentsPerMessage}
               </span>
             </div>
-            <Attachments />
+            {/* A new draft starts with no rows left over from uploads still running for the old one. */}
+            <Attachments key={generation} />
           </section>
         </form>
       </div>

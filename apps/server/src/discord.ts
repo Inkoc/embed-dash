@@ -127,7 +127,9 @@ export function createDiscord(
       after = page.at(-1)!.id;
     }
     const guilds: (Guild | undefined)[] = new Array(partials.length);
-    const unavailable: GuildsResponse["unavailable"] = [];
+    // Filled by index so both lists keep Discord's order whatever finishes first.
+    const unavailable: (GuildsResponse["unavailable"][number] | undefined)[] =
+      new Array(partials.length);
     let next = 0;
     let failed = false;
     const worker = async () => {
@@ -141,7 +143,7 @@ export function createDiscord(
           // The bot was removed or lost access mid-listing: list the rest.
           const { status } = safeErrorDetails(error);
           if (status === 403 || status === 404)
-            unavailable.push({ id: partial.id, name: partial.name });
+            unavailable[index] = { id: partial.id, name: partial.name };
           else {
             failed = true;
             throw error;
@@ -152,7 +154,7 @@ export function createDiscord(
     await Promise.all(Array.from({ length: guildConcurrency }, worker));
     return {
       guilds: guilds.filter((guild) => guild !== undefined),
-      unavailable,
+      unavailable: unavailable.filter((entry) => entry !== undefined),
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -162,9 +164,11 @@ export function createDiscord(
   let cached: { at: number; value: GuildsResponse } | undefined;
   let inFlight: Promise<GuildsResponse> | undefined;
   function listGuilds({ refresh = false } = {}) {
-    if (inFlight) return inFlight;
+    // A fresh list answers a plain read even while a refresh runs, so that
+    // read can't inherit the refresh's failure.
     if (cached && !refresh && Date.now() - cached.at <= cacheMs)
       return Promise.resolve(cached.value);
+    if (inFlight) return inFlight;
     inFlight = fetchGuilds()
       .then((value) => {
         cached = { at: Date.now(), value };

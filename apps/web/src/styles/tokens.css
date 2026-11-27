@@ -101,6 +101,12 @@
   --row-min: 3.25rem; /* one ruled list row */
   --ruler-length: 11rem;
   --name-max: 10rem; /* the signed-in name in the top bar */
+  --bot-name-max: 14rem; /* the bot's name in the top bar, before it shortens */
+  --switch-track: 3.25rem; /* the theme switch's track */
+  --switch-knob: 1.375rem;
+  --switch-inset: 2px; /* between the knob and the track's inner edge */
+  --notice-max: 48rem; /* a full-width notice above a view */
+  --send-max: 92rem; /* the Send view: catalogue, rail and tray */
 
   /* motion: exponential ease-out for arrivals, a quick ease-in for departures */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

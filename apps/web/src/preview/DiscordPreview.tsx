@@ -149,7 +149,14 @@ function PreviewEmbed({
               <div
                 key={field.id}
                 className={styles.field}
-                style={{ gridColumn: `${start} / ${end}` }}
+                style={
+                  {
+                    "--field-start": start,
+                    "--field-end": end,
+                    // A narrow embed has room for two inline fields side by side, not three.
+                    "--field-narrow-span": end - start === 12 ? 12 : 6,
+                  } as CSSProperties
+                }
               >
                 <p className={styles.fieldName}>
                   <Markdown text={field.name.trim()} surface="inline" />

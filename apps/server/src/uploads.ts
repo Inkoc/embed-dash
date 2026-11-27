@@ -4,6 +4,7 @@ import {
   createWriteStream,
   mkdirSync,
   openSync,
+  readdirSync,
   readSync,
   closeSync,
   statSync,
@@ -12,12 +13,13 @@ import {
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import multipart from "@fastify/multipart";
-import { sanitizeFilename, uploadLimits } from "@embed-dash/shared";
-import { eq } from "drizzle-orm";
+import { sanitizeFilename } from "@embed-dash/shared";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Database from "better-sqlite3";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
+import { safeErrorDetails } from "./errors.js";
 import { uploads } from "./schema.js";
 
 /** Types an `<img>` can show without being able to run anything; SVG is deliberately absent. */
@@ -37,6 +39,23 @@ export function sniffContentType(head: Buffer): string {
   )
     return "image/webp";
   return "application/octet-stream";
+}
+
+/** Which of the multipart plugin's refusals an error is, so the person sees why. */
+function multipartRefusal(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
+  if (code === "FST_REQ_FILE_TOO_LARGE") return "size";
+  if (
+    code === "FST_FILES_LIMIT" ||
+    code === "FST_PARTS_LIMIT" ||
+    code === "FST_FIELDS_LIMIT"
+  )
+    return "parts";
+  if (code === "FST_INVALID_MULTIPART_CONTENT_TYPE") return "type";
+  return undefined;
 }
 
 const isServedImage = (contentType: string) => contentType.startsWith("image/");
@@ -85,6 +104,49 @@ export function createUploadStore(dataDir: string, sqlite: Database.Database) {
   };
 }
 
+const dayMs = 24 * 60 * 60 * 1000;
+const sweepEveryMs = 60 * 60 * 1000;
+
+/** True for an upload some stored send names, whatever its status: a retry sends the file again. */
+const referencedBySend = sql`exists (
+  select 1 from sends, json_each(sends.payload_json, '$.attachments') as attachment
+  where json_extract(attachment.value, '$.id') = ${uploads.id}
+)`;
+
+/**
+ * Removes files older than the retention period that no stored send refers
+ * to. Drafts live in the browser, so a file only a draft uses counts as
+ * unreferenced; the composer marks it missing if the draft comes back later.
+ * Files on disk without a record (an interrupted upload) go too.
+ */
+export function sweepUploads(
+  dataDir: string,
+  sqlite: Database.Database,
+  retentionDays: number,
+  now = Date.now(),
+) {
+  const db = drizzle(sqlite);
+  const cutoff = now - retentionDays * dayMs;
+  const stale = db
+    .delete(uploads)
+    .where(and(lt(uploads.createdAt, cutoff), sql`not ${referencedBySend}`))
+    .returning({ id: uploads.id })
+    .all();
+  const { directory, find } = createUploadStore(dataDir, sqlite);
+  for (const { id } of stale) rmSync(join(directory, id), { force: true });
+  let names: string[] = [];
+  try {
+    names = readdirSync(directory);
+  } catch {
+    // No upload has been stored yet.
+  }
+  for (const name of names) {
+    const path = join(directory, name);
+    if (!find(name) && statSync(path).mtimeMs < cutoff)
+      rmSync(path, { force: true });
+  }
+}
+
 /**
  * Uploaded files are untrusted. They are stored under generated names, never
  * served except as images whose type was sniffed from the bytes, and never
@@ -97,13 +159,24 @@ export async function registerUploads(
 ) {
   const db = drizzle(sqlite);
   const { directory, find, stored } = createUploadStore(config.dataDir, sqlite);
-  const maxBytes =
-    (config.maxUploadMb ?? uploadLimits.defaultFileMb) * 1024 * 1024;
+  const maxBytes = config.maxUploadMb * 1024 * 1024;
   await app.register(multipart, {
     limits: { fileSize: maxBytes, files: 1, fields: 0, parts: 1 },
   });
+  // A failed sweep only leaves files for the next one; it must never stop the server.
+  const sweep = () => {
+    try {
+      sweepUploads(config.dataDir, sqlite, config.uploadRetentionDays);
+    } catch (error) {
+      app.log.warn(safeErrorDetails(error), "Upload cleanup failed");
+    }
+  };
+  sweep();
+  const sweeper = setInterval(sweep, sweepEveryMs);
+  sweeper.unref();
+  app.addHook("onClose", async () => clearInterval(sweeper));
   const tooLarge = {
-    error: `Files can be at most ${config.maxUploadMb ?? uploadLimits.defaultFileMb} MB.`,
+    error: `Files can be at most ${config.maxUploadMb} MB.`,
   };
 
   app.post(
@@ -118,17 +191,26 @@ export async function registerUploads(
       },
     },
     async (request, reply) => {
-      const part = await request.file();
-      if (!part) return reply.code(400).send({ error: "Choose a file." });
       const id = randomUUID();
       const path = join(directory, id);
-      mkdirSync(directory, { recursive: true });
-      await pipeline(part.file, createWriteStream(path, { flags: "wx" })).catch(
-        (error: unknown) => {
-          rmSync(path, { force: true });
-          throw error;
-        },
-      );
+      let part: Awaited<ReturnType<typeof request.file>>;
+      try {
+        part = await request.file();
+        if (!part) return reply.code(400).send({ error: "Choose a file." });
+        mkdirSync(directory, { recursive: true });
+        await pipeline(part.file, createWriteStream(path, { flags: "wx" }));
+      } catch (error) {
+        rmSync(path, { force: true });
+        const refusal = multipartRefusal(error);
+        if (refusal === "size") return reply.code(413).send(tooLarge);
+        if (refusal === "parts")
+          return reply.code(413).send({ error: "Send one file per upload." });
+        if (refusal === "type")
+          return reply
+            .code(415)
+            .send({ error: "Uploads must be sent as a file form." });
+        throw error;
+      }
       const size = statSync(path).size;
       if (part.file.truncated || size > maxBytes) {
         rmSync(path, { force: true });
@@ -183,8 +265,15 @@ export async function registerUploads(
 
   app.delete("/api/uploads/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
-    db.delete(uploads).where(eq(uploads.id, id)).run();
-    rmSync(join(directory, id), { force: true });
+    // The draft lets go of the file, but a send that names it may still need
+    // it for a retry; the sweep removes it once nothing refers to it.
+    const removed = db
+      .delete(uploads)
+      .where(and(eq(uploads.id, id), sql`not ${referencedBySend}`))
+      .returning({ id: uploads.id })
+      .all();
+    if (removed.length || !find(id))
+      rmSync(join(directory, id), { force: true });
     return reply.code(204).send();
   });
 }

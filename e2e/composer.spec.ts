@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { expectHeaderFits } from "./header.js";
 
 const preview = (page: Page) => page.getByTestId("preview-embed");
 const heading = (page: Page, name: string) =>
@@ -90,6 +91,24 @@ test("markdown in the description renders formatted in the preview", async ({
   await expect(embed.getByText("Secret boss")).toBeVisible();
   expect(await axe(page)).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test("the signed-in bar keeps to one line without overlap from tablet to wide desktop", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Compose", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("banner").getByText("Walking Skeleton Bot"),
+  ).toBeVisible();
+  await expectHeaderFits(page);
+  // With room to spare, Shortcuts keeps its word.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(
+    page.getByRole("button", { name: "Shortcuts" }).getByText("Shortcuts"),
+  ).toBeInViewport();
 });
 
 test("the theme switch is remembered and applied before first paint", async ({

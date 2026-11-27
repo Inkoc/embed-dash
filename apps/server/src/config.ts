@@ -18,8 +18,27 @@ export interface Config {
   host: string;
   dataDir: string;
   /** Per-file upload limit; the request as a whole is capped by the shared message total. */
-  maxUploadMb?: number;
+  maxUploadMb: number;
+  /** Days a file that no stored send refers to is kept, so a draft can wait that long. */
+  uploadRetentionDays: number;
   discordApiBase: string;
+}
+const defaultUploadRetentionDays = 14;
+/**
+ * An IP address, or a CIDR range such as `172.18.0.0/16` for a proxy on a
+ * Docker network. A `/0` range would trust every client to name its own
+ * address, so it is refused.
+ */
+function isProxyAddress(value: string) {
+  const [address = "", prefix, ...rest] = value.split("/");
+  const family = isIP(address);
+  if (!family || rest.length) return false;
+  if (prefix === undefined) return true;
+  return (
+    /^\d{1,3}$/.test(prefix) &&
+    Number(prefix) >= 1 &&
+    Number(prefix) <= (family === 4 ? 32 : 128)
+  );
 }
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const baseDir = env.INIT_CWD ?? process.cwd();
@@ -52,6 +71,16 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   )
     throw new Error(
       `MAX_UPLOAD_MB must be an integer from 1 to ${uploadLimits.maxFileMb}`,
+    );
+  const rawRetention = env.UPLOAD_RETENTION_DAYS?.trim();
+  const uploadRetentionDays = rawRetention
+    ? /^\d+$/.test(rawRetention)
+      ? Number(rawRetention)
+      : NaN
+    : defaultUploadRetentionDays;
+  if (!Number.isSafeInteger(uploadRetentionDays) || uploadRetentionDays < 1)
+    throw new Error(
+      "UPLOAD_RETENTION_DAYS must be a whole number of days, 1 or more",
     );
   const discordApiBase = (
     env.DISCORD_API_BASE ?? "https://discord.com/api"
@@ -99,10 +128,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : env.TRUST_PROXY.split(",").map((value) => value.trim());
   if (
     trustProxy &&
-    (!trustProxy.length || trustProxy.some((value) => !isIP(value)))
+    (!trustProxy.length || trustProxy.some((value) => !isProxyAddress(value)))
   )
     throw new Error(
-      "TRUST_PROXY must be off or a comma-separated list of proxy IP addresses",
+      "TRUST_PROXY must be off or a comma-separated list of proxy IP addresses or CIDR ranges (prefix /1 or longer)",
     );
   let publicUrl: string | undefined;
   // Compose passes unset variables through as empty strings.
@@ -141,6 +170,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host,
     dataDir: resolve(baseDir, dataDir),
     maxUploadMb,
+    uploadRetentionDays,
     discordApiBase,
   };
 }

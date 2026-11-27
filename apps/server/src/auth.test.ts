@@ -16,6 +16,8 @@ async function fixture(overrides: Partial<Config> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "embed-auth-"));
   const app = await createApp(
     {
+      maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",
@@ -228,18 +230,21 @@ test("trusted proxy clients have separate login budgets", async () => {
     ).statusCode,
   ).toBe(200);
 });
-test.each([false, true])(
-  "forwarded HTTPS is trusted only with proxy trust %s",
-  async (trustProxy) => {
-    const { app } = await fixture({
-      trustProxy: trustProxy ? ["127.0.0.1"] : undefined,
-    });
+test.each([
+  [undefined, false],
+  [["127.0.0.1"], true],
+  [["127.0.0.0/8"], true],
+  [["10.0.0.0/8"], false],
+])(
+  "forwarded HTTPS with proxy trust %j is trusted: %s",
+  async (trustProxy, trusted) => {
+    const { app } = await fixture({ trustProxy });
     const response = await app.inject({
       url: "/api/session",
       headers: { "x-forwarded-proto": "https" },
     });
     expect(String(response.headers["set-cookie"]).includes("Secure")).toBe(
-      trustProxy,
+      trusted,
     );
     expect(response.headers["cache-control"]).toBe("no-store");
   },

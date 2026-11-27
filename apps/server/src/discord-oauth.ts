@@ -3,6 +3,8 @@ import type { Config, DiscordLoginConfig } from "./config.js";
 
 export const oauthScope = "identify";
 const timeout = 5000;
+/** Sign-in waits for the revoke, so an unresponsive Discord may hold it only briefly. */
+export const revokeTimeout = 2000;
 
 /** Carries only the failing step: upstream bodies and messages can hold credentials. */
 export class OAuthError extends Error {
@@ -48,7 +50,7 @@ async function request(
     response = await fetch(url, {
       ...init,
       redirect: "error",
-      signal: AbortSignal.timeout(timeout),
+      signal: AbortSignal.timeout(stage === "revoke" ? revokeTimeout : timeout),
     });
   } catch (error) {
     throw new OAuthError(stage, error);

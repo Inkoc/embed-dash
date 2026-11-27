@@ -9,7 +9,7 @@ import fastifyStatic from "@fastify/static";
 import type { Config } from "./config.js";
 import { createDiscord } from "./discord.js";
 import { openDatabase } from "./db.js";
-import { discordFailure } from "./errors.js";
+import { discordFailure, safeErrorDetails } from "./errors.js";
 import { registerSends } from "./sends.js";
 import { securityHeaders } from "./security.js";
 import { registerUploads } from "./uploads.js";
@@ -74,7 +74,7 @@ export async function createApp(
       status < 500
         ? status
         : 500;
-    app.log.error({ statusCode }, "Request failed");
+    app.log.error({ statusCode, ...safeErrorDetails(error) }, "Request failed");
     return reply.code(statusCode).send({ error: "Request failed" });
   });
   if (options.spaRoot) {

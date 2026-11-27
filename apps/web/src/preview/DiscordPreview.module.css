@@ -131,15 +131,27 @@
   white-space: pre-wrap;
 }
 .fields {
+  container-type: inline-size;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
 .field {
+  grid-column: var(--field-start) / var(--field-end);
   min-width: 0;
   font-size: var(--dc-text-sm);
   line-height: var(--dc-leading-sm);
+}
+/*
+ * Three columns in a narrow embed are narrower than an ordinary word, so words
+ * would split mid-way; inline fields pair up instead. Two per row still reads
+ * as inline, and the rows flow in order.
+ */
+@container (max-width: 20rem) {
+  .field {
+    grid-column: auto / span var(--field-narrow-span);
+  }
 }
 .fieldName {
   margin-bottom: var(--dc-nudge);

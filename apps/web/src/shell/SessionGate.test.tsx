@@ -206,3 +206,20 @@ test("the signed-in Discord user shows by name and avatar until sign out", async
     expect.objectContaining({ method: "POST" }),
   );
 });
+
+test("signing out after the session expired opens a clean login screen", async () => {
+  const fetcher = vi
+    .fn()
+    .mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "/api/auth/logout"
+          ? Response.json({ error: "Sign in required" }, { status: 401 })
+          : Response.json({ ...anonymous, authMode: "password" }),
+      ),
+    );
+  setup(fetcher, { ...anonymous, authMode: "password", authenticated: true });
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  const password = await screen.findByLabelText("Instance password");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(password.getAttribute("aria-invalid")).toBe("false");
+});

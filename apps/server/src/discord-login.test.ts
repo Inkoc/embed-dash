@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { createApp } from "./app.js";
 import { openDatabase } from "./db.js";
 import type { Config } from "./config.js";
+import { revokeTimeout } from "./discord-oauth.js";
 
 const allowedUser = {
   id: "111111111111111111",
@@ -105,6 +106,8 @@ async function fixture(
   });
   const app = await createApp(
     {
+      maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "discord",
       botToken: "fixture-token",
       port: 8742,
@@ -503,6 +506,8 @@ test("the Discord routes only exist in Discord mode", async () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-discord-off-"));
   const app = await createApp(
     {
+      maxUploadMb: 10,
+      uploadRetentionDays: 14,
       authMode: "password",
       adminPassword: "fixture-password",
       botToken: "fixture-token",
@@ -617,6 +622,29 @@ test("an unreachable revoke endpoint is only logged", async () => {
   expect(response.headers.location).toBe("/");
   expect(logs.join("")).toContain("Discord token revoke failed");
   expect(logs.join("")).not.toContain(accessToken);
+});
+
+test("a revoke that never answers holds sign-in only briefly", async () => {
+  const { app, logs } = await fixture();
+  const { state, cookie } = await begin(app);
+  const real = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    String(input).endsWith("/revoke")
+      ? new Promise((_, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal!.reason),
+          ),
+        )
+      : real(input, init),
+  );
+  cleanups.push(() => void vi.restoreAllMocks());
+  const started = performance.now();
+  const response = await callback(app, { code, state }, cookie);
+  const elapsed = performance.now() - started;
+  expect(response.headers.location).toBe("/");
+  expect(elapsed).toBeGreaterThanOrEqual(revokeTimeout - 100);
+  expect(elapsed).toBeLessThan(revokeTimeout + 1500);
+  expect(logs.join("")).toContain("Discord token revoke failed");
 });
 
 test.each([

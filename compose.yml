@@ -4,7 +4,8 @@ services:
     ports:
       - "127.0.0.1:8742:8742"
     environment:
-      # Trust only the IP addresses of proxies that replace forwarded headers.
+      # Trust only proxies that replace forwarded headers: their IPs or their
+      # Docker network's CIDR range (see the README).
       TRUST_PROXY: ${TRUST_PROXY:-off}
       AUTH_MODE: ${AUTH_MODE:-password}
       # Used only with AUTH_MODE=discord; see the README.
@@ -15,6 +16,8 @@ services:
       ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       BOT_TOKEN_FILE: /run/secrets/bot_token
       DATA_DIR: /data
+      # Days a file only a draft uses is kept; files a send uses are always kept.
+      UPLOAD_RETENTION_DAYS: ${UPLOAD_RETENTION_DAYS:-14}
       PORT: "8742"
       HOST: "0.0.0.0"
     secrets:

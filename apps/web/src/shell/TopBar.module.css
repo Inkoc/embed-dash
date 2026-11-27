@@ -3,9 +3,14 @@
   top: 0;
   z-index: 20;
 }
+/*
+ * Brand and the right cluster share what the centred control leaves, equally,
+ * so the control stays centred and the cluster can never run under it; the
+ * cluster fits its share by shedding words (see TopBar.tsx).
+ */
 .bar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-4);
   height: var(--nav-height);
@@ -35,10 +40,15 @@
   justify-self: center;
 }
 .end {
-  justify-self: end;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
+  white-space: nowrap;
+}
+.end > :not(:first-child) {
+  flex-shrink: 0;
 }
 .quiet {
   display: inline-flex;
@@ -87,7 +97,7 @@
   color: var(--ink);
 }
 .track {
-  --track-width: 3.25rem;
+  --track-width: var(--switch-track);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -109,43 +119,56 @@
 }
 .knob {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 1.375rem;
-  height: 1.375rem;
+  top: var(--switch-inset);
+  left: var(--switch-inset);
+  width: var(--switch-knob);
+  height: var(--switch-knob);
   border-radius: 50%;
   background: var(--ink);
   transition: transform var(--dur-move) var(--ease-out);
 }
 .theme[aria-checked="true"] .knob {
-  /* the track's inner width (less its 1px borders), less the knob and a 2px inset at each end */
-  transform: translateX(calc(var(--track-width) - 1.375rem - 4px - 2px));
+  /* the track's inner width (less its borders), less the knob and its inset at each end */
+  transform: translateX(
+    calc(
+      var(--track-width) - 2 * var(--rule-width) - var(--switch-knob) - 2 *
+        var(--switch-inset)
+    )
+  );
 }
 .theme[aria-checked="false"] .sun,
 .theme[aria-checked="true"] .moon {
   color: var(--ground);
 }
 
-/* Below desktop the Shortcuts button keeps only its key cap. */
-@media (max-width: 1100px) {
-  .shortcutsLabel {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+/* Words the cluster sheds, in order, when its share is too narrow for them. */
+[data-shed-shortcuts] .shortcutsLabel,
+[data-shed-theme] .themeLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+[data-shed-theme] .theme {
+  padding: 0 var(--space-1);
+}
+/*
+ * Tablets and phones: the control sits between brand and cluster, and the
+ * cluster keeps only icons. Its track may shrink below its content, so the
+ * bot's name gives way before the control is crowded.
+ */
+@media (max-width: 860px) {
+  .bar {
+    grid-template-columns: auto 1fr minmax(0, auto);
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
   }
   .end {
     gap: var(--space-2);
   }
-}
-@media (max-width: 860px) {
-  .bar {
-    grid-template-columns: auto 1fr auto;
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
-  }
+  .shortcutsLabel,
   .themeLabel {
     position: absolute;
     width: 1px;
@@ -183,14 +206,27 @@
   }
 }
 
+/* Phones: the control takes a row of its own once Sign out joins the cluster, or on the narrowest screens. */
 @media (max-width: 640px) {
   .bar:has([data-session-control]) {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     height: auto;
     padding-block: var(--space-2);
     row-gap: var(--space-1);
   }
   .bar:has([data-session-control]) .views {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 340px) {
+  .bar {
+    grid-template-columns: auto minmax(0, 1fr);
+    height: auto;
+    padding-block: var(--space-2);
+    row-gap: var(--space-1);
+  }
+  .views {
     grid-row: 2;
     grid-column: 1 / -1;
   }

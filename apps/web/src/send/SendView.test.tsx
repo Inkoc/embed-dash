@@ -124,6 +124,43 @@ test("a bot in no servers offers its invite link", async () => {
   );
 });
 
+test("servers the bot couldn't read are named in an announced notice", async () => {
+  stub([
+    Response.json({
+      ...listing([guild("1", "Lantern Hall", ["general", "news"])]),
+      unavailable: [
+        { id: "2", name: "Old Docks" },
+        { id: "3", name: "Salt Flats" },
+      ],
+    }),
+  ]);
+  renderSend();
+  const notice = await screen.findByText(/Couldn’t read 2 servers/);
+  expect(notice.closest("[role='status']")).toHaveTextContent(
+    "Old Docks, Salt Flats",
+  );
+  expect(screen.getByText("general")).toBeInTheDocument();
+});
+
+test("when no server could be read, the notice stands without the no-servers invite", async () => {
+  stub([
+    Response.json({
+      ...listing([]),
+      unavailable: [{ id: "2", name: "Old Docks" }],
+    }),
+  ]);
+  renderSend();
+  expect(
+    await screen.findByText("None of the bot’s servers could be read"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Couldn’t read 1 server the bot is listed in: Old Docks.",
+  );
+  expect(screen.queryByText("The bot isn’t in any servers yet")).toBeNull();
+  expect(screen.queryByRole("link", { name: /Invite the bot/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+});
+
 test("ticks, selects all in a server, and keeps keyboard focus in the list", async () => {
   stub([
     Response.json(

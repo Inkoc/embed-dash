@@ -77,6 +77,25 @@ export function SendView() {
         </button>
       </Closed>
     );
+  else if (data.guilds.length === 0 && data.unavailable.length > 0)
+    // The notice above names them; inviting the bot again isn't the fix.
+    body = (
+      <Closed
+        label="Unreadable"
+        title="None of the bot’s servers could be read"
+      >
+        <p>Check the bot’s access in those servers, then refresh.</p>
+        <button
+          type="button"
+          className={styles.primary}
+          onClick={() => void refresh()}
+          disabled={guilds.isFetching}
+        >
+          <RefreshCw aria-hidden="true" />
+          {guilds.isFetching ? "Refreshing…" : "Refresh"}
+        </button>
+      </Closed>
+    );
   else if (data.guilds.length === 0)
     body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
   else body = <Picker guilds={data.guilds} locked={!!busy} />;
@@ -143,7 +162,7 @@ export function SendView() {
         </p>
       )}
       {data && data.unavailable.length > 0 && (
-        <p className={styles.unavailable}>
+        <p className={styles.unavailable} role="status">
           <Lock aria-hidden="true" />
           <span>
             Couldn’t read{" "}

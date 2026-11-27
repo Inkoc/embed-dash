@@ -24,7 +24,7 @@ export interface Session {
   csrfToken: string;
   user: SessionUser | null;
   deniedUserId: string | null;
-  maxUploadMb?: number;
+  maxUploadMb: number;
 }
 
 const AccessContext = createContext<{
@@ -130,7 +130,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
         },
         body: JSON.stringify(body ?? {}),
       });
-      if (!response.ok) {
+      // Signing out of a session that already ended has nothing to report:
+      // the login screen that follows starts clean.
+      const alreadyOut = url === "/api/auth/logout" && response.status === 401;
+      if (!response.ok && !alreadyOut) {
         setError(
           response.status === 429
             ? "Too many attempts. Wait a minute, then try again."
