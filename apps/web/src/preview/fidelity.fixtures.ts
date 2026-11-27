@@ -90,6 +90,13 @@ export const fixtures: Fixture[] = [
     html: link("https://example.com/notes", "patch notes"),
   },
   {
+    id: "rich-link-label-is-url",
+    surface: "rich",
+    input:
+      "[https://example.com](https://example.org/real) [**see https://a.example**](https://example.org/b)",
+    html: `${link("https://example.org/real", "https://example.com")} ${link("https://example.org/b", "<strong>see https://a.example</strong>")}`,
+  },
+  {
     id: "rich-bare-link",
     surface: "rich",
     input: "see https://example.com",

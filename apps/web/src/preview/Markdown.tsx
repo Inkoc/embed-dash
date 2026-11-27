@@ -103,10 +103,11 @@ function Node({ node, now }: { node: MarkdownNode; now: Date }): ReactNode {
     case "autolink":
     case "url": {
       const target = node.target as string;
+      const label = nodes(unlinked(node.content as MarkdownNode[]), now);
       if (!isWebLink(target))
         return (
           <>
-            [{children(node, now)}]({target})
+            [{label}]({target})
           </>
         );
       return (
@@ -117,7 +118,7 @@ function Node({ node, now }: { node: MarkdownNode; now: Date }): ReactNode {
           target="_blank"
           rel="noreferrer"
         >
-          {children(node, now)}
+          {label}
         </a>
       );
     }
@@ -144,6 +145,21 @@ function Node({ node, now }: { node: MarkdownNode; now: Date }): ReactNode {
     default:
       return null;
   }
+}
+
+const linkTypes = new Set(["link", "autolink", "url"]);
+/**
+ * A link's label with any links inside it reduced to their text: one anchor
+ * only, and a label that reads like an address can't look clickable on its own.
+ */
+function unlinked(list: MarkdownNode[]): MarkdownNode[] {
+  return list.flatMap((node) =>
+    linkTypes.has(node.type)
+      ? unlinked(node.content as MarkdownNode[])
+      : Array.isArray(node.content)
+        ? [{ ...node, content: unlinked(node.content as MarkdownNode[]) }]
+        : [node],
+  );
 }
 
 function withoutTrailingBreak(node: MarkdownNode): MarkdownNode {
