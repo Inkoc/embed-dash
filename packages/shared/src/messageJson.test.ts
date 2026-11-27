@@ -226,6 +226,12 @@ test("ignores null and empty-array unsupported values and limits nonempty notice
   expect(result.notices[0]).toBe("Unsupported field: extra0.");
   expect(result.notices[19]).toBe("Unsupported field: extra19.");
   expect(result.notices[20]).toBe("And 5 more unsupported fields.");
+  const multiple = importMessageJson(
+    JSON.stringify({ messages: [{ data }, { data: { content: "Second" } }] }),
+  );
+  expect(multiple.ok && multiple.notices.at(-1)).toBe(
+    "Imported the first of 2 messages. Remaining messages were not loaded.",
+  );
 });
 
 test.each(["#12", "#zz", "123456", "#1234567", ""])(

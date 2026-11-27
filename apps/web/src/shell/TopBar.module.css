@@ -208,13 +208,13 @@
 
 /* Phones: the control takes a row of its own once Sign out joins the cluster, or on the narrowest screens. */
 @media (max-width: 640px) {
-  .bar:has([data-session-control]) {
+  .bar {
     grid-template-columns: auto minmax(0, 1fr);
     height: auto;
     padding-block: var(--space-2);
     row-gap: var(--space-1);
   }
-  .bar:has([data-session-control]) .views {
+  .bar .views {
     grid-row: 2;
     grid-column: 1 / -1;
   }

@@ -177,9 +177,11 @@ export function importMessageJson(text: string): JsonImportResult {
   const data = first?.success
     ? first.data.data
     : externalMessage.parse(parsed.data);
-  const notices = wrapped
-    ? unsupported(raw, { messages: [{ data }] })
-    : unsupported(raw, data);
+  const notices = limitedNotices(
+    wrapped
+      ? unsupported(raw, { messages: [{ data }] })
+      : unsupported(raw, data),
+  );
   if ("messages" in parsed.data && parsed.data.messages.length > 1)
     notices.push(
       `Imported the first of ${parsed.data.messages.length} messages. Remaining messages were not loaded.`,
@@ -222,7 +224,7 @@ export function importMessageJson(text: string): JsonImportResult {
         .map((issue) => `${issue.label}: ${issue.message}`)
         .join("\n"),
     };
-  return { ok: true, message, notices: limitedNotices(notices) };
+  return { ok: true, message, notices };
 }
 
 /** An explicit allowlist prevents editor ids and upload metadata from reaching an export. */
