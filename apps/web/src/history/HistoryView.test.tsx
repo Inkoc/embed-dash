@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
@@ -9,14 +15,14 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-function show() {
+function show(path = "/history") {
   render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <HistoryList />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -79,3 +85,85 @@ test("history rows show title, date, channels and result", async () => {
   expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
 });
+
+test("invalid date ranges stay beside To and never reach the server", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({ entries: [], hasMore: false, destinations: [] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  show();
+  await screen.findByText("Your history starts here");
+  fireEvent.change(screen.getByLabelText("From (UTC)"), {
+    target: { value: "2026-12-20" },
+  });
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  fireEvent.change(screen.getByLabelText("To (UTC)"), {
+    target: { value: "2026-11-01" },
+  });
+  const to = screen.getByLabelText("To (UTC)");
+  expect(to).toHaveAttribute("aria-invalid", "true");
+  expect(to).toHaveAccessibleDescription(
+    "✗ The start date must be on or before the end date.",
+  );
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "Try again" }),
+  ).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fireEvent.change(to, { target: { value: "2026-12-21" } });
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+  expect(to).not.toHaveAttribute("aria-invalid");
+});
+
+test("an invalid date range in the URL does not fetch", () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  show("/history?from=2026-12-20&to=2026-11-01");
+  expect(screen.getByLabelText("To (UTC)")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: /Filters/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+test("secondary filters disclose their active count", () => {
+  vi.stubGlobal("fetch", () => new Promise(() => {}));
+  show("/history?status=failed&q=release");
+  const toggle = screen.getByRole("button", { name: "Filters 1 active" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+});
+
+test.each([1, 2])(
+  "pagination only appears when needed on page %i",
+  async (page) => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({
+        entries: [
+          {
+            id: "send",
+            title: "Release notes",
+            color: "",
+            createdAt: 1,
+            channelCount: 1,
+            status: "done",
+          },
+        ],
+        hasMore: false,
+        destinations: [],
+      }),
+    );
+    show(`/history?page=${page}`);
+    await screen.findByRole("link", { name: /Release notes/ });
+    const pagination = screen.queryByRole("navigation", {
+      name: "History pages",
+    });
+    if (page === 1) expect(pagination).not.toBeInTheDocument();
+    else expect(pagination).toBeInTheDocument();
+  },
+);

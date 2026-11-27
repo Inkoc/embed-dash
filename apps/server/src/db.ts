@@ -16,6 +16,9 @@ export function openDatabase(dataDir: string) {
   try {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");
+    sqlite.function("fold", { deterministic: true }, (value: unknown) =>
+      String(value ?? "").toLowerCase(),
+    );
     const db = drizzle(sqlite);
     migrate(db, {
       migrationsFolder: fileURLToPath(new URL("../drizzle/", import.meta.url)),

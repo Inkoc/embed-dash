@@ -1151,3 +1151,52 @@ test("history searches stored text and destinations, filters and paginates behin
   expect(detail.json().payload.content).toBe("First literal 100%");
   expect(detail.json().createdAt).toBe(Date.parse("2026-11-20T12:00:00Z"));
 });
+
+test("history folds Unicode text and destination names and accepts channel prefixes", async () => {
+  const context = await setup();
+  const first = (
+    await post(context, [news], {
+      content: "ŽIVOT ΚΑΛΗМΕРА Привет",
+      embeds: [{ ...emptyEmbed(), title: "ÉTÉ release" }],
+    })
+  ).json().id as string;
+  await settle(context, first);
+  const second = (
+    await post(context, [general], { content: "Another bulletin" })
+  ).json().id as string;
+  await settle(context, second);
+  const database = new Database(join(context.dir, "embed-dash.db"));
+  database
+    .prepare(
+      "UPDATE send_targets SET guild_name = ?, channel_name = ? WHERE send_id = ?",
+    )
+    .run("Čakovec Αθήνα Москва", "ŠTĚSTÍ_100%!", first);
+  database.close();
+  for (const term of [
+    "život",
+    "Été",
+    "čAKOVEC",
+    "αθήνα",
+    "москва",
+    "ПРИВЕТ",
+    "#štěstí_100%!",
+    "##ŠTĚSTÍ",
+    "100%!",
+  ]) {
+    const response = await context.app.inject({
+      url: `/api/sends?q=${encodeURIComponent(term)}`,
+      headers: context.headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json().entries.map((entry: { id: string }) => entry.id),
+    ).toEqual([first]);
+  }
+  for (const term of ["štěstíX100%!", "100_!"]) {
+    const response = await context.app.inject({
+      url: `/api/sends?q=${encodeURIComponent(term)}`,
+      headers: context.headers,
+    });
+    expect(response.json().entries).toEqual([]);
+  }
+});

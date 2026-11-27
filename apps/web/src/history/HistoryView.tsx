@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
+  historyQuerySchema,
   historyDetailSchema,
   historyResponseSchema,
   messageLink,
@@ -56,11 +58,23 @@ export default function HistoryView({ theme }: { theme: Theme }) {
 }
 export function HistoryList() {
   const [params, setParams] = useSearchParams();
+  const validation = historyQuerySchema.safeParse(Object.fromEntries(params));
+  const [filtersOpen, setFiltersOpen] = useState(!validation.success);
+  const dateError = validation.success
+    ? undefined
+    : validation.error.issues.find((issue) => issue.path[0] === "to")?.message;
+  const activeFilters = ["guildId", "channelId", "from", "to", "status"].filter(
+    (key) => params.get(key),
+  ).length;
   const query = useQuery({
+    enabled: validation.success,
     queryKey: ["history", params.toString()],
     placeholderData: keepPreviousData,
-    queryFn: async () =>
-      historyResponseSchema.parse(await load(`/api/sends?${params}`)),
+    queryFn: async () => {
+      if (!validation.success)
+        throw new Error("Correct the history filters before searching.");
+      return historyResponseSchema.parse(await load(`/api/sends?${params}`));
+    },
     retry: false,
   });
   const change = (key: string, value: string) => {
@@ -69,6 +83,8 @@ export function HistoryList() {
     else next.delete(key);
     if (key !== "page") next.delete("page");
     if (key === "guildId") next.delete("channelId");
+    if (!historyQuerySchema.safeParse(Object.fromEntries(next)).success)
+      setFiltersOpen(true);
     setParams(next, { replace: true });
   };
   const destinations = query.data?.destinations ?? [];
@@ -101,7 +117,12 @@ export function HistoryList() {
           <h2 tabIndex={-1}>History</h2>
           <p>Every send, filed with its results.</p>
         </div>
-        <button onClick={() => void query.refetch()}>Refresh</button>
+        <button
+          disabled={!validation.success}
+          onClick={() => void query.refetch()}
+        >
+          Refresh
+        </button>
       </header>
       <div className={styles.sheet}>
         <form
@@ -122,70 +143,108 @@ export function HistoryList() {
               maxLength={500}
             />
           </label>
-          <label>
-            Server
-            <select
-              value={params.get("guildId") ?? ""}
-              onChange={(event) => change("guildId", event.target.value)}
-            >
-              <option value="">All servers</option>
-              {guilds.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Channel
-            <select
-              value={params.get("channelId") ?? ""}
-              onChange={(event) => change("channelId", event.target.value)}
-            >
-              <option value="">All channels</option>
-              {channels.map((target) => (
-                <option key={target.channelId} value={target.channelId}>
-                  #{target.channelName || target.channelId} ·{" "}
-                  {target.guildName || target.guildId}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            From (UTC)
-            <input
-              type="date"
-              value={params.get("from") ?? ""}
-              onChange={(event) => change("from", event.target.value)}
-            />
-          </label>
-          <label>
-            To (UTC)
-            <input
-              type="date"
-              value={params.get("to") ?? ""}
-              onChange={(event) => change("to", event.target.value)}
-            />
-          </label>
-          <label>
-            Status
-            <select
-              value={params.get("status") ?? ""}
-              onChange={(event) => change("status", event.target.value)}
-            >
-              <option value="">All statuses</option>
-              {Object.entries(statusLabel).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={() => setParams({})}>
-            Clear filters
+          <button
+            type="button"
+            className={styles.filterToggle}
+            aria-expanded={filtersOpen}
+            aria-controls="history-filters"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            Filters <span>{activeFilters} active</span>
+            <ChevronDown aria-hidden="true" />
           </button>
+          <div
+            id="history-filters"
+            className={styles.filterFields}
+            data-open={filtersOpen || undefined}
+          >
+            <label>
+              Server
+              <select
+                value={params.get("guildId") ?? ""}
+                onChange={(event) => change("guildId", event.target.value)}
+              >
+                <option value="">All servers</option>
+                {guilds.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Channel
+              <select
+                value={params.get("channelId") ?? ""}
+                onChange={(event) => change("channelId", event.target.value)}
+              >
+                <option value="">All channels</option>
+                {channels.map((target) => (
+                  <option key={target.channelId} value={target.channelId}>
+                    #{target.channelName || target.channelId} ·{" "}
+                    {target.guildName || target.guildId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              From (UTC)
+              <input
+                type="date"
+                max={params.get("to") || undefined}
+                value={params.get("from") ?? ""}
+                onChange={(event) => change("from", event.target.value)}
+              />
+            </label>
+            <div className={styles.dateFilter}>
+              <label>
+                To (UTC)
+                <input
+                  type="date"
+                  min={params.get("from") || undefined}
+                  aria-invalid={!!dateError || undefined}
+                  aria-describedby={
+                    dateError ? "history-date-error" : undefined
+                  }
+                  value={params.get("to") ?? ""}
+                  onChange={(event) => change("to", event.target.value)}
+                />
+              </label>
+              {dateError && (
+                <p id="history-date-error" className={styles.fieldError}>
+                  ✗ {dateError}
+                </p>
+              )}
+            </div>
+            <label>
+              Status
+              <select
+                value={params.get("status") ?? ""}
+                onChange={(event) => change("status", event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {Object.entries(statusLabel).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => setParams({})}>
+              Clear filters
+            </button>
+          </div>
         </form>
-        {query.isPending ? (
+        {!validation.success ? (
+          <div className={styles.state}>
+            <p>
+              {dateError
+                ? "Update the dates to view history."
+                : "Correct the history filters or clear them to view history."}
+            </p>
+            <button onClick={() => setParams({})}>Clear filters</button>
+          </div>
+        ) : query.isPending ? (
           <Loading />
         ) : query.isError ? (
           <Failure
@@ -242,21 +301,23 @@ export function HistoryList() {
                 </li>
               ))}
             </ul>
-            <nav className={styles.pagination} aria-label="History pages">
-              <button
-                disabled={page <= 1}
-                onClick={() => change("page", String(page - 1))}
-              >
-                Previous
-              </button>
-              <span>Page {page}</span>
-              <button
-                disabled={!query.data.hasMore}
-                onClick={() => change("page", String(page + 1))}
-              >
-                Next
-              </button>
-            </nav>
+            {(page > 1 || query.data.hasMore) && (
+              <nav className={styles.pagination} aria-label="History pages">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => change("page", String(page - 1))}
+                >
+                  Previous
+                </button>
+                <span>Page {page}</span>
+                <button
+                  disabled={!query.data.hasMore}
+                  onClick={() => change("page", String(page + 1))}
+                >
+                  Next
+                </button>
+              </nav>
+            )}
           </>
         )}
       </div>

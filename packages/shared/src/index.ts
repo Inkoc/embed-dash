@@ -700,6 +700,7 @@ export const historyQuerySchema = z
   .strict()
   .refine((query) => !query.from || !query.to || query.from <= query.to, {
     message: "The start date must be on or before the end date.",
+    path: ["to"],
   });
 export const historyEntrySchema = z.object({
   id: z.string(),

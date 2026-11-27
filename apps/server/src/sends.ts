@@ -449,11 +449,12 @@ export async function registerSends(
         `EXISTS (SELECT 1 FROM send_targets t WHERE ${targetConditions.join(" AND ")})`,
       );
     }
-    if (query.q) {
+    const term = query.q.toLowerCase().replace(/^#+/, "");
+    if (term) {
       // Escape LIKE metacharacters so an operator searches literal message text.
-      const pattern = `%${query.q.replace(/[!%_]/g, "!$&")}%`;
+      const pattern = `%${term.replace(/[!%_]/g, "!$&")}%`;
       conditions.push(
-        "(s.search_text LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (t.guild_name LIKE ? ESCAPE '!' OR t.channel_name LIKE ? ESCAPE '!' OR t.guild_id LIKE ? ESCAPE '!' OR t.channel_id LIKE ? ESCAPE '!')))",
+        "(fold(s.search_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (fold(t.guild_name) LIKE ? ESCAPE '!' OR fold(t.channel_name) LIKE ? ESCAPE '!' OR fold(t.guild_id) LIKE ? ESCAPE '!' OR fold(t.channel_id) LIKE ? ESCAPE '!')))",
       );
       params.push(pattern, pattern, pattern, pattern, pattern);
     }
