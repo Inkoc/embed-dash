@@ -223,6 +223,7 @@
   --dc-mention-bg: rgb(88 101 242 / 0.15);
   --dc-mention: #4752c4;
   --dc-stamp-bg: rgb(6 6 7 / 0.08);
+  --dc-link-tint: rgb(6 6 7 / 0.04);
 }
 
 /* Dark: a blue-black desk, sheets one step lighter, the tray one step above that. */
@@ -284,4 +285,5 @@
   --dc-mention-bg: rgb(88 101 242 / 0.3);
   --dc-mention: #c9cdfb;
   --dc-stamp-bg: rgb(255 255 255 / 0.06);
+  --dc-link-tint: rgb(255 255 255 / 0.04);
 }

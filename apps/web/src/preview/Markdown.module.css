@@ -113,3 +113,12 @@ button.spoiler {
 button.spoiler > span {
   opacity: 0;
 }
+/*
+ * In a linked title the text takes the link colour, which Discord's usual
+ * tints dim below AA contrast; a lighter tint keeps the chips readable.
+ */
+[data-linked] .timestamp,
+[data-linked] .code,
+[data-linked] .spoiler[data-shown] {
+  background: var(--dc-link-tint);
+}

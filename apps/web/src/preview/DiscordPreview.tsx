@@ -130,7 +130,10 @@ function PreviewEmbed({
         )}
         {title && (
           <p className={styles.title}>
-            <span className={embed.url.trim() ? styles.link : undefined}>
+            <span
+              className={embed.url.trim() ? styles.link : undefined}
+              data-linked={embed.url.trim() ? "" : undefined}
+            >
               <Markdown text={title} surface="inline" />
             </span>
           </p>
