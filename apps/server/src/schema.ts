@@ -65,7 +65,7 @@ export const sendTargets = sqliteTable(
     channelName: text("channel_name").notNull(),
     messageId: text("message_id"),
     status: text("status", {
-      enum: ["pending", "sent", "failed", "unknown"],
+      enum: ["pending", "posting", "sent", "failed", "unknown"],
     }).notNull(),
     /** A `deliveryErrors` code; the readable text comes from the shared package. */
     error: text("error"),
@@ -77,7 +77,7 @@ export const sendTargets = sqliteTable(
     index("send_targets_send_idx").on(table.sendId),
     check(
       "send_targets_status_check",
-      sql`${table.status} IN ('pending', 'sent', 'failed', 'unknown')`,
+      sql`${table.status} IN ('pending', 'posting', 'sent', 'failed', 'unknown')`,
     ),
   ],
 );

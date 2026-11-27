@@ -190,6 +190,16 @@
 .row[data-locked] .entry {
   cursor: not-allowed;
 }
+.row[data-locked] {
+  background: var(--sheet-2);
+}
+.row[data-locked] .box {
+  border-style: dashed;
+}
+.row[data-locked] .channel,
+.row[data-locked] .call {
+  color: var(--ink-2);
+}
 .row:not([data-blocked]):not([data-on]):not([data-locked]) .entry:hover {
   background: var(--sheet-2);
 }

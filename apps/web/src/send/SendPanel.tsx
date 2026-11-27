@@ -127,18 +127,21 @@ export function Verdict({
   const word = {
     waiting: "Sending",
     pending: "Sending",
+    posting: "Sending",
     sent: "Sent",
     failed: "Failed",
     unknown: "Unconfirmed",
   }[state];
+  const waiting =
+    state === "waiting" || state === "pending" || state === "posting";
   return (
     <span
       className={styles.verdict}
-      data-state={state}
+      data-state={waiting ? "waiting" : state}
       // The reveal staggers down the tray, capped so a long list still lands quickly.
       style={{ "--n": Math.min(index, 8) } as React.CSSProperties}
     >
-      {state === "waiting" || state === "pending" ? (
+      {waiting ? (
         <LoaderCircle className={styles.spin} aria-hidden="true" />
       ) : state === "unknown" ? (
         <CircleHelp aria-hidden="true" />

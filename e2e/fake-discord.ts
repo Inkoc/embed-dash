@@ -206,6 +206,7 @@ export function startFakeDiscord(port: number) {
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
   let postDelayMs = 0;
+  let listingDelayMs = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     const reply = (body: unknown, status = 200) => {
@@ -257,6 +258,8 @@ export function startFakeDiscord(port: number) {
         avatar: null,
       });
     if (path === "/users/@me/guilds") {
+      if (listingDelayMs)
+        await new Promise((resolve) => setTimeout(resolve, listingDelayMs));
       const after = url.searchParams.get("after");
       const limit = Number(url.searchParams.get("limit") ?? 200);
       const start = after ? fakeGuilds.findIndex((g) => g.id === after) + 1 : 0;
@@ -348,6 +351,8 @@ export function startFakeDiscord(port: number) {
     ) => void forced.set(channelId, { times: 1, ...failure }),
     /** Every accepted post takes this long to answer. */
     slow: (ms: number) => void (postDelayMs = ms),
+    /** Every guild listing takes this long to answer. */
+    slowListing: (ms: number) => void (listingDelayMs = ms),
     /** The channel vanishes from listings and posts to it get a 404. */
     remove: (channelId: string) => void removed.add(channelId),
   });

@@ -36,6 +36,8 @@
   background: var(--tray-2);
 }
 .again:disabled {
+  border-style: dashed;
+  background: var(--tray-2);
   color: var(--tray-soft);
   cursor: not-allowed;
 }
@@ -188,8 +190,7 @@
   color: var(--tray-danger);
 }
 .verdict[data-state="unknown"],
-.verdict[data-state="waiting"],
-.verdict[data-state="pending"] {
+.verdict[data-state="waiting"] {
   color: var(--tray-soft);
 }
 .stroke path {

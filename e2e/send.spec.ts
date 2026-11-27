@@ -178,3 +178,36 @@ test("on a phone the sheet's Send button works and the results fit", async ({
     )
     .toBe(true);
 });
+
+test("reloading mid-send shows its progress again, the lock note stays in view and New send looks disabled", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await compose(page, "Reload mid-send");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await pick(page, "Lanternfall Cup EU", "news");
+  await pick(page, "Lanternfall Cup EU", "match-schedule");
+  await pick(page, "Lanternfall Modding Guild", "release-notes");
+  await tray(page).getByRole("button", { name: "Send to 3 channels" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Send to 3 channels" })
+    .click();
+  await expect(
+    tray(page).getByRole("button", { name: "New send" }),
+  ).toBeDisabled();
+
+  // Scrolled down, the note is still there, and a locked row isn't live-looking.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.getByText(/The selection is locked/)).toBeInViewport();
+
+  await page.reload();
+  await expect(page.getByText(/The selection is locked/)).toBeVisible();
+  await expect(tray(page)).toContainText(/\d of 3 sent|3 sent/);
+  await expect(tray(page)).toContainText("3 sent.");
+  await expect(tray(page)).toContainText("Every copy arrived.");
+  await expect(page.getByText(/The selection is locked/)).toHaveCount(0);
+  await expect(
+    tray(page).getByRole("link", { name: /Open in Discord/ }),
+  ).toHaveCount(3);
+});
