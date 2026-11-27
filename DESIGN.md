@@ -205,6 +205,10 @@ A cool, nearly neutral desk with a single committed teal; status colours appear 
 
 `--dc-*` tokens reproduce Discord's chat: dark `#313338` / embed `#2b2d31`, light `#ffffff` / embed `#f2f3f5`, text, header, muted and link colours, and the blurple "APP" tag. In light the link is darkened to `#0063d3` so it passes AA on the embed.
 
+### Sample content
+
+The composer's example draft carries its own side colour (`#e8a33d`) and generated example art. These are user content, like any colour an operator picks, not part of the app palette, so they live in the draft and not in `tokens.css`.
+
 ### Named Rules
 
 **The One Accent Rule.** Teal is the only accent. Red and amber are signals, not decoration.
@@ -237,10 +241,12 @@ All text pairs reach 4.5:1 and all control borders and focus rings 3:1 in both t
 
 ## Layout
 
-- **Bar:** a 3.75rem sticky top bar: brand left, the Compose/Send segmented control centred, the bot status, Shortcuts and the theme switch right.
-- **Compose, side by side (above 860px):** `minmax(22rem, 1fr)` editor, a 2.75rem resize handle, and the preview column at the operator's chosen width (`--preview-w`, 320–760px, default Desktop 640px). The preview column and handle are sticky under the bar. The preview never squeezes the editor below 22rem.
-- **Compose, stacked (860px and below):** a centred column up to 48rem; Edit and Preview become tabs pinned under the bar; the forward action moves to a fixed bottom bar with the embed-text count. Width presets stay available on tablets; on phones (640px and below) the preview runs edge to edge and the presets step aside.
-- **Send:** view head plus the catalogue (see Components). The baseline shows the empty catalogue state only.
+- **Bar:** a 3.75rem sticky top bar: brand left, the Compose/Send segmented control centred, the bot status, Shortcuts and the theme switch right. All of them stay at every width; below 1100px Shortcuts shrinks to its `?` cap, below 860px the theme switch drops its visible label, and on phones the bot status shrinks to its avatar (see Components).
+- **Breakpoints:** desktop above 1100px, tablet 701–1100px, stacked 700px and below, phone 640px and below.
+- **Compose, desktop:** `minmax(22rem, 1fr)` editor, a 2.75rem resize handle, and the preview column at the operator's chosen width (`--preview-w`, 320–760px, default Desktop 640px). The preview column and handle are sticky under the bar. The preview never squeezes the editor below 22rem.
+- **Compose, tablet:** the same three columns with 16px page gutters, so a 768px tablet keeps the editor (22rem) and a preview of about 340px side by side, and the handle can trade width between them. A preset wider than the room left keeps its pressed state and takes what room there is; the readout shows the real width. The preview scrolls with the page instead of sticking, since at this width it is often taller than the screen.
+- **Compose, stacked (700px and below):** one column; an Edit/Preview toggle pins under the bar; the forward action moves to a fixed bottom bar with the embed-text count. On phones (640px and below) the preview runs edge to edge and the width presets step aside.
+- **Send:** view head plus the catalogue (see Components). The baseline's empty state is a short statement, so the view is capped at 56rem and centred.
 - **Spacing:** 4 / 8 / 12 / 16 / 24 / 32 / 48 (`--space-1` to `--space-7`). More space above a heading than below it; sections pad 24px (16px on phones).
 - Tap targets are at least 2.75rem everywhere; no horizontal scrolling at 360, 768 or 1280px.
 
@@ -268,7 +274,7 @@ Gently rounded, in four steps: 4px for tags, key caps and label holders; 6px for
 
 ### Segmented control
 
-A rounded track on the desk colour with one sliding thumb (sheet colour, shadow-1, hairline). Used for the views nav (links with `aria-current`), Edit/Preview (tabs) and width presets (toggle buttons with `aria-pressed`). When nothing is active (a custom preview width) the thumb fades out.
+A rounded track on the desk colour with one sliding thumb (sheet colour, shadow-1, hairline). Used for the views nav (links with `aria-current`), and as a group of toggle buttons with `aria-pressed` for Edit/Preview and the width presets. When nothing is active (a custom preview width) the thumb fades out.
 
 ### Composer sheet
 
@@ -284,7 +290,7 @@ A 2.75rem column between editor and preview with a 1px rule and a grip. Hover, d
 
 ### Bot status
 
-In the bar: "● Bot **Name**" (avatar if the bot has one), "Connecting to Discord…" with a pulsing dot while loading, and "✗ Not connected" with **Retry** on failure. On stacked layouts only a failure shows, as a notice above the view.
+In the bar: "● Bot **Name**" (avatar if the bot has one), "Connecting to Discord…" with a pulsing dot while loading, and "✗ Not connected" with **Retry** on failure. On tablets the name is shortened with an ellipsis if needed. On phones it shrinks to the avatar, or the bot's initial on a teal disc, and the loading dot; the full text stays available to screen readers. On phones a failure moves out of the bar into a notice above the view with the full message and **Retry**.
 
 ### Key caps and shortcuts
 

@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "#e8a33d",
+        "createdAt": "2026-11-27T03:32:59.923Z",
+        "reason": "design review on PR 18 accepted documenting it as sample content; DESIGN.md > Colors > Sample content"
+      }
+    ]
+  }
+}

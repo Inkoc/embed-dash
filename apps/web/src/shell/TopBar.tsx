@@ -49,7 +49,7 @@ export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
           onClick={onShowShortcuts}
           aria-keyshortcuts="?"
         >
-          Shortcuts
+          <span className={styles.shortcutsLabel}>Shortcuts</span>
           <kbd data-k="help" aria-hidden="true">
             ?
           </kbd>

@@ -26,7 +26,7 @@
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
 }
-.paneTabs {
+.paneToggle {
   display: none;
 }
 
@@ -357,9 +357,17 @@
   display: none;
 }
 
+/*
+ * Tablet: editor and preview stay side by side with tighter gutters. The
+ * preview scrolls with the page here, because at this width it is often
+ * taller than the screen.
+ */
 @media (max-width: 1100px) {
   .compose {
-    padding: 0 var(--space-5) var(--space-7);
+    padding: 0 var(--space-4) var(--space-7);
+  }
+  .previewColumn {
+    position: static;
   }
   .fieldRow {
     grid-template-columns: 2rem minmax(0, 1fr) auto;
@@ -370,11 +378,10 @@
   }
 }
 
-/* Stacked: Edit and Preview become tabs, and the forward action pins to the bottom. */
-@media (max-width: 860px) {
+/* Stacked: Edit and Preview become a toggle, and the forward action pins to the bottom. */
+@media (max-width: 700px) {
   .compose {
     grid-template-columns: minmax(0, 1fr);
-    max-width: 48rem;
     padding-bottom: calc(var(--tap) + var(--space-7) + var(--space-5));
   }
   .handle,
@@ -384,7 +391,7 @@
   .head {
     padding: var(--space-5) var(--space-1) var(--space-4);
   }
-  .paneTabs {
+  .paneToggle {
     position: sticky;
     top: calc(var(--bar-height) + var(--space-2));
     z-index: 5;

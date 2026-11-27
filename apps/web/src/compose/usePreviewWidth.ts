@@ -28,8 +28,24 @@ interface Measured {
   editor: number;
 }
 
-/** Below this width the editor and preview stack; keep in step with the CSS. */
-export const stackedQuery = "(max-width: 860px)";
+/** At and below this width the editor and preview stack; keep in step with the CSS. */
+export const stackedQuery = "(max-width: 700px)";
+
+/**
+ * The widest the preview may be. Side by side it can take whatever the editor
+ * has above its minimum; stacked, it can fill its column.
+ */
+export function previewMax(
+  measured: Pick<Measured, "column" | "editor"> | null,
+  stacked: boolean,
+) {
+  const room = !measured?.column
+    ? maxPreviewWidth
+    : stacked
+      ? measured.column
+      : measured.column + Math.max(0, measured.editor - editorMin);
+  return clamp(room, minPreviewWidth, maxPreviewWidth);
+}
 
 export function usePreviewWidth(refs: {
   frame: RefObject<HTMLElement | null>;
@@ -57,14 +73,7 @@ export function usePreviewWidth(refs: {
     return () => observer.disconnect();
   }, [frame, column, editor]);
 
-  // Side by side, the preview can take whatever the editor has above its
-  // minimum; stacked, it can fill its column.
-  const room = !measured?.column
-    ? maxPreviewWidth
-    : matchMedia(stackedQuery).matches
-      ? measured.column
-      : measured.column + Math.max(0, measured.editor - editorMin);
-  const max = clamp(room, minPreviewWidth, maxPreviewWidth);
+  const max = previewMax(measured, matchMedia(stackedQuery).matches);
   const actual = measured?.frame || Math.min(requested, max);
   const set = (width: number) =>
     setRequested(clamp(Math.round(width), minPreviewWidth, max));

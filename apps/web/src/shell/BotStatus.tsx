@@ -3,8 +3,9 @@ import { botErrorMessage, useBot } from "../bot";
 import styles from "./BotStatus.module.css";
 
 /**
- * The connected bot. In the bar it is a compact line; on narrow screens, where
- * the bar has no room, only a failure is shown, as a notice above the view.
+ * The connected bot. In the bar it is a line with the bot's name, shortened on
+ * tablets and reduced to its avatar on phones. On phones a failure moves out
+ * of the bar into a notice above the view, where the full message fits.
  */
 export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
   const bot = useBot();
@@ -12,7 +13,7 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
     return variant === "bar" ? (
       <p className={styles.bar} data-state="loading" role="status">
         <span className={styles.dot} aria-hidden="true" />
-        Connecting to Discord…
+        <span className={styles.label}>Connecting to Discord…</span>
       </p>
     ) : null;
   if (bot.isError)
@@ -46,9 +47,14 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
       {bot.data.avatarUrl ? (
         <img src={bot.data.avatarUrl} alt="" width="20" height="20" />
       ) : (
-        <span className={styles.dot} aria-hidden="true" />
+        <>
+          <span className={styles.dot} aria-hidden="true" />
+          <span className={styles.initial} aria-hidden="true">
+            {bot.data.name.slice(0, 1).toUpperCase()}
+          </span>
+        </>
       )}
-      <span>
+      <span className={styles.label}>
         Bot <b>{bot.data.name}</b>
       </span>
     </p>

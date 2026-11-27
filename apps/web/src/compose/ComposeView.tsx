@@ -119,18 +119,17 @@ export function ComposeView({ theme }: { theme: Theme }) {
 
         <Segmented
           activeKey={pane}
-          role="tablist"
-          aria-label="Composer panes"
-          className={styles.paneTabs}
+          role="group"
+          aria-label="Show"
+          className={styles.paneToggle}
         >
           {(["edit", "preview"] as const).map((name) => (
             <button
               key={name}
               type="button"
-              role="tab"
               id={`pane-${name}`}
               className={segmentedItem}
-              aria-selected={pane === name}
+              aria-pressed={pane === name}
               aria-controls={name === "edit" ? "editor" : "preview"}
               data-active={pane === name || undefined}
               onClick={() => setPane(name)}

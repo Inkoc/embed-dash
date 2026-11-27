@@ -23,7 +23,8 @@ export interface Draft {
 /**
  * The composer opens on an illustrative announcement for an invented game
  * community, so every part of the preview is visible before the operator types.
- * Its images are generated art bundled with the app.
+ * Its images are generated art bundled with the app, and its side colour is
+ * the example's own brand colour: user content, not part of the app palette.
  */
 export const exampleDraft: Draft = {
   content: "Patch 0.9.4 lands on Thursday. Everything you need is below.",

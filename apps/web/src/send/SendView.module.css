@@ -1,5 +1,6 @@
+/* The empty state is one short statement, so the view is capped and centred. */
 .send {
-  max-width: var(--content-max);
+  max-width: 56rem;
   margin: 0 auto;
   padding: 0 var(--space-6) var(--space-7);
 }
@@ -30,7 +31,6 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-5) var(--space-6);
-  max-width: 52rem;
   padding: var(--space-6);
   border: var(--rule-width) solid var(--rule);
   border-radius: var(--radius-lg);
@@ -130,9 +130,6 @@
   }
 }
 @media (max-width: 860px) {
-  .send {
-    max-width: 48rem;
-  }
   .head {
     padding: var(--space-5) var(--space-1) var(--space-4);
   }
