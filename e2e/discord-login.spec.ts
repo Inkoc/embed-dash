@@ -9,7 +9,8 @@ test("an approved Discord account signs in, shows in the bar and signs out", asy
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.setViewportSize({ width: 1280, height: 900 });
+  // Wide enough for the name badge, which narrower bars fold into Sign out.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
   const signIn = page.getByRole("link", { name: "Sign in with Discord" });

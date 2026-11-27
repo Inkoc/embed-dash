@@ -242,7 +242,7 @@ All text pairs reach 4.5:1 and all control borders and focus rings 3:1 in both t
 
 ## Layout
 
-- **Bar:** a 3.75rem sticky top bar: brand left, the Compose/Send segmented control centred, the bot status, Shortcuts and the theme switch right. All of them stay at every width; below 1100px Shortcuts shrinks to its `?` cap, below 860px the theme switch drops its visible label, and on phones the bot status shrinks to its avatar (see Components).
+- **Bar:** a 3.75rem sticky top bar: brand left, the Compose/Send segmented control centred, the bot status, Shortcuts, Sign out and the theme switch right, always on one line. All of them stay at every width; the right cluster sheds words before the bot's name shortens: below 1400px Shortcuts shrinks to its `?` cap and the signed-in name badge goes (Sign out carries the name in its label and title), below 1100px Sign out and the theme switch keep only their icons, and on phones the bot status shrinks to its avatar or initial (see Components). The bot's name is the only part that gives way, with an ellipsis, and never wraps.
 - **Breakpoints:** desktop above 1100px, tablet 701–1100px, stacked 700px and below, phone 640px and below.
 - **Compose, desktop:** `minmax(22rem, 1fr)` editor, a 2.75rem resize handle, and the preview column at the operator's chosen width (`--preview-w`, 320–760px, default Desktop 640px). The preview column and handle are sticky under the bar. The preview never squeezes the editor below 22rem.
 - **Compose, tablet:** the same three columns with 16px page gutters, so a 768px tablet keeps the editor (22rem) and a preview of about 340px side by side, and the handle can trade width between them. A preset wider than the room left keeps its pressed state and takes what room there is; the readout shows the real width. The preview scrolls with the page instead of sticking, since at this width it is often taller than the screen.
@@ -386,4 +386,4 @@ All motion uses `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) for arrivals; `--
 - **Don't** bind shortcuts the browser or screen readers reserve, such as Alt+number.
 - **Don't** use Discord's logo, proprietary font or chrome outside the preview.
 
-The login uses a wider index sheet, hairline rules, and the instance address as a mono identifier. Sign out sits in the header beside the shared sun/moon theme switch.
+The login uses a wider index sheet, hairline rules, and the instance address as a mono identifier. The sheet is centred vertically with a little more room below than above, so on tall screens it sits just above the middle; the brand and theme switch come before it in both reading and tab order. A heading that script focuses (the not-allowed explanation) draws no focus ring, since it is not a control. Sign out sits in the header beside the shared sun/moon theme switch.
