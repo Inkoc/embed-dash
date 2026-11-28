@@ -131,14 +131,19 @@ export function describeFailure(
     (status >= 500 && !fromApp
       ? "embed-dash didn’t answer. It may be offline or restarting; check that it’s running, then retry."
       : byStatus(action, status));
+  // Sign-in's server wording only restates the message above it, so its
+  // Details keep to the status and code.
+  const signIn = action === "sign-in";
   const detail = [
     `HTTP ${status}`,
     code,
-    said
-      ? `Server said: “${said}”`
-      : fromApp
-        ? null
-        : "Not an answer from the app",
+    signIn
+      ? null
+      : said
+        ? `Server said: “${said}”`
+        : fromApp
+          ? null
+          : "Not an answer from the app",
   ]
     .filter(Boolean)
     .join(" · ");

@@ -307,6 +307,10 @@
   .tray:not([data-open]) .note:not([data-reason]) {
     display: none;
   }
+  /* the count of what happened (or why Send waits) reads before the buttons that act on it */
+  .tray > [data-controls] {
+    order: 1;
+  }
   /* nothing ticked: a slim bar, so the list isn't covered for nothing */
   .tray[data-empty] {
     padding-block: var(--space-2)
