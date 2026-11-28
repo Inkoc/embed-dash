@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  embedHasContent,
   emptyEmbed,
   messageDraftSchema,
   validateMessage,
@@ -59,11 +60,35 @@ const withoutId = <T extends { id: string }>(value: T): Omit<T, "id"> => {
   return copy as Omit<T, "id">;
 };
 
-/** The message without the editor's row ids, as the server takes it. */
+/*
+ * Embeds just added and not written in yet. Every edit replaces an embed's
+ * object, so holding the very objects Add embed made is enough to tell; the
+ * stored draft records them too, so a reload keeps them apart.
+ */
+const unwritten = new WeakSet<Embed>();
+
+/** A blank embed for Add embed: not a problem, and not shown in the preview, until something is written in it. */
+export const addedEmbed = (): Embed => {
+  const embed = blankEmbed();
+  unwritten.add(embed);
+  return embed;
+};
+export const isUnwritten = (embed: Embed) => unwritten.has(embed);
+/** The draft as it would be sent: what the preview and summaries show. */
+export const written = (draft: Draft): Draft =>
+  draft.embeds.some(isUnwritten)
+    ? { ...draft, embeds: draft.embeds.filter((embed) => !isUnwritten(embed)) }
+    : draft;
+
+/**
+ * The message without the editor's row ids, as the server takes it. An empty
+ * embed is never part of it, however it came about: it would only be refused
+ * when sent, and is nothing to keep in a template or an export.
+ */
 export const toMessage = (draft: Draft): MessageDraft => ({
   content: draft.content,
   attachments: draft.attachments,
-  embeds: draft.embeds.map((embed) => ({
+  embeds: draft.embeds.filter(embedHasContent).map((embed) => ({
     ...withoutId(embed),
     fields: embed.fields.map(withoutId),
   })),
@@ -119,8 +144,8 @@ export function exampleDraft(): Draft {
 export const isBlank = (draft: Draft) =>
   !draft.content.trim() &&
   draft.attachments.length === 0 &&
-  draft.embeds.length <= 1 &&
-  draft.embeds.every(
+  written(draft).embeds.length <= 1 &&
+  written(draft).embeds.every(
     (embed) =>
       embed.fields.length === 0 &&
       [
@@ -144,8 +169,17 @@ export function loadDraft(): Draft {
   try {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      const parsed = messageDraftSchema.safeParse(JSON.parse(stored));
-      if (parsed.success) return withIds(parsed.data);
+      const raw: unknown = JSON.parse(stored);
+      const parsed = messageDraftSchema.safeParse(raw);
+      if (parsed.success) {
+        const draft = withIds(parsed.data);
+        const marked = (raw as { unwritten?: unknown }).unwritten;
+        if (Array.isArray(marked))
+          for (const index of marked)
+            if (typeof index === "number" && draft.embeds[index])
+              unwritten.add(draft.embeds[index]);
+        return draft;
+      }
     }
   } catch {
     // Unreadable storage or JSON: start blank.
@@ -168,7 +202,13 @@ const lastSave = () => lastSaveWorked;
 function saveDraft(draft: Draft) {
   let worked = true;
   try {
-    localStorage.setItem(storageKey, JSON.stringify(draft));
+    const marked = draft.embeds.flatMap((embed, index) =>
+      isUnwritten(embed) ? [index] : [],
+    );
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(marked.length ? { ...draft, unwritten: marked } : draft),
+    );
   } catch {
     // Full, blocked or unserialisable: the draft stays in memory and the composer says so.
     worked = false;
@@ -308,6 +348,13 @@ function inEmbed(
   }
 }
 
+/** An untouched added embed answers for nothing; its parts have only defaults to check. */
+const unwrittenEmbedIssue = (draft: Draft, issue: Issue) => {
+  const match = /^embeds\.(\d+)(\.|$)/.exec(issue.path);
+  const embed = match && draft.embeds[Number(match[1])];
+  return !!embed && isUnwritten(embed);
+};
+
 interface DraftContextValue {
   editing: HistoryDetail | null;
   beginEdit: (send: HistoryDetail) => void;
@@ -369,7 +416,10 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       .map((file) => file.id),
   );
   const issues = useMemo(
-    () => validateMessage(draft, { missingFiles: missing }),
+    () =>
+      validateMessage(draft, { missingFiles: missing }).filter(
+        (issue) => !unwrittenEmbedIssue(draft, issue),
+      ),
     [draft, missing],
   );
 

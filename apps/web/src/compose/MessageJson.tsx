@@ -11,7 +11,7 @@ import {
   importMessageJson,
   type JsonImportResult,
 } from "@embed-dash/shared";
-import { isBlank, toMessage, useDraft, withIds } from "./draft";
+import { isBlank, toMessage, useDraft, withIds, type Draft } from "./draft";
 import { useEditorState } from "./editorState";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import dialogStyles from "../ui/ConfirmDialog.module.css";
@@ -23,10 +23,16 @@ import styles from "./MessageJson.module.css";
 /** The one status line that is progress rather than an outcome, so it carries no tick. */
 const reading = "Reading file…";
 
+/** An import's outcome, with the draft it produced, so the note can go once that draft changes. */
+export interface Imported {
+  notices: string[];
+  draft: Draft;
+}
+
 export function MessageJson({
   onImported,
 }: {
-  onImported: (notices: string[]) => void;
+  onImported: (imported: Imported) => void;
 }) {
   const { draft, replace } = useDraft();
   const { reset, setPane, focusAfter } = useEditorState();
@@ -71,8 +77,9 @@ export function MessageJson({
     focusAfter("json-result", () => {
       reset();
       setPane("edit");
-      replace(withIds(result.message));
-      onImported(result.notices);
+      const imported = withIds(result.message);
+      replace(imported);
+      onImported({ notices: result.notices, draft: imported });
       setPending(null);
       close();
     });

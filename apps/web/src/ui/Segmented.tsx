@@ -30,29 +30,58 @@ export function Segmented({ activeKey, children, className, ...aria }: Props) {
       thumbEl.style.setProperty("--thumb-x", `${active.offsetLeft}px`);
       thumbEl.style.setProperty("--thumb-w", `${active.offsetWidth}px`);
     };
-    place();
-    requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));
-    if (typeof ResizeObserver === "undefined") return;
-    // A resize (the bar reflowing onto two rows, even before first paint)
-    // moves the thumb with its item at once; only choosing another item slides
-    // it. The observer also reports once on observe, which must not cut short
-    // a slide that has just started, so a thumb already under its item stays.
-    const observer = new ResizeObserver(() => {
-      const active = trackEl.querySelector<HTMLElement>("[data-active]");
-      if (
-        active &&
-        thumbEl.style.getPropertyValue("--thumb-x") ===
-          `${active.offsetLeft}px` &&
-        thumbEl.style.getPropertyValue("--thumb-w") ===
-          `${active.offsetWidth}px`
-      )
-        return;
+    // Moves the thumb with its item at once; only choosing another item slides it.
+    const jump = () => {
       delete thumbEl.dataset.ready;
       place();
       requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));
+    };
+    // A thumb already under its item stays, so a slide that has just started
+    // isn't cut short.
+    const follow = () => {
+      const active = trackEl.querySelector<HTMLElement>("[data-active]");
+      if (
+        active &&
+        (thumbEl.style.getPropertyValue("--thumb-x") !==
+          `${active.offsetLeft}px` ||
+          thumbEl.style.getPropertyValue("--thumb-w") !==
+            `${active.offsetWidth}px`)
+      )
+        jump();
+    };
+    place();
+    const frame = requestAnimationFrame(() => {
+      thumbEl.dataset.ready = "true";
+      // Without an observer, measure again once the parent's layout effects
+      // have run: the top bar may stack its views onto a second row before
+      // the first paint.
+      if (typeof ResizeObserver === "undefined") follow();
     });
+    if (typeof ResizeObserver === "undefined") {
+      // A resize refits the top bar in the next frame, so the thumb measures
+      // in the frame after that, once the items are where they end up.
+      let later = 0;
+      const resized = () => {
+        cancelAnimationFrame(later);
+        later = requestAnimationFrame(
+          () => (later = requestAnimationFrame(follow)),
+        );
+      };
+      addEventListener("resize", resized);
+      return () => {
+        cancelAnimationFrame(frame);
+        cancelAnimationFrame(later);
+        removeEventListener("resize", resized);
+      };
+    }
+    // A resize (the bar reflowing onto two rows, even before first paint)
+    // moves the thumb with its item; the observer also reports once on observe.
+    const observer = new ResizeObserver(follow);
     observer.observe(trackEl);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [activeKey]);
 
   return (

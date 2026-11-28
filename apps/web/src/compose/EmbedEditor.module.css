@@ -21,6 +21,12 @@
   min-height: var(--tap);
   margin-top: calc(var(--space-2) * -1);
 }
+/* an embed just added: says why the preview doesn't show it yet */
+.unwritten {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
 .head h3 {
   font-size: var(--text-section);
   font-weight: var(--weight-section);
@@ -287,6 +293,16 @@
   align-items: center;
   gap: 0 var(--space-3);
 }
+/* the problem's own fix: link-coloured and underlined, so on a phone, where it wraps under the problem, it still reads as the way out */
+.emptyProblem .quiet {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.emptyProblem .quiet:hover:not(:disabled) {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
 .quiet {
   display: inline-flex;
   align-items: center;
@@ -343,7 +359,8 @@
   margin-left: auto;
 }
 
-@media (max-width: 1100px) {
+/* in em, like the composer's tablet breakpoint */
+@media (max-width: 68.75em) {
   .fieldHead {
     grid-template-columns: 2rem minmax(0, 1fr) auto auto;
   }

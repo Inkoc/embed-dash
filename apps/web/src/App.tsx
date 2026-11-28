@@ -8,7 +8,7 @@ import {
 } from "react-router";
 import { EditPanel, EditGuard, EditProvider } from "./compose/EditPanel";
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
-import { DraftProvider, useDraft } from "./compose/draft";
+import { DraftProvider, isBlank, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
 import { SelectionProvider } from "./send/selection";
 import { SendingProvider } from "./send/sending";
@@ -60,8 +60,9 @@ function Shell() {
   const view = viewFor(location.pathname);
   const { theme, toggle } = useTheme();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const { issues, editing } = useDraft();
-  const { reveal } = useEditorState();
+  const { draft, issues, editing } = useDraft();
+  const { reveal, nudge } = useEditorState();
+  const blank = !editing && isBlank(draft);
   const firstIssue = issues[0]?.path;
 
   // The incoming view slides in from the side of its tab. Nothing waits for the
@@ -96,7 +97,8 @@ function Shell() {
         event.preventDefault();
         pressKey("forward");
         // A draft Discord would reject doesn't go forward; the shortcut shows the first problem instead.
-        if (firstIssue) reveal(firstIssue);
+        if (blank) nudge();
+        else if (firstIssue) reveal(firstIssue);
         else if (editing) {
           const button = Array.from(
             document.querySelectorAll<HTMLButtonElement>("[data-edit-save]"),
@@ -136,6 +138,8 @@ function Shell() {
     navigate,
     firstIssue,
     reveal,
+    blank,
+    nudge,
     location.pathname,
     location.search,
     editing,
@@ -158,12 +162,15 @@ function Shell() {
         <main id="main">
           <h1 className="visually-hidden">embed-dash</h1>
           <BotStatus variant="notice" />
-          {editing && (view === "compose" || view === "send") && <EditPanel />}
           <div
             key={view}
             className={styles.view}
             data-direction={arrival.view === view ? arrival.direction : "none"}
           >
+            {/* Inside the arriving view, so the panel and the composer under it arrive as one. */}
+            {editing && (view === "compose" || view === "send") && (
+              <EditPanel />
+            )}
             <Routes>
               <Route path="/" element={<ComposeView theme={theme} />} />
               <Route
@@ -171,17 +178,9 @@ function Shell() {
                 element={editing ? <Navigate to="/" replace /> : <SendView />}
               />
               <Route
-                path="/history"
+                path="/history/:id?"
                 element={
-                  <Suspense fallback={<p role="status">Loading history…</p>}>
-                    <HistoryView theme={theme} />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/history/:id"
-                element={
-                  <Suspense fallback={<p role="status">Loading history…</p>}>
+                  <Suspense fallback={<HistoryLoading />}>
                     <HistoryView theme={theme} />
                   </Suspense>
                 }
@@ -198,5 +197,28 @@ function Shell() {
         onClose={() => setShowShortcuts(false)}
       />
     </>
+  );
+}
+
+/** The History screen's shape while its code loads: a head, the filters and a few rows, still. */
+function HistoryLoading() {
+  return (
+    <div className={styles.loading} aria-busy="true">
+      <p className="visually-hidden" role="status">
+        Loading history…
+      </p>
+      <div aria-hidden="true">
+        <span className={styles.skel} data-w="title" />
+        <span className={styles.skel} data-w="filters" />
+        <div className={styles.skelSheet}>
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className={styles.skelRow}>
+              <span className={styles.skel} data-w="name" />
+              <span className={styles.skel} data-w="meta" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { SendResult, SendTarget } from "@embed-dash/shared";
-import type { Draft } from "../compose/draft";
+import { written, type Draft } from "../compose/draft";
 
 export const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
@@ -10,7 +10,7 @@ const excerpt = (text: string, max = 80) => {
 };
 
 /** What the operator is about to post, in a line they can recognise it by. */
-export function messageSummary(draft: Draft): {
+export function messageSummary(composed: Draft): {
   headline: string;
   parts: string;
   /** The first embed's side colour, so the summary can be told apart at a glance. */
@@ -19,6 +19,7 @@ export function messageSummary(draft: Draft): {
   embeds: number;
   files: number;
 } {
+  const draft = written(composed);
   const first = draft.embeds.find((embed) => embed.title.trim());
   const headline =
     (first && excerpt(first.title)) ||

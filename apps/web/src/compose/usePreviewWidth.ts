@@ -29,7 +29,7 @@ interface Measured {
 }
 
 /** At and below this width the editor and preview stack; keep in step with the CSS. */
-export const stackedQuery = "(max-width: 700px)";
+export const stackedQuery = "(max-width: 47em)";
 
 /**
  * The widest the preview may be. Side by side it can take whatever the editor

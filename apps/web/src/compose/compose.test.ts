@@ -2,8 +2,13 @@ import { describe, expect, test } from "vitest";
 import { embedTime } from "../preview/DiscordPreview";
 import {
   addEmbed,
+  addedEmbed,
   addField,
   blankDraft,
+  isBlank,
+  toMessage,
+  updateEmbed,
+  written,
   copyOf,
   duplicateEmbed,
   locate,
@@ -267,5 +272,43 @@ describe("embed details", () => {
     expect(
       embedTime(new Date(2026, 0, 2, 9, 5).toISOString(), "x", now),
     ).not.toMatch(/Today/);
+  });
+});
+
+describe("embeds added and not written in yet", () => {
+  test("are left out of the message until edited, wherever they move", () => {
+    const base = withIds({
+      content: "Hello",
+      attachments: [],
+      embeds: [],
+    });
+    const added = addedEmbed();
+    const draft = addEmbed(base, added);
+    expect(toMessage(draft).embeds).toHaveLength(0);
+    expect(written(draft).embeds).toHaveLength(0);
+    expect(written(base)).toBe(base);
+    const edited = updateEmbed(draft, added.id, () => ({ title: "" }));
+    // An edit replaces the embed, even one that leaves it empty again: it is
+    // shown from then on, but an empty embed is still never in the message.
+    expect(written(edited).embeds).toHaveLength(1);
+    expect(toMessage(edited).embeds).toHaveLength(0);
+    const titled = updateEmbed(draft, added.id, () => ({ title: "Hi" }));
+    expect(toMessage(titled).embeds).toHaveLength(1);
+  });
+
+  test("an empty embed is never in the message, however it came about", () => {
+    const draft = withIds({
+      content: "Hello",
+      attachments: [],
+      embeds: [{ ...blankDraft().embeds[0]!, color: "#123456" }],
+    });
+    expect(toMessage(draft).embeds).toHaveLength(0);
+  });
+
+  test("leave a draft blank if nothing else is in it", () => {
+    const draft = addEmbed(blankDraft(), addedEmbed());
+    expect(draft.embeds).toHaveLength(2);
+    expect(isBlank(draft)).toBe(true);
+    expect(isBlank({ ...draft, content: "x" })).toBe(false);
   });
 });

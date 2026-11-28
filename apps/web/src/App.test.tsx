@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -236,4 +237,21 @@ test("the composer keeps its elements and focus when the session check settles a
   ).toBe("rotated");
   expect(screen.getByRole("button", { name: "Choose files" })).toBe(choose);
   expect(document.activeElement).toBe(choose);
+});
+
+test("History loads behind a skeleton, at its list and its detail addresses", async () => {
+  vi.stubGlobal("fetch", () => new Promise(() => {}));
+  renderApp("/history/send-1");
+  const loading = screen.getByText("Loading history…");
+  expect(loading.getAttribute("role")).toBe("status");
+  expect(loading.closest("[aria-busy='true']")).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Compose" })).toBeNull();
+  await waitFor(() =>
+    expect(document.querySelector("[aria-busy='true']")).toBeNull(),
+  );
+  expect(screen.queryByRole("heading", { name: "Compose" })).toBeNull();
+  cleanup();
+  renderApp("/history");
+  await screen.findByRole("heading", { name: "History" });
+  expect(screen.queryByRole("heading", { name: "Compose" })).toBeNull();
 });

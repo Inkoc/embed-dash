@@ -7,6 +7,7 @@ import {
   channelPermissions,
   countedLength,
   discordLimits,
+  embedHasContent,
   embedTextLength,
   emptyEmbed,
   guildsResponseSchema,
@@ -664,4 +665,24 @@ test("describes the signed-in user", () => {
   expect(sessionUserSchema.safeParse({ ...user, id: "ada" }).success).toBe(
     false,
   );
+});
+
+test("an embed has content once any part Discord shows is filled in", () => {
+  expect(embedHasContent(emptyEmbed())).toBe(false);
+  // A side colour, a link or a time alone shows nothing.
+  expect(
+    embedHasContent({
+      ...emptyEmbed(),
+      color: "#123456",
+      url: "https://example.com",
+      timestamp: "now",
+    }),
+  ).toBe(false);
+  expect(embedHasContent({ ...emptyEmbed(), title: "Hi" })).toBe(true);
+  expect(
+    embedHasContent({
+      ...emptyEmbed(),
+      fields: [{ name: "", value: "", inline: false }],
+    }),
+  ).toBe(true);
 });
