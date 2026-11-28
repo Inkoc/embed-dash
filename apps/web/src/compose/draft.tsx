@@ -397,6 +397,7 @@ interface DraftContextValue {
   endEdit: () => void;
   markEdited: (message: MessageDraft) => void;
   dirty: boolean;
+  setScheduleDirty: (dirty: boolean) => void;
   draft: Draft;
   setDraft: (change: (draft: Draft) => Draft) => void;
   issues: Issue[];
@@ -420,6 +421,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const latest = useRef(0);
 
   const [editing, setEditing] = useState<HistoryDetail | null>(null);
+  const [scheduleDirty, setScheduleDirty] = useState(false);
   const [baseline, setBaseline] = useState("");
   const previousDraft = useRef<Draft | null>(null);
   const beginEdit = useCallback(
@@ -427,6 +429,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       previousDraft.current = draft;
       latest.current += 1;
       setGeneration(latest.current);
+      setScheduleDirty(false);
       setEditing(send);
       setBaseline(JSON.stringify(toMessage(withIds(send.payload))));
       setDraft(withIds(send.payload));
@@ -436,6 +439,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   const endEdit = useCallback(() => {
     latest.current += 1;
     setGeneration(latest.current);
+    setScheduleDirty(false);
     setEditing(null);
     setDraft(previousDraft.current ?? blankDraft());
   }, []);
@@ -444,7 +448,9 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       setBaseline(JSON.stringify(toMessage(withIds(message)))),
     [],
   );
-  const dirty = !!editing && JSON.stringify(toMessage(draft)) !== baseline;
+  const dirty =
+    !!editing &&
+    (scheduleDirty || JSON.stringify(toMessage(draft)) !== baseline);
   const saved = useSyncExternalStore(subscribeToSaves, lastSave);
   const missing = useMissingUploads(
     draft.attachments
@@ -498,6 +504,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       endEdit,
       markEdited,
       dirty,
+      setScheduleDirty,
     }),
     [
       draft,

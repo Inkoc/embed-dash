@@ -216,7 +216,7 @@ export function Buttons() {
                       : button.emoji.name
                     : ""
                 }
-                placeholder="🔗 or <:name:123456789012345678>"
+                placeholder="🔗 or <:name:id>"
                 onChange={(value) => {
                   const custom = /^<(a?):([^:]+):(\d+)>$/.exec(value);
                   changeButton(row.key, button.key, {

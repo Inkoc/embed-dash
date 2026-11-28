@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Link, useParams, useSearchParams, useNavigate } from "react-router";
@@ -41,6 +42,8 @@ import styles from "./HistoryView.module.css";
 const returnRows = new Map<string, string>();
 
 const statusLabel = {
+  scheduled: "Scheduled",
+  cancelled: "Cancelled",
   done: "All sent",
   partial: "Partial",
   failed: "Failed",
@@ -446,8 +449,19 @@ export function HistoryList() {
                           </span>
                         )}
                       </strong>
-                      <time dateTime={new Date(entry.createdAt).toISOString()}>
-                        {date(entry.createdAt)}
+                      <time
+                        dateTime={new Date(
+                          entry.status === "scheduled"
+                            ? (entry.scheduledAt ?? entry.createdAt)
+                            : entry.createdAt,
+                        ).toISOString()}
+                      >
+                        {entry.status === "scheduled" && "Due "}
+                        {date(
+                          entry.status === "scheduled"
+                            ? (entry.scheduledAt ?? entry.createdAt)
+                            : entry.createdAt,
+                        )}
                       </time>
                       <span>
                         {entry.channelCount}{" "}
@@ -457,15 +471,19 @@ export function HistoryList() {
                         <Verdict
                           reveal={false}
                           state={
-                            entry.unconfirmed
-                              ? "unknown"
-                              : entry.status === "done"
-                                ? "sent"
-                                : entry.status === "sending"
-                                  ? "posting"
-                                  : entry.status === "partial"
-                                    ? "partial"
-                                    : "failed"
+                            entry.status === "scheduled"
+                              ? "scheduled"
+                              : entry.status === "cancelled"
+                                ? "cancelled"
+                                : entry.unconfirmed
+                                  ? "unknown"
+                                  : entry.status === "done"
+                                    ? "sent"
+                                    : entry.status === "sending"
+                                      ? "posting"
+                                      : entry.status === "partial"
+                                        ? "partial"
+                                        : "failed"
                           }
                           label={
                             entry.unconfirmed
@@ -513,6 +531,9 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const arrived = useRef(false);
   const retryFocus = useRef<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const cancelTrigger = useRef<HTMLButtonElement>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [retryProblem, setRetryProblem] = useState<AppError | null>(null);
   const query = useQuery({
@@ -523,10 +544,14 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       ),
     retry: false,
     refetchInterval: (query) =>
-      query.state.data?.status === "sending" ||
-      query.state.data?.edit?.status === "sending"
-        ? 1000
-        : false,
+      query.state.data?.status === "scheduled"
+        ? (query.state.data.scheduledAt ?? 0) - Date.now() > 60000
+          ? 30000
+          : 1000
+        : query.state.data?.status === "sending" ||
+            query.state.data?.edit?.status === "sending"
+          ? 1000
+          : false,
   });
   useEffect(() => {
     if (query.data && !arrived.current) {
@@ -559,6 +584,10 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       setRetrying(false);
     }
   }
+  const previewTime =
+    query.data?.status === "scheduled"
+      ? (query.data.scheduledAt ?? query.data.createdAt)
+      : query.data?.createdAt;
   const draft = useMemo(
     () => (query.data ? withIds(query.data.payload) : null),
     [query.data],
@@ -570,6 +599,9 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
           <h2 ref={heading} tabIndex={-1}>
             {query.data ? messageTitle(query.data.payload) : "Send details"}
           </h2>
+          {query.data?.status === "scheduled" && query.data.scheduledAt && (
+            <p>Due {date(query.data.scheduledAt)}</p>
+          )}
           {query.data?.lastEditedAt && (
             <p>Last edited {date(query.data.lastEditedAt)}</p>
           )}
@@ -586,15 +618,17 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
               className={styles.edit}
               disabled={
                 query.data.status === "sending" ||
+                query.data.status === "cancelled" ||
                 query.data.edit?.status === "sending" ||
-                !query.data.targets.some(
-                  (t) =>
-                    t.messageId &&
-                    !query.data.edit?.targets.some(
-                      (e) =>
-                        e.id === t.id && e.error?.code === "MESSAGE_DELETED",
-                    ),
-                )
+                (query.data.status !== "scheduled" &&
+                  !query.data.targets.some(
+                    (t) =>
+                      t.messageId &&
+                      !query.data.edit?.targets.some(
+                        (e) =>
+                          e.id === t.id && e.error?.code === "MESSAGE_DELETED",
+                      ),
+                  ))
               }
               aria-describedby="edit-availability"
               onClick={() => {
@@ -604,23 +638,89 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
             >
               Edit
             </button>
-            <p id="edit-availability">
-              {query.data.status === "sending" ||
-              query.data.edit?.status === "sending"
-                ? "Wait for the current delivery or update to finish."
-                : !query.data.targets.some((t) => t.messageId)
-                  ? "No confirmed copies to edit."
-                  : query.data.targets.every(
-                        (t) =>
-                          !t.messageId ||
-                          query.data.edit?.targets.some(
-                            (e) =>
-                              e.id === t.id &&
-                              e.error?.code === "MESSAGE_DELETED",
-                          ),
+            {query.data.status === "scheduled" && (
+              <>
+                <button
+                  ref={cancelTrigger}
+                  disabled={cancelling}
+                  onClick={() => setConfirmCancel(true)}
+                >
+                  Cancel scheduled send
+                </button>
+                <ConfirmDialog
+                  open={confirmCancel}
+                  tone="danger"
+                  title="Cancel this scheduled send?"
+                  confirmLabel="Cancel scheduled send"
+                  cancelLabel="Keep it"
+                  onCancel={() => {
+                    setConfirmCancel(false);
+                    requestAnimationFrame(() => cancelTrigger.current?.focus());
+                  }}
+                  onConfirm={() => {
+                    if (cancelling) return;
+                    setCancelling(true);
+                    void fetch(`/api/sends/${id}`, {
+                      method: "DELETE",
+                      headers: {
+                        "x-csrf-token":
+                          client.getQueryData<Session>(["session"])
+                            ?.csrfToken ?? "",
+                      },
+                    })
+                      .then(async (response) => {
+                        if (!response.ok)
+                          throw await failureFrom("schedule", response);
+                        await query.refetch();
+                        void client.invalidateQueries({
+                          queryKey: ["history"],
+                        });
+                      })
+                      .catch((error) =>
+                        setRetryProblem(asAppError("schedule", error)),
                       )
-                    ? "Every confirmed copy was deleted in Discord."
-                    : "Update the existing copies in their original channels."}
+                      .finally(() => {
+                        setCancelling(false);
+                        setConfirmCancel(false);
+                        requestAnimationFrame(() => {
+                          if (cancelTrigger.current)
+                            cancelTrigger.current.focus();
+                          else heading.current?.focus();
+                        });
+                      });
+                  }}
+                >
+                  <p>
+                    The message due{" "}
+                    <strong>
+                      {date(query.data.scheduledAt ?? query.data.createdAt)}
+                    </strong>{" "}
+                    will not be delivered.
+                  </p>
+                </ConfirmDialog>
+              </>
+            )}
+            <p id="edit-availability">
+              {query.data.status === "cancelled"
+                ? "Cancelled before delivery."
+                : query.data.status === "scheduled"
+                  ? "Edit the message, due time and destinations before delivery starts."
+                  : query.data.status === "sending" ||
+                      query.data.edit?.status === "sending"
+                    ? "Wait for the current delivery or update to finish."
+                    : !query.data.targets.some((t) => t.messageId)
+                      ? "No confirmed copies to edit."
+                      : query.data.targets.every(
+                            (t) =>
+                              !t.messageId ||
+                              query.data.edit?.targets.some(
+                                (e) =>
+                                  e.id === t.id &&
+                                  e.error?.code === "MESSAGE_DELETED",
+                              ),
+                          )
+                        ? "Every confirmed copy was deleted in Discord."
+                        : "Update the existing copies in their original channels."}
             </p>
           </div>
         )}
@@ -636,8 +736,8 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
               <div className={styles.sectionHead}>
                 <h3>Message preview</h3>
                 <span>Discord {theme}</span>
-                <time dateTime={new Date(query.data.createdAt).toISOString()}>
-                  {date(query.data.createdAt)}
+                <time dateTime={new Date(previewTime!).toISOString()}>
+                  {date(previewTime!)}
                 </time>
               </div>
               {query.data.edit?.targets.some((t) => t.status !== "sent") && (
@@ -652,7 +752,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   draft={draft}
                   bot={bot.data}
                   botPending={bot.isPending}
-                  time={date(query.data.createdAt)}
+                  time={date(previewTime!)}
                 />
               </div>
             </section>
@@ -691,7 +791,19 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         Delivery:{" "}
                         <Verdict
                           reveal={false}
-                          state={target.status}
+                          state={
+                            query.data.status === "scheduled" ||
+                            query.data.status === "cancelled"
+                              ? query.data.status
+                              : target.status
+                          }
+                          label={
+                            query.data.status === "scheduled"
+                              ? "Scheduled"
+                              : query.data.status === "cancelled"
+                                ? "Cancelled"
+                                : undefined
+                          }
                           index={0}
                         />
                       </p>

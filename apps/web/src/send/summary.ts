@@ -25,10 +25,10 @@ export function messageSummary(composed: Draft): {
   buttons: number;
 } {
   const draft = written(composed);
-  const buttons = completeButtonRows(draft.components).reduce(
-    (n, row) => n + row.components.length,
-    0,
+  const completeButtons = completeButtonRows(draft.components).flatMap(
+    (row) => row.components,
   );
+  const buttons = completeButtons.length;
   const first = draft.embeds.find((embed) => embed.title.trim());
   const headline =
     (first && excerpt(first.title)) ||
@@ -36,7 +36,10 @@ export function messageSummary(composed: Draft): {
     excerpt(
       draft.embeds.find((e) => e.description.trim())?.description ?? "",
     ) ||
-    (buttons ? plural(buttons, "button", "buttons") : "Untitled message");
+    excerpt(
+      completeButtons.find((button) => button.label.trim())?.label ?? "",
+    ) ||
+    (buttons ? "Linked resources" : "Untitled message");
   const parts = [
     draft.content.trim() ? "text" : null,
     draft.embeds.length ? plural(draft.embeds.length, "embed", "embeds") : null,

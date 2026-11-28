@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, truncateSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { emptyEmbed, type MessagePayload } from "@embed-dash/shared";
 import { fakeGuilds, startFakeDiscord } from "../../../e2e/fake-discord.js";
@@ -2047,3 +2047,554 @@ test("the fake Discord rejects malformed raw components independently", async ()
     { type: 1, components: [button] },
   ]);
 });
+
+test("scheduled sends survive restart, claim once, allow edits and cancellation, and release files", async () => {
+  const env = await setup();
+  const due = Date.now() + 60000;
+  const create = (
+    id: string,
+    attachments: MessagePayload["attachments"] = [],
+  ) =>
+    env.app.inject({
+      method: "POST",
+      url: "/api/sends",
+      headers: env.headers,
+      payload: {
+        id,
+        payload: payload({ attachments }),
+        channelIds: [news],
+        scheduledAt: new Date(due).toISOString(),
+      },
+    });
+  const id = randomUUID();
+  expect((await create(id)).statusCode).toBe(202);
+  expect((await create(id)).statusCode).toBe(202);
+  expect(
+    (
+      await env.app.inject({ url: `/api/sends/${id}`, headers: env.headers })
+    ).json().status,
+  ).toBe("scheduled");
+  const cancelled = randomUUID();
+  await create(cancelled);
+  expect(
+    (
+      await env.app.inject({
+        method: "DELETE",
+        url: `/api/sends/${cancelled}`,
+        headers: env.headers,
+      })
+    ).statusCode,
+  ).toBe(204);
+  const update = {
+    payload: payload({ content: "Changed before delivery" }),
+    channelIds: [general],
+    scheduledAt: new Date(due + 1000).toISOString(),
+  };
+  expect(
+    (
+      await env.app.inject({
+        method: "PUT",
+        url: `/api/sends/${id}/schedule`,
+        headers: env.headers,
+        payload: update,
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await env.app.inject({
+        method: "PUT",
+        url: `/api/sends/${id}/schedule`,
+        headers: env.headers,
+        payload: { ...update, scheduledAt: new Date(0).toISOString() },
+      })
+    ).statusCode,
+  ).toBe(422);
+  const history = await env.app.inject({
+    url: "/api/sends?status=scheduled",
+    headers: env.headers,
+  });
+  expect(
+    history.json().entries.map((entry: { id: string }) => entry.id),
+  ).toContain(id);
+  await env.app.close();
+  const sqlite = openDatabase(env.dir);
+  const app = Fastify({ logger: false });
+  let posts = 0;
+  const discord = createDiscord(env.config);
+  const scheduler = await registerSends(
+    app,
+    env.config,
+    sqlite,
+    {
+      ...discord,
+      createMessage: async (...args) => {
+        posts++;
+        return discord.createMessage(...args);
+      },
+    },
+    { now: () => due + 2000, intervalMs: 60000 },
+  );
+  await app.ready();
+  await Promise.all([scheduler.tick(), scheduler.tick()]);
+  await expect
+    .poll(
+      () =>
+        (
+          sqlite.prepare("SELECT status FROM sends WHERE id = ?").get(id) as {
+            status: string;
+          }
+        ).status,
+    )
+    .toBe("done");
+  await app.close();
+  expect(posts).toBe(1);
+  expect(
+    sqlite.prepare("SELECT status FROM sends WHERE id = ?").get(id),
+  ).toEqual({ status: "done" });
+  expect(
+    sqlite.prepare("SELECT status FROM sends WHERE id = ?").get(cancelled),
+  ).toEqual({ status: "cancelled" });
+  expect(
+    sqlite
+      .prepare("SELECT channel_id FROM send_targets WHERE send_id = ?")
+      .get(id),
+  ).toEqual({ channel_id: general });
+  sqlite.close();
+});
+
+test("schedule routes require auth and CSRF", async () => {
+  const env = await setup();
+  const id = randomUUID();
+  for (const method of ["PUT", "DELETE"] as const) {
+    const url = `/api/sends/${id}${method === "PUT" ? "/schedule" : ""}`;
+    expect(
+      (
+        await env.app.inject({
+          method,
+          url,
+          headers: { origin: "http://localhost", host: "localhost" },
+          payload: method === "PUT" ? {} : undefined,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await env.app.inject({
+          method,
+          url,
+          headers: { ...env.headers, "x-csrf-token": "" },
+          payload: method === "PUT" ? {} : undefined,
+        })
+      ).statusCode,
+    ).toBe(403);
+  }
+});
+
+test("scheduled upload retention ends on cancellation unless another record needs it", async () => {
+  const env = await setup();
+  const held = await upload(env, "scheduled.png");
+  const shared = await upload(env, "shared.png");
+  const id = randomUUID();
+  await env.app.inject({
+    method: "POST",
+    url: "/api/sends",
+    headers: env.headers,
+    payload: {
+      id,
+      payload: payload({ attachments: [held, shared] }),
+      channelIds: [news],
+      scheduledAt: new Date(Date.now() + 60000).toISOString(),
+    },
+  });
+  await env.app.inject({
+    method: "POST",
+    url: "/api/templates",
+    headers: env.headers,
+    payload: {
+      name: "Shared file",
+      message: { content: "Kept", embeds: [], attachments: [shared] },
+    },
+  });
+  const db = openDatabase(env.dir);
+  try {
+    sweepUploads(env.dir, db, 14, Date.now() + 30 * 86400000);
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(held.id),
+    ).toBeTruthy();
+    await env.app.inject({
+      method: "DELETE",
+      url: `/api/sends/${id}`,
+      headers: env.headers,
+    });
+    sweepUploads(env.dir, db, 14, Date.now() + 30 * 86400000);
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(held.id),
+    ).toBeUndefined();
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(shared.id),
+    ).toBeTruthy();
+  } finally {
+    db.close();
+  }
+});
+
+async function schedulerHarness() {
+  const env = await setup();
+  await env.app.close();
+  const sqlite = openDatabase(env.dir);
+  const app = Fastify({ logger: false });
+  const discord = createDiscord(env.config);
+  const listing = await discord.listGuilds();
+  let now = Date.now();
+  const list = vi.fn(async () => listing);
+  const scheduler = await registerSends(
+    app,
+    env.config,
+    sqlite,
+    { ...discord, listGuilds: list },
+    { now: () => now, intervalMs: 60000 },
+  );
+  await app.ready();
+  cleanups.push(async () => {
+    await app.close();
+    sqlite.close();
+  });
+  const create = async (
+    change: Partial<MessagePayload> = {},
+    due = now + 60000,
+    channelIds = [news, results],
+  ) => {
+    const id = randomUUID();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/sends",
+      payload: {
+        id,
+        payload: payload(change),
+        channelIds,
+        scheduledAt: new Date(due).toISOString(),
+      },
+    });
+    return { id, response };
+  };
+  return {
+    ...env,
+    app,
+    sqlite,
+    list,
+    scheduler,
+    create,
+    now: () => now,
+    advance: (ms: number) => {
+      now += ms;
+    },
+  };
+}
+
+test("claimed schedules preserve their delivery instant through history, edits and retries", async () => {
+  const s = await schedulerHarness();
+  const embed = { ...emptyEmbed(), title: "Timed", timestamp: "now" };
+  const { id } = await s.create({ embeds: [embed] });
+  s.fake.fail(results, { status: 403, code: 50013 });
+  s.advance(60000);
+  const claimedAt = s.now();
+  await s.scheduler.tick();
+  await settle(s, id);
+  expect((await read(s, id)).json().createdAt).toBe(claimedAt);
+  expect(
+    (s.fake.messages[0].payload.embeds as { timestamp: string }[])[0].timestamp,
+  ).toBe(new Date(claimedAt).toISOString());
+  await s.app.inject({
+    method: "POST",
+    url: `/api/sends/${id}/retry`,
+    payload: {},
+  });
+  await settle(s, id);
+  await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${id}`,
+    payload: {
+      id: randomUUID(),
+      payload: payload({ embeds: [embed], content: "Revised" }),
+    },
+  });
+  await expect
+    .poll(async () => (await read(s, id)).json().edit?.status)
+    .toBe("done");
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        (message.payload.embeds as { timestamp: string }[])[0].timestamp ===
+        new Date(claimedAt).toISOString(),
+    ),
+  ).toBe(true);
+  const history = await s.app.inject({
+    url: `/api/sends?from=${new Date(claimedAt).toISOString()}`,
+  });
+  expect(
+    history.json().entries.map((entry: { id: string }) => entry.id),
+  ).toContain(id);
+});
+
+test("scheduled history orders by due time; create rejects past times; cancellation is idempotent", async () => {
+  const s = await schedulerHarness();
+  expect((await s.create({}, s.now() - 1)).response.statusCode).toBe(422);
+  const later = await s.create({}, s.now() + 120000);
+  const sooner = await s.create();
+  expect(
+    (await s.app.inject("/api/sends?status=scheduled"))
+      .json()
+      .entries.map((e: { id: string }) => e.id),
+  ).toEqual([sooner.id, later.id]);
+  for (let i = 0; i < 2; i++)
+    expect(
+      (await s.app.inject({ method: "DELETE", url: `/api/sends/${later.id}` }))
+        .statusCode,
+    ).toBe(204);
+  s.fake.slow(100);
+  s.advance(60000);
+  await s.scheduler.tick();
+  expect(
+    (await s.app.inject({ method: "DELETE", url: `/api/sends/${sooner.id}` }))
+      .statusCode,
+  ).toBe(409);
+  expect(
+    (
+      await s.app.inject({
+        method: "PUT",
+        url: `/api/sends/${sooner.id}/schedule`,
+        payload: {
+          payload: payload(),
+          channelIds: [news],
+          scheduledAt: new Date(s.now() + 60000).toISOString(),
+        },
+      })
+    ).statusCode,
+  ).toBe(409);
+});
+
+test.each([401, 503])(
+  "listing failure %i backs off and eventually becomes a retryable failure",
+  async (status) => {
+    const s = await schedulerHarness();
+    const { id } = await s.create();
+    s.list.mockRejectedValue({ status });
+    s.advance(60000);
+    const before = s.list.mock.calls.length;
+    await s.scheduler.tick();
+    await s.scheduler.tick();
+    expect(s.list.mock.calls.length).toBe(before + 1);
+    if (status === 503) {
+      expect((await read(s, id)).json().status).toBe("scheduled");
+      s.advance(15 * 60000);
+      await s.scheduler.tick();
+    }
+    const failed = (await read(s, id)).json();
+    expect(failed.status).toBe("failed");
+    expect(
+      failed.targets.every(
+        (t: { status: string; error: { code: string } }) =>
+          t.status === "failed" &&
+          t.error.code ===
+            (status === 401 ? "INVALID_TOKEN" : "DISCORD_UNAVAILABLE"),
+      ),
+    ).toBe(true);
+    s.list.mockResolvedValue(await createDiscord(s.config).listGuilds());
+    expect(
+      (
+        await s.app.inject({
+          method: "POST",
+          url: `/api/sends/${id}/retry`,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect((await settle(s, id)).status).toBe("done");
+  },
+);
+
+test("a missing scheduled file has a specific failure and a tick database error is contained", async () => {
+  const s = await schedulerHarness();
+  const file = {
+    id: randomUUID(),
+    filename: "missing.png",
+    size: 10,
+    contentType: "image/png",
+  };
+  const { id } = await s.create();
+  s.sqlite
+    .prepare("UPDATE sends SET payload_json = ? WHERE id = ?")
+    .run(JSON.stringify(payload({ attachments: [file] })), id);
+  s.advance(60000);
+  await s.scheduler.tick();
+  expect((await read(s, id)).json().targets[0].error.code).toBe(
+    "UPLOAD_MISSING",
+  );
+  const next = await s.create();
+  s.advance(60000);
+  s.sqlite.exec(
+    "CREATE TRIGGER fail_claim BEFORE UPDATE OF status ON sends WHEN NEW.status = 'sending' BEGIN SELECT RAISE(FAIL, 'claim failed'); END",
+  );
+  await expect(s.scheduler.tick()).resolves.toBeUndefined();
+  expect((await read(s, next.id)).json().status).toBe("scheduled");
+});
+
+test("a claimed scheduled post interrupted mid-flight is unknown after restart and never reposted", async () => {
+  const s = await schedulerHarness();
+  const { id } = await s.create();
+  s.fake.slow(500);
+  s.advance(60000);
+  await s.scheduler.tick();
+  await expect.poll(() => statuses(s.dir, id)[0]).toBe("posting");
+  const snapshot = mkdtempSync(join(tmpdir(), "scheduled-restart-"));
+  await s.sqlite.backup(join(snapshot, "embed-dash.db"));
+  const restarted = await createApp(
+    { ...s.config, dataDir: snapshot },
+    { logger: false },
+  );
+  cleanups.push(async () => {
+    await restarted.close();
+    rmSync(snapshot, { recursive: true });
+  });
+  expect(statuses(snapshot, id)).toEqual([
+    "unknown:UNKNOWN_OUTCOME",
+    "failed:NOT_ATTEMPTED",
+  ]);
+  await settle(s, id);
+  expect(s.fake.messages).toHaveLength(2);
+  expect(
+    (
+      await restarted.inject({ url: `/api/sends/${id}`, headers: s.headers })
+    ).json().targets[0].status,
+  ).toBe("unknown");
+});
+
+test("an hour-overdue schedule survives a transient startup failure and delivers once after backoff", async () => {
+  const s = await schedulerHarness();
+  const { id } = await s.create({}, s.now() + 60000, [news]);
+  await s.app.close();
+  s.advance(61 * 60000);
+  const discord = createDiscord(s.config);
+  const listing = await discord.listGuilds();
+  const list = vi
+    .fn()
+    .mockRejectedValueOnce({ status: 503 })
+    .mockResolvedValue(listing);
+  const restarted = Fastify({ logger: false });
+  const scheduler = await registerSends(
+    restarted,
+    s.config,
+    s.sqlite,
+    { ...discord, listGuilds: list },
+    { now: s.now, intervalMs: 60000 },
+  );
+  cleanups.push(() => restarted.close());
+  await restarted.ready();
+  await expect.poll(() => list.mock.calls.length).toBe(1);
+  const resumed = { ...s, app: restarted };
+  expect((await read(resumed, id)).json().status).toBe("scheduled");
+  await scheduler.tick();
+  s.advance(4999);
+  await scheduler.tick();
+  expect(list).toHaveBeenCalledTimes(1);
+  s.advance(1);
+  await Promise.all([scheduler.tick(), scheduler.tick()]);
+  expect((await settle(resumed, id)).status).toBe("done");
+  await scheduler.tick();
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(s.fake.messages).toHaveLength(1);
+
+  const nextId = randomUUID();
+  expect(
+    (
+      await restarted.inject({
+        method: "POST",
+        url: "/api/sends",
+        payload: {
+          id: nextId,
+          payload: payload(),
+          channelIds: [news],
+          scheduledAt: new Date(s.now() + 60000).toISOString(),
+        },
+      })
+    ).statusCode,
+  ).toBe(202);
+  s.advance(16 * 60000);
+  list.mockRejectedValueOnce({ status: 503 });
+  await scheduler.tick();
+  expect((await read(resumed, nextId)).json().status).toBe("scheduled");
+  s.advance(5000);
+  await scheduler.tick();
+  expect((await settle(resumed, nextId)).status).toBe("done");
+  expect(s.fake.messages).toHaveLength(2);
+});
+
+test.each([false, true])(
+  "scheduled components reach Discord after editing is %s",
+  async (edited) => {
+    const s = await schedulerHarness();
+    const components: NonNullable<MessagePayload["components"]> = [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 5,
+            label: "Guide",
+            url: "https://example.com/guide",
+            emoji: { name: "📖" },
+          },
+        ],
+      },
+    ];
+    const due = s.now() + 60000;
+    const created = await s.create({ components }, due, [news]);
+    expect(created.response.statusCode).toBe(202);
+    let expected = components;
+    if (edited) {
+      expected = [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 5,
+              label: "Updated guide",
+              url: "https://example.com/updated",
+              emoji: { name: "wave", id: "123456789012345678", animated: true },
+            },
+            {
+              type: 2,
+              style: 5,
+              label: "Status",
+              url: "https://example.com/status",
+            },
+          ],
+        },
+      ];
+      const response = await s.app.inject({
+        method: "PUT",
+        url: `/api/sends/${created.id}/schedule`,
+        payload: {
+          payload: payload({
+            content: "Updated resources",
+            components: expected,
+          }),
+          channelIds: [news],
+          scheduledAt: new Date(due + 10000).toISOString(),
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect((await read(s, created.id)).json().payload.components).toEqual(
+      expected,
+    );
+    expect(s.fake.messages).toHaveLength(0);
+    s.advance(edited ? 70000 : 60000);
+    await s.scheduler.tick();
+    expect((await settle(s, created.id)).status).toBe("done");
+    expect(s.fake.messages).toHaveLength(1);
+    expect(s.fake.messages[0].payload.components).toEqual(expected);
+  },
+);

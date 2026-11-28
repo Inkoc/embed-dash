@@ -101,7 +101,7 @@ test("shared validation identifies the exact button field and supports buttons-o
   expect(validateMessage(message)).toContainEqual(
     expect.objectContaining({
       path: "components.0.components.0.url",
-      label: "Row 1, button 1: Link",
+      label: "Row 1, button 1: Button URL",
     }),
   );
 });

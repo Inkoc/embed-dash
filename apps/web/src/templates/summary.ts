@@ -15,13 +15,13 @@ export function messageSummary(message: MessageDraft): string {
     ? [count(embeds, "embed", "embeds")]
     : buttons
       ? message.content.trim()
-        ? ["text"]
+        ? ["Text"]
         : []
       : ["Text only"];
-  if (buttons) parts.push(count(buttons, "button", "buttons"));
   if (fields > 0) parts.push(count(fields, "field", "fields"));
   if (message.attachments.length > 0)
     parts.push(count(message.attachments.length, "file", "files"));
+  if (buttons) parts.push(count(buttons, "button", "buttons"));
   return parts.join(" · ");
 }
 

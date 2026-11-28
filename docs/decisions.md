@@ -48,3 +48,11 @@ One line per decision that shaped M1; the PRs hold the detail.
 ## Milestone 3
 
 - **Link buttons use legacy action rows.** The draft stores Discord-shaped rows and URL buttons, with editor keys removed at the boundary. Shared validation enforces the row, button, text, URL and emoji rules. Unfinished buttons stay local to the composer and are omitted from templates and exports; edits always replace the component list, including clearing the last row. Legacy components preserve message text and embeds without the Components V2 flag.
+
+- **Scheduling uses the delivery engine.** UTC due instants live on sends; each timer tick claims due rows in a SQLite transaction before invoking ordinary delivery. A one-second timer also picks up overdue entries after startup.
+- **Scheduled targets have not started.** Restart settlement excludes them; claimed deliveries retain the existing posting/unknown recovery rules and never repost uncertain copies automatically.
+- **Schedules remain mutable until claimed.** Content, due time and destinations change together under the same transaction lock; cancellation excludes the payload from upload retention while completed deliveries retain files for retries.
+- **Scheduler tests control time without production endpoints.** Integration tests inject a clock; only the fake-Discord e2e harness exposes an authenticated, CSRF-protected one-minute advance endpoint and uses a 50 ms tick.
+- **A scheduled send takes its send time when claimed.** Delivery, subsequent edits and retries, previews and history bounds share that persisted instant; the Scheduled filter orders waiting entries by due time.
+- **Listing outages have a bounded delay.** Scheduler listing failures log fixed codes and back off from five seconds to one minute. Permanent refusals fail immediately; transient failures fail due entries only after fifteen continuous minutes of listing failure, allowing an explicit retry. Recovery resets that interval, so downtime does not consume the retry window.
+- **Plans extend at most one year ahead.** Shared validation and the browser enforce a 365-day horizon; missing scheduled files produce an explicit upload failure before posting.

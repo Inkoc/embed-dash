@@ -690,3 +690,22 @@ test("an embed has content once any part Discord shows is filled in", () => {
     }),
   ).toBe(true);
 });
+
+test("embed links reject internal whitespace and accept trimmed or percent-encoded links", () => {
+  const make = (url: string): MessageDraft => ({
+    content: "",
+    embeds: [{ ...emptyEmbed(), title: "Guide", url }],
+    attachments: [],
+  });
+  for (const url of [
+    "https://example.com/a b",
+    "https://example.com/a\nb",
+    "https://example.com/a\u00a0b",
+  ]) {
+    expect(validateMessage(make(url))).toContainEqual(
+      expect.objectContaining({ path: "embeds.0.url" }),
+    );
+  }
+  expect(validateMessage(make(" https://example.com/guide "))).toEqual([]);
+  expect(validateMessage(make("https://example.com/a%20b"))).toEqual([]);
+});

@@ -500,7 +500,11 @@ function NextStep() {
         {issues.slice(0, listed).map((issue, index) => (
           <li key={`${issue.path}-${index}`}>
             <button type="button" onClick={() => reveal(issue.path)}>
-              <b>{issue.label}:</b> {issue.message}
+              <b>
+                {issue.label}
+                {issue.label.includes(":") ? "" : ":"}
+              </b>{" "}
+              {issue.message}
             </button>
           </li>
         ))}

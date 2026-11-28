@@ -64,6 +64,13 @@
       "when": 1795836230432,
       "tag": "0008_eminent_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795873291330,
+      "tag": "0009_salty_jubilee",
+      "breakpoints": true
     }
   ]
 }

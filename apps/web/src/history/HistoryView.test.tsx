@@ -1,3 +1,4 @@
+import { date } from "./presentation";
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
@@ -403,4 +404,97 @@ test("ArrowDown during debounce waits for matching results before focusing", asy
   await waitFor(() => expect(resolve).toBeTypeOf("function"));
   resolve(Response.json(listing([row("patch", "Patch")])));
   expect(await screen.findByRole("link", { name: /Patch/ })).toHaveFocus();
+});
+
+test("Scheduled filter requests scheduled entries and shows their due time", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      entries: [
+        {
+          id: "scheduled",
+          title: "Planned update",
+          color: "",
+          status: "scheduled",
+          createdAt: 1,
+          scheduledAt: 1900000000000,
+          channelCount: 1,
+        },
+      ],
+      hasMore: false,
+      destinations: [],
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  show();
+  fireEvent.change(screen.getByLabelText("Status"), {
+    target: { value: "scheduled" },
+  });
+  expect(await screen.findByText("Planned update")).toBeVisible();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some((call) =>
+        String((call as unknown[])[0]).includes("status=scheduled"),
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByText(/^Due /)).toBeVisible();
+});
+
+test("cancelling a schedule confirms its due time, defaults to Keep it and restores focus", async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
+  let detail: HistoryDetail = {
+    ...historyDetail,
+    edit: null,
+    lastEditedAt: null,
+    status: "scheduled",
+    scheduledAt: Date.now() + 3600000,
+    targets: historyDetail.targets.map((t) => ({
+      ...t,
+      status: "pending",
+      messageId: null,
+    })),
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/bot")
+      return Response.json({ id: "bot", name: "Bot", avatarUrl: null });
+    if (options?.method === "DELETE") {
+      detail = { ...detail, status: "cancelled" };
+      return new Response(null, { status: 204 });
+    }
+    return Response.json(detail);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  showDetail();
+  expect(
+    await screen.findByRole("article", { name: "Message preview" }),
+  ).toHaveTextContent(date(detail.scheduledAt!));
+  const trigger = await screen.findByRole("button", {
+    name: "Cancel scheduled send",
+  });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", {
+    name: "Cancel this scheduled send?",
+  });
+  expect(within(dialog).getByRole("button", { name: "Keep it" })).toHaveFocus();
+  expect(dialog).toHaveTextContent("will not be delivered");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep it" }));
+  expect(trigger).toHaveFocus();
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === "DELETE"),
+  ).toBe(false);
+  fireEvent.click(trigger);
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Cancel scheduled send" }),
+  );
+  expect(await screen.findByText("Cancelled before delivery.")).toBeVisible();
+  expect(screen.queryByText(/^Due /)).toBeNull();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === "DELETE"),
+  ).toHaveLength(1);
 });
