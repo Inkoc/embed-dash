@@ -32,7 +32,7 @@ import type {
   DiscordMessage,
   StoredAttachment,
 } from "./discord.js";
-import { deliveryFailure, discordFailure } from "./errors.js";
+import { safeErrorDetails, deliveryFailure, discordFailure } from "./errors.js";
 import { discordMessage, searchText, messageTitle } from "./payload.js";
 import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
@@ -531,66 +531,123 @@ export async function registerSends(
     );
   }
 
-  async function tick() {
-    if (closing) return;
-    if (
-      !db
-        .select({ id: sends.id })
-        .from(sends)
-        .where(
-          and(
-            eq(sends.status, "scheduled"),
-            lte(sends.scheduledAt, clock.now()),
-          ),
-        )
-        .get()
-    )
-      return;
-    let listing: GuildsResponse;
-    try {
-      listing = await discord.listGuilds();
-    } catch {
-      return;
-    }
-    if (closing) return;
-    const claimed = sqlite.transaction(() => {
+  // A temporary listing outage delays delivery, but never holds a schedule indefinitely.
+  const maxOverdueMs = 15 * 60 * 1000;
+  let nextListingAt = 0;
+  let listingFailures = 0;
+  let listingInFlight = false;
+  function claimDue(cutoff = clock.now()) {
+    return sqlite.transaction(() => {
+      const claimedAt = clock.now();
       const due = db
         .select()
         .from(sends)
         .where(
-          and(
-            eq(sends.status, "scheduled"),
-            lte(sends.scheduledAt, clock.now()),
-          ),
+          and(eq(sends.status, "scheduled"), lte(sends.scheduledAt, cutoff)),
         )
         .all();
       for (const send of due)
         db.update(sends)
-          .set({ status: "sending", updatedAt: clock.now() })
+          .set({
+            status: "sending",
+            createdAt: claimedAt,
+            updatedAt: claimedAt,
+          })
           .where(eq(sends.id, send.id))
           .run();
-      return due;
+      return due.map((send) => ({ ...send, createdAt: claimedAt }));
     })();
-    for (const send of claimed) {
+  }
+  function failScheduled(id: string, code: DeliveryErrorCode) {
+    db.update(sendTargets)
+      .set({ status: "failed", error: code })
+      .where(and(eq(sendTargets.sendId, id), eq(sendTargets.status, "pending")))
+      .run();
+    finish(id);
+  }
+  async function tick() {
+    try {
+      if (closing || listingInFlight || clock.now() < nextListingAt) return;
+      if (
+        !db
+          .select({ id: sends.id })
+          .from(sends)
+          .where(
+            and(
+              eq(sends.status, "scheduled"),
+              lte(sends.scheduledAt, clock.now()),
+            ),
+          )
+          .get()
+      )
+        return;
+      let listing: GuildsResponse;
+      listingInFlight = true;
       try {
-        const loaded = loadAttachments(
-          messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
+        listing = await discord.listGuilds();
+        listingFailures = 0;
+        nextListingAt = 0;
+      } catch (error) {
+        const failure = discordFailure(error);
+        app.log.warn(
+          { code: failure.code },
+          "Scheduled delivery could not list servers",
         );
-        if (loaded.missing.size) {
-          settleInterrupted(send.id);
-          continue;
+        listingFailures++;
+        nextListingAt =
+          clock.now() +
+          Math.min(60000, 5000 * 2 ** Math.min(listingFailures - 1, 4));
+        if (!closing) {
+          const permanent =
+            failure.code === "DISCORD_INVALID_TOKEN" ||
+            (failure.status !== undefined &&
+              failure.status >= 400 &&
+              failure.status < 500 &&
+              failure.status !== 429);
+          const code: DeliveryErrorCode =
+            failure.code === "DISCORD_INVALID_TOKEN"
+              ? "INVALID_TOKEN"
+              : failure.code === "DISCORD_RATE_LIMITED"
+                ? "RATE_LIMITED"
+                : failure.code === "DISCORD_UNREACHABLE"
+                  ? "UNREACHABLE"
+                  : "DISCORD_UNAVAILABLE";
+          for (const send of claimDue(
+            permanent ? clock.now() : clock.now() - maxOverdueMs,
+          ))
+            failScheduled(send.id, code);
         }
-        deliverInBackground(
-          send.id,
-          copiesFor(send.id),
-          loaded.payload,
-          loaded.files,
-          new Date(clock.now()),
-          listing,
-        );
-      } catch {
-        settleInterrupted(send.id);
+        return;
+      } finally {
+        listingInFlight = false;
       }
+      if (closing) return;
+      for (const send of claimDue()) {
+        try {
+          const loaded = loadAttachments(
+            messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
+          );
+          if (loaded.missing.size) {
+            failScheduled(send.id, "UPLOAD_MISSING");
+            continue;
+          }
+          deliverInBackground(
+            send.id,
+            copiesFor(send.id),
+            loaded.payload,
+            loaded.files,
+            new Date(send.createdAt),
+            listing,
+          );
+        } catch {
+          settleInterrupted(send.id);
+        }
+      }
+    } catch (error) {
+      app.log.error(
+        { code: safeErrorDetails(error).causeCode ?? "SCHEDULER_FAILED" },
+        "Scheduler tick failed",
+      );
     }
   }
   const timer = setInterval(() => {
@@ -764,7 +821,7 @@ export async function registerSends(
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.status = 'unknown') AS unknown_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.status = 'unknown') AS unknown_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ${query.status === "scheduled" ? "ORDER BY s.scheduled_at ASC, s.id ASC" : "ORDER BY s.created_at DESC, s.id DESC"} LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
@@ -844,6 +901,15 @@ export async function registerSends(
       .set({ status: "cancelled", updatedAt: clock.now() })
       .where(and(eq(sends.id, parsed.data.id), eq(sends.status, "scheduled")))
       .run();
+    if (
+      !changed.changes &&
+      db
+        .select()
+        .from(sends)
+        .where(and(eq(sends.id, parsed.data.id), eq(sends.status, "cancelled")))
+        .get()
+    )
+      return reply.code(204).send();
     if (!changed.changes)
       return reply
         .code(409)

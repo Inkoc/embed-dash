@@ -309,6 +309,7 @@ export function SendControls({
   } = useSending();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const [scheduleReviewed, setScheduleReviewed] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [due, setDue] = useState("");
   const [scheduleProblem, setScheduleProblem] = useState<AppError | null>(null);
@@ -317,7 +318,8 @@ export function SendControls({
   async function saveSchedule() {
     const instant = scheduleInstant(due);
     if (!instant) {
-      setScheduleProblem(new AppError("Choose a future date and time."));
+      setScheduleReviewed(true);
+      setConfirming(false);
       return;
     }
     setScheduleBusy(true);
@@ -438,28 +440,27 @@ export function SendControls({
         className={styles.again}
         disabled={!!blocked || !!busy || scheduleBusy}
         onClick={() => {
-          setScheduling(true);
+          setScheduling((value) => !value);
+          setScheduleReviewed(false);
           setScheduleProblem(null);
         }}
       >
-        Schedule
+        {scheduling ? "Close schedule picker" : "Schedule"}
       </button>
       {scheduling && (
         <>
-          <SchedulePicker value={due} onChange={setDue} />
+          <SchedulePicker
+            value={due}
+            onChange={setDue}
+            attempted={scheduleReviewed}
+            tray
+          />
           <button
             type="button"
-            className={styles.again}
+            className={styles.go}
             onClick={() => {
-              if (!scheduleInstant(due)) {
-                setScheduleProblem(
-                  asAppError(
-                    "schedule",
-                    new AppError("Choose a future date and time."),
-                  ),
-                );
-                return;
-              }
+              setScheduleReviewed(true);
+              if (!scheduleInstant(due)) return;
               setScheduleProblem(null);
               setConfirming(true);
             }}
@@ -493,10 +494,14 @@ export function SendControls({
       >
         <div className={styles.confirm}>
           {scheduling && scheduleInstant(due) && (
-            <p>
-              Due {date(new Date(due).getTime())}. You can edit or cancel it in
-              History until delivery starts.
-            </p>
+            <div className={styles.due}>
+              <p>
+                Due <strong>{date(new Date(due).getTime())}</strong>
+              </p>
+              <small>
+                You can edit or cancel it in History until delivery starts.
+              </small>
+            </div>
           )}
           {scheduling && scheduleProblem && (
             <p role="alert">{scheduleProblem.message}</p>

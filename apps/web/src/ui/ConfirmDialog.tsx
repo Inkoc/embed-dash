@@ -7,6 +7,7 @@ interface Props {
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   /** Red only when the action destroys work; sending is an ordinary, deliberate step. */
   tone?: "danger" | "primary";
   onConfirm: () => void;
@@ -19,6 +20,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  cancelLabel = "Cancel",
   tone = "danger",
   onConfirm,
   onCancel,
@@ -62,7 +64,7 @@ export function ConfirmDialog({
             className={styles.cancel}
             onClick={onCancel}
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button type="button" className={styles[tone]} onClick={onConfirm}>
             {confirmLabel}

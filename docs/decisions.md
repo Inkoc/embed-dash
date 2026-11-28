@@ -51,3 +51,6 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Scheduled targets have not started.** Restart settlement excludes them; claimed deliveries retain the existing posting/unknown recovery rules and never repost uncertain copies automatically.
 - **Schedules remain mutable until claimed.** Content, due time and destinations change together under the same transaction lock; cancellation excludes the payload from upload retention while completed deliveries retain files for retries.
 - **Scheduler tests control time without production endpoints.** Integration tests inject a clock; only the fake-Discord e2e harness exposes an authenticated, CSRF-protected one-minute advance endpoint and uses a 50 ms tick.
+- **A scheduled send takes its send time when claimed.** Delivery, subsequent edits and retries, previews and history bounds share that persisted instant; the Scheduled filter orders waiting entries by due time.
+- **Listing outages have a bounded delay.** Scheduler listing failures log fixed codes and back off from five seconds to one minute. Permanent refusals fail immediately; transient failures fail entries after fifteen minutes overdue, allowing an explicit retry.
+- **Plans extend at most one year ahead.** Shared validation and the browser enforce a 365-day horizon; missing scheduled files produce an explicit upload failure before posting.

@@ -66,6 +66,10 @@ const app = await createApp(
   },
 );
 // This route exists only in the fake-Discord test harness, behind the ordinary auth and CSRF hooks.
+app.delete("/api/test/scheduler/advance", async () => {
+  scheduleOffset = 0;
+  return { ok: true };
+});
 app.post("/api/test/scheduler/advance", async () => {
   scheduleOffset += 60000;
   return { ok: true };

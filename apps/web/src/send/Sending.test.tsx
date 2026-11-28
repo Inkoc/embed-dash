@@ -1129,7 +1129,7 @@ test("Schedule opens with an empty picker and rejects review until a future time
   expect(screen.getByLabelText(/Send date and time/)).toHaveValue("");
   fireEvent.click(screen.getByRole("button", { name: "Review schedule" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Choose a future date and time.",
+    "Choose a date and time.",
   );
   expect(sendRequests()).toHaveLength(0);
 });

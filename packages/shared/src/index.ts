@@ -622,8 +622,17 @@ export const messagePayloadSchema = messageDraftSchema.extend({
 });
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
+/** One-off plans are bounded so uploads cannot be held indefinitely. */
+export const scheduleHorizonMs = 365 * 24 * 60 * 60 * 1000;
+export const scheduledAtSchema = z.iso
+  .datetime({ offset: true })
+  .refine(
+    (value) => Date.parse(value) <= Date.now() + scheduleHorizonMs,
+    "Choose a time within the next year.",
+  );
+
 export const sendRequestSchema = z.object({
-  scheduledAt: z.iso.datetime({ offset: true }).optional(),
+  scheduledAt: scheduledAtSchema.optional(),
   /** Chosen by the browser, so repeating a request that may have been lost can't post twice. */
   id: z.uuid(),
   payload: messagePayloadSchema,
@@ -650,6 +659,8 @@ export const retryRequestSchema = z.object({
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  UPLOAD_MISSING:
+    "A file needed for this message is missing from the server. Edit the message to remove or replace it, then retry.",
   EDIT_UNCONFIRMED:
     "Discord may not have applied this update. Retry to apply the current version safely.",
   EDIT_NOT_ATTEMPTED:

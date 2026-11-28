@@ -438,3 +438,59 @@ test("Scheduled filter requests scheduled entries and shows their due time", asy
   );
   expect(screen.getByText(/^Due /)).toBeVisible();
 });
+
+test("cancelling a schedule confirms its due time, defaults to Keep it and restores focus", async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
+  let detail: HistoryDetail = {
+    ...historyDetail,
+    edit: null,
+    lastEditedAt: null,
+    status: "scheduled",
+    scheduledAt: Date.now() + 3600000,
+    targets: historyDetail.targets.map((t) => ({
+      ...t,
+      status: "pending",
+      messageId: null,
+    })),
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/bot")
+      return Response.json({ id: "bot", name: "Bot", avatarUrl: null });
+    if (options?.method === "DELETE") {
+      detail = { ...detail, status: "cancelled" };
+      return new Response(null, { status: 204 });
+    }
+    return Response.json(detail);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  showDetail();
+  const trigger = await screen.findByRole("button", {
+    name: "Cancel scheduled send",
+  });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", {
+    name: "Cancel this scheduled send?",
+  });
+  expect(within(dialog).getByRole("button", { name: "Keep it" })).toHaveFocus();
+  expect(dialog).toHaveTextContent("will not be delivered");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep it" }));
+  expect(trigger).toHaveFocus();
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === "DELETE"),
+  ).toBe(false);
+  fireEvent.click(trigger);
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Cancel scheduled send" }),
+  );
+  expect(await screen.findByText("Cancelled before delivery.")).toBeVisible();
+  expect(screen.queryByText(/^Due /)).toBeNull();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === "DELETE"),
+  ).toHaveLength(1);
+});

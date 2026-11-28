@@ -13,7 +13,7 @@ test("names the browser zone and rejects past or empty times on blur", () => {
   ).toBeTruthy();
   fireEvent.blur(input);
   expect(input.getAttribute("aria-invalid")).toBe("true");
-  expect(screen.getByText("Choose a future date and time.")).toBeTruthy();
+  expect(screen.getByText(/That time has passed/)).toBeTruthy();
   expect(scheduleInstant("")).toBeNull();
   expect(scheduleInstant("2000-01-01T12:00")).toBeNull();
   const future = Date.now() + 3600000;
