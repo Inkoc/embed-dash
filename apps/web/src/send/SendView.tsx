@@ -13,8 +13,8 @@ import { Link } from "react-router";
 import {
   canSendTo,
   inviteUrl,
-  type Guild,
   type GuildChannel,
+  type GuildsResponse,
 } from "@embed-dash/shared";
 import {
   ArrowLeft,
@@ -31,6 +31,7 @@ import { FailureDetail } from "../ui/FailureDetail";
 import { useDraft } from "../compose/draft";
 import { searchCatalogue } from "./catalogue";
 import { Catalogue, drawerId } from "./Catalogue";
+import { ChannelGroups } from "./ChannelGroups";
 import { useGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
 import { ServerRail, ServerStrip } from "./ServerRail";
@@ -92,28 +93,32 @@ export function SendView() {
   else if (data.guilds.length === 0 && data.unavailable.length > 0)
     // The notice above names them; inviting the bot again isn't the fix.
     body = (
-      <Closed
-        label="Unreadable"
-        title="None of the bot’s servers could be read"
-      >
-        <p>Check the bot’s access in those servers, then refresh.</p>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => void refresh()}
-          disabled={guilds.isFetching}
+      <SavedGroups listing={data} locked={!!busy}>
+        <Closed
+          label="Unreadable"
+          title="None of the bot’s servers could be read"
         >
-          <RefreshCw aria-hidden="true" />
-          {guilds.isFetching ? "Refreshing…" : "Refresh"}
-        </button>
-      </Closed>
+          <p>Check the bot’s access in those servers, then refresh.</p>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => void refresh()}
+            disabled={guilds.isFetching}
+          >
+            <RefreshCw aria-hidden="true" />
+            {guilds.isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+        </Closed>
+      </SavedGroups>
     );
   else if (data.guilds.length === 0)
-    body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
-  else
     body = (
-      <Picker guilds={data.guilds} locked={!!busy} received={received(draft)} />
+      <SavedGroups listing={data} locked={!!busy}>
+        <NoServers refresh={refresh} busy={guilds.isFetching} />
+      </SavedGroups>
     );
+  else
+    body = <Picker listing={data} locked={!!busy} received={received(draft)} />;
 
   return (
     <section className={styles.send} aria-labelledby="send-title">
@@ -199,14 +204,15 @@ export function SendView() {
 }
 
 function Picker({
-  guilds,
+  listing,
   locked,
   received,
 }: {
-  guilds: Guild[];
+  listing: GuildsResponse;
   locked: boolean;
   received: ReadonlyMap<string, Received>;
 }) {
+  const { guilds } = listing;
   const [selected, setSelected] = useSelection();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -351,6 +357,17 @@ function Picker({
             servers={drawers.length}
           />
           <ServerStrip guilds={guilds} selected={selected} onJump={onJump} />
+          <ChannelGroups
+            listing={listing}
+            ticked={entries.map(({ guild, channel }) => ({
+              id: channel.id,
+              guildId: guild.id,
+              guildName: guild.name,
+            }))}
+            selected={selected}
+            locked={locked}
+            setSelected={setSelected}
+          />
           <div className={styles.picks} role="group" aria-labelledby="picks">
             <span id="picks">Quick picks</span>
             <button
@@ -424,6 +441,36 @@ function Picker({
         flightRef={flight}
         onRemove={(id) => setSelected((set) => withIds(set, [id], false))}
       />
+    </div>
+  );
+}
+
+/**
+ * Saved groups above a closed catalogue, so they can still be inspected,
+ * renamed or deleted when the bot has no channels to offer; every channel in
+ * them then reads as unavailable.
+ */
+function SavedGroups({
+  listing,
+  locked,
+  children,
+}: {
+  listing: GuildsResponse;
+  locked: boolean;
+  children: ReactNode;
+}) {
+  const [selected, setSelected] = useSelection();
+  return (
+    <div className={styles.closedWithGroups}>
+      <ChannelGroups
+        listing={listing}
+        ticked={[]}
+        selected={selected}
+        locked={locked}
+        setSelected={setSelected}
+        catalogue={false}
+      />
+      {children}
     </div>
   );
 }

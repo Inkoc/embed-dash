@@ -12,7 +12,9 @@ test("the history migration folds existing Unicode text and indexes creation tim
       "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('old', '{}', 'ÉTÉ Αθήνα', 'done', 1, 1)",
     ).run();
     // Replay the generated migration against a database at the preceding version.
-    db.exec("DROP INDEX sends_created_at_idx; DROP INDEX sends_due_idx");
+    db.exec(
+      "DROP INDEX sends_created_at_idx; DROP INDEX sends_due_idx; DROP TABLE channel_groups",
+    );
     const journal = JSON.parse(
       readFileSync(
         new URL("../drizzle/meta/_journal.json", import.meta.url),

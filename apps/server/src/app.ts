@@ -1,4 +1,5 @@
 import { registerAuth } from "./auth.js";
+import { registerChannelGroups } from "./channelGroups.js";
 import Fastify, {
   LogController,
   type FastifyReply,
@@ -44,6 +45,7 @@ export async function createApp(
   await registerUploads(app, config, database);
   await registerSends(app, config, database, discord, options.sendClock);
   registerTemplates(app, config, database);
+  registerChannelGroups(app, database, discord);
   app.get("/health", async () => ({ status: "ok" }));
   const fromDiscord =
     <T>(what: string, load: (request: FastifyRequest) => Promise<T>) =>

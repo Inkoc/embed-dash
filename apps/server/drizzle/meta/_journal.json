@@ -71,6 +71,13 @@
       "when": 1795873291330,
       "tag": "0009_salty_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795877058574,
+      "tag": "0010_channel_groups",
+      "breakpoints": true
     }
   ]
 }
