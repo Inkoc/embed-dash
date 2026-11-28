@@ -28,7 +28,7 @@ One line per decision that shaped M1; the PRs hold the detail.
 
 ## Milestone 2
 
-- **Edit runs have durable client IDs.** Repeated update requests return the recorded run; copies keep their original message IDs. Interrupted edits become retryable failures because a full-state PATCH cannot create a duplicate message; interrupted posts retain their unconfirmed delivery status.
+- **Edit runs have durable client IDs.** Repeated save requests return the recorded run; retry uses the current send and failed copies without creating another run; copies keep their original message IDs. Interrupted edits become retryable failures because a full-state PATCH cannot create a duplicate message; interrupted posts retain their unconfirmed delivery status.
 - **Attachment retention follows Discord IDs.** Create and edit responses persist each copy’s Discord attachment IDs, filenames and upload IDs. Kept files use those IDs without fetching the message or re-reading disk; replacement uploads get new IDs even when filenames match.
 - **Destinations and mention settings stay fixed during edits.** Only existing copies are patched; deleted copies are recorded permanently and excluded from retries.
 - **The editor protects unsaved work.** Route navigation and browser unload ask before discarding changes, while the ordinary composition draft stays separate.

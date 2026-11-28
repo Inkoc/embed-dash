@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import userEvent from "@testing-library/user-event";
 import {
   cleanup,
   fireEvent,
@@ -85,6 +86,11 @@ test("history rows show title, date, channels and result", async () => {
   const link = await screen.findByRole("link", { name: /Release notes/ });
   expect(link).toHaveTextContent("2 channels");
   expect(link).toHaveTextContent("Partial");
+  screen.getByRole("searchbox").focus();
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "ArrowDown" });
+  expect(link).toHaveFocus();
+  fireEvent.keyDown(link, { key: "ArrowUp" });
+  expect(screen.getByRole("searchbox")).toHaveFocus();
   expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
 });
@@ -96,14 +102,14 @@ test("invalid date ranges stay beside To and never reach the server", async () =
   vi.stubGlobal("fetch", fetcher);
   show();
   await screen.findByText("Your history starts here");
-  fireEvent.change(screen.getByLabelText("From (UTC)"), {
+  fireEvent.change(screen.getByLabelText(/^From \(/), {
     target: { value: "2026-12-20" },
   });
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
-  fireEvent.change(screen.getByLabelText("To (UTC)"), {
+  fireEvent.change(screen.getByLabelText(/^Through \(/), {
     target: { value: "2026-11-01" },
   });
-  const to = screen.getByLabelText("To (UTC)");
+  const to = screen.getByLabelText(/^Through \(/);
   expect(to).toHaveAttribute("aria-invalid", "true");
   expect(to).toHaveAccessibleDescription(
     "✗ The start date must be on or before the end date.",
@@ -122,11 +128,11 @@ test("an invalid date range in the URL does not fetch", () => {
   const fetcher = vi.fn();
   vi.stubGlobal("fetch", fetcher);
   show("/history?from=2026-12-20&to=2026-11-01");
-  expect(screen.getByLabelText("To (UTC)")).toHaveAttribute(
+  expect(screen.getByLabelText(/^Through \(/)).toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  expect(screen.getByRole("button", { name: /Filters/ })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: /Hide filters/ })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -308,6 +314,9 @@ test("history preserves delivery outcomes, shows failed/unconfirmed/deleted upda
   expect(
     await within(news).findByText("Updated", { exact: true }),
   ).toBeVisible();
+  await waitFor(() =>
+    expect(news.querySelector("[id^=update-]")).toHaveFocus(),
+  );
   expect(within(news).getByText("Sent", { exact: true })).toBeVisible();
   expect(
     within(news).queryByRole("button", { name: /Retry update/ }),
@@ -319,4 +328,79 @@ test("history preserves delivery outcomes, shows failed/unconfirmed/deleted upda
     "content-type": "application/json",
     "x-csrf-token": "history-csrf",
   });
+});
+
+test("history waits for a pause in typing before searching", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({ entries: [], hasMore: false, destinations: [] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  show();
+  await screen.findByText("Your history starts here");
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "re" } });
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "release" },
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(fetcher.mock.calls[1]).toEqual(["/api/sends?q=release"]);
+});
+
+const row = (id: string, title: string) => ({
+  id,
+  title,
+  color: "",
+  createdAt: 1,
+  channelCount: 1,
+  status: "done",
+});
+const listing = (entries: ReturnType<typeof row>[]) => ({
+  entries,
+  hasMore: false,
+  destinations: [],
+});
+test("a disappearing cursor row falls back to the first result for Tab", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", async (url: string) =>
+    Response.json(
+      listing(
+        url.includes("q=patch")
+          ? [row("patch", "Patch")]
+          : [row("one", "First"), row("two", "Second")],
+      ),
+    ),
+  );
+  show();
+  await screen.findByRole("link", { name: /Second/ });
+  const search = screen.getByRole("searchbox");
+  search.focus();
+  await user.keyboard("{ArrowDown}{ArrowDown}");
+  expect(screen.getByRole("link", { name: /Second/ })).toHaveFocus();
+  search.focus();
+  await user.type(search, "patch");
+  const patch = await screen.findByRole("link", { name: /Patch/ });
+  expect(patch).toHaveAttribute("tabindex", "0");
+  for (let n = 0; n < 12 && document.activeElement !== patch; n++)
+    await user.tab();
+  expect(patch).toHaveFocus();
+});
+test("ArrowDown during debounce waits for matching results before focusing", async () => {
+  const user = userEvent.setup();
+  let resolve!: (response: Response) => void;
+  vi.stubGlobal("fetch", (url: string) =>
+    url.includes("q=patch")
+      ? new Promise<Response>((done) => {
+          resolve = done;
+        })
+      : Promise.resolve(Response.json(listing([row("old", "Old result")]))),
+  );
+  show();
+  await screen.findByRole("link", { name: /Old result/ });
+  const search = screen.getByRole("searchbox");
+  await user.type(search, "patch");
+  await user.keyboard("{ArrowDown}");
+  expect(search).toHaveFocus();
+  await waitFor(() => expect(resolve).toBeTypeOf("function"));
+  resolve(Response.json(listing([row("patch", "Patch")])));
+  expect(await screen.findByRole("link", { name: /Patch/ })).toHaveFocus();
 });

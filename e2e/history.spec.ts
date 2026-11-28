@@ -9,7 +9,7 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  const title = `Observatory bulletin ${Date.now()}`;
+  const title = `Observatory bulletin ${crypto.randomUUID()}`;
   await page.getByLabel("Title", { exact: true }).fill(title);
   await page.getByRole("link", { name: "Send", exact: true }).click();
   await page
@@ -37,12 +37,14 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   await expect(page.getByRole("searchbox")).toBeFocused();
   await page.getByRole("searchbox").fill(title);
   const entry = page.getByRole("link", { name: new RegExp(title) });
+  await expect(page).toHaveURL(
+    new RegExp(`q=${encodeURIComponent(title).replace(/%20/g, "\\+")}`),
+  );
+  await expect(
+    page.getByRole("list", { name: "Sent messages" }).getByRole("link"),
+  ).toHaveCount(1);
   await expect(entry).toContainText("All sent");
-  for (let step = 0; step < 20; step++) {
-    if (await entry.evaluate((element) => element === document.activeElement))
-      break;
-    await page.keyboard.press("Tab");
-  }
+  await page.keyboard.press("ArrowDown");
   await expect(entry).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
@@ -51,6 +53,9 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Channel results" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: title, exact: true }),
+  ).toBeFocused();
   await expect(page.getByText("Sent", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open in Discord/ }),
@@ -66,11 +71,22 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   ).toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("searchbox")).toHaveValue(title);
+  await expect(entry).toBeFocused();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: title, exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: /Back to history/ }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(entry).toBeFocused();
   expect(errors).toEqual([]);
 });

@@ -5,6 +5,8 @@ import {
   BellOff,
   Check,
   CircleHelp,
+  CircleMinus,
+  Trash2,
   CopyCheck,
   ExternalLink,
   SquarePen,
@@ -129,12 +131,16 @@ export function Verdict({
   state,
   index,
   label,
+  reveal = true,
 }: {
   label?: string;
-  state: "waiting" | SendTarget["status"];
+  state: "waiting" | "partial" | "deleted" | SendTarget["status"];
+  reveal?: boolean;
   index: number;
 }) {
   const word = {
+    partial: "Partial",
+    deleted: "Deleted in Discord",
     waiting: "Sending",
     pending: "Sending",
     posting: "Sending",
@@ -147,12 +153,17 @@ export function Verdict({
   return (
     <span
       className={styles.verdict}
+      data-static={!reveal || undefined}
       data-state={waiting ? "waiting" : state}
       // The reveal staggers down the tray, capped so a long list still lands quickly.
       style={{ "--n": Math.min(index, 8) } as React.CSSProperties}
     >
       {waiting ? (
         <LoaderCircle className={styles.spin} aria-hidden="true" />
+      ) : state === "partial" ? (
+        <CircleMinus aria-hidden="true" />
+      ) : state === "deleted" ? (
+        <Trash2 aria-hidden="true" />
       ) : state === "unknown" ? (
         <CircleHelp aria-hidden="true" />
       ) : (

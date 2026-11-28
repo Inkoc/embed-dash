@@ -637,7 +637,6 @@ export const editRequestSchema = z
   .strict();
 
 export const retryRequestSchema = z.object({
-  id: z.uuid().optional(),
   /** Only these failed copies; omitted, every failed copy. */
   targetIds: z.array(z.string()).min(1).optional(),
 });
@@ -731,17 +730,34 @@ export const messageLink = (target: {
 }) =>
   `https://discord.com/channels/${target.guildId}/${target.channelId}/${target.messageId}`;
 
-/** History uses inclusive calendar dates in UTC and bounded pages. */
+/** History bounds are exact instants; the upper bound is exclusive. */
 export const historyQuerySchema = z
   .object({
     q: z.string().trim().max(500).default(""),
     guildId: z.string().min(1).max(100).optional(),
     channelId: z.string().min(1).max(100).optional(),
-    from: z.iso.date().optional(),
-    to: z.iso.date().optional(),
+    from: z.iso.datetime({ offset: true }).optional(),
+    to: z.iso.datetime({ offset: true }).optional(),
     status: z.enum(["sending", "done", "partial", "failed"]).optional(),
     page: z.coerce.number().int().min(1).max(1000000).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict()
+  .refine(
+    (query) =>
+      !query.from ||
+      !query.to ||
+      Date.parse(query.from) <= Date.parse(query.to),
+    {
+      message: "The start date must be on or before the end date.",
+      path: ["to"],
+    },
+  );
+export const historyFiltersSchema = z
+  .object({
+    ...historyQuerySchema.shape,
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
   })
   .strict()
   .refine((query) => !query.from || !query.to || query.from <= query.to, {
@@ -754,6 +770,18 @@ export const historyEntrySchema = z.object({
   color: z.string(),
   createdAt: z.number(),
   channelCount: z.number(),
+  lastEditedAt: z.number().nullable().default(null),
+  destinations: z
+    .array(
+      z.object({
+        guildId: z.string(),
+        guildName: z.string(),
+        channelId: z.string(),
+        channelName: z.string(),
+      }),
+    )
+    .default([]),
+  unconfirmed: z.boolean().default(false),
   updateFailureCount: z.number().int().nonnegative().default(0),
   status: sendResultSchema.shape.status,
 });
@@ -769,7 +797,6 @@ export const historyResponseSchema = z.object({
     }),
   ),
 });
-export type HistoryResponse = z.infer<typeof historyResponseSchema>;
 export const historyDetailSchema = sendResultSchema.extend({
   retainedUploads: z.array(z.string()).optional(),
   payload: messagePayloadSchema,
@@ -782,3 +809,36 @@ export {
   exportMessageJson,
   type JsonImportResult,
 } from "./messageJson.js";
+
+export type HistoryDestination = z.infer<
+  typeof historyEntrySchema
+>["destinations"][number];
+
+/** What a later search will look in: every text a reader sees. */
+export function searchText(payload: MessagePayload): string {
+  return [
+    payload.content,
+    ...payload.embeds.flatMap((embed) => [
+      embed.title,
+      embed.description,
+      embed.author.name,
+      embed.footer.text,
+      ...embed.fields.flatMap((field) => [field.name, field.value]),
+    ]),
+  ]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+}
+
+/** Prefer an embed heading, then the first visible message or description line. */
+export function messageTitle(payload: MessagePayload): string {
+  const line = (text: string) => text.split("\n").find((part) => part.trim());
+  return (
+    payload.embeds.find((embed) => embed.title.trim())?.title ||
+    line(payload.content) ||
+    payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
+    "Untitled message"
+  );
+}

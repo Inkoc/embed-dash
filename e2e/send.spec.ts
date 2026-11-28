@@ -235,10 +235,34 @@ test("reloading mid-send shows its progress again, the lock note stays in view a
   await pick(page, "Lanternfall Cup EU", "match-schedule");
   await pick(page, "Lanternfall Modding Guild", "release-notes");
   await tray(page).getByRole("button", { name: "Send to 3 channels" }).click();
+  const started = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/sends",
+  );
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Send to 3 channels" })
     .click();
+  const { id } = await (await started).json();
+  let intermediate: { status: string; targets: { status: string }[] };
+  await expect
+    .poll(
+      async () => {
+        intermediate = await (
+          await page.request.get(`/api/sends/${id}`)
+        ).json();
+        return intermediate.targets.filter((target) => target.status === "sent")
+          .length;
+      },
+      { intervals: [25], timeout: 2000 },
+    )
+    .toBe(1);
+  let resumed = false;
+  await page.route(`**/api/sends/${id}`, async (route) => {
+    if (resumed) await route.continue();
+    else await route.fulfill({ json: intermediate });
+  });
   await expect(
     tray(page).getByRole("button", { name: "Keep this draft" }),
   ).toBeDisabled();
@@ -250,9 +274,14 @@ test("reloading mid-send shows its progress again, the lock note stays in view a
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(page.getByText(/The selection is locked/)).toBeInViewport();
 
+  await expect(tray(page)).toContainText("1 of 3 sent");
   await page.reload();
   await expect(page.getByText(/The selection is locked/)).toBeVisible();
-  await expect(tray(page)).toContainText(/\d of 3 sent|3 sent/);
+  await expect(tray(page)).toContainText(/[12] of 3 sent/);
+  await expect(
+    page.getByRole("checkbox", { name: "news", exact: true }).first(),
+  ).toBeDisabled();
+  resumed = true;
   await expect(tray(page)).toContainText("3 sent.");
   await expect(tray(page)).toContainText("Every copy arrived.");
   await expect(page.getByText(/The selection is locked/)).toHaveCount(0);
