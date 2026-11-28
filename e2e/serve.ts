@@ -65,6 +65,8 @@ const app = await createApp(
     sendClock: { now: () => Date.now() + scheduleOffset, intervalMs: 50 },
   },
 );
+app.get("/__test/messages", async () => fake.messages);
+
 // This route exists only in the fake-Discord test harness, behind the ordinary auth and CSRF hooks.
 app.delete("/api/test/scheduler/advance", async () => {
   scheduleOffset = 0;

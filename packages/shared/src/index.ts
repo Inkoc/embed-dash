@@ -1,4 +1,11 @@
+import { attachmentReference, linkProblem } from "./links.js";
 import { z } from "zod";
+import {
+  buttonLimits,
+  buttonRowDraftSchema,
+  buttonProblems,
+} from "./buttons.js";
+export * from "./buttons.js";
 export const botIdentitySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -19,6 +26,7 @@ export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 /** Discord's message and embed limits, in characters unless noted. */
 export const discordLimits = {
+  ...buttonLimits,
   content: 2000,
   embedsPerMessage: 10,
   title: 256,
@@ -65,6 +73,7 @@ export const attachmentSchema = z.object({
 });
 export const messageDraftSchema = z.object({
   content: z.string(),
+  components: z.array(buttonRowDraftSchema).optional(),
   embeds: z.array(embedDraftSchema),
   attachments: z.array(attachmentSchema).default([]),
 });
@@ -245,43 +254,9 @@ const characters = (n: number) =>
   `${format(n)} ${n === 1 ? "character" : "characters"}`;
 const hexColor = /^#[0-9a-f]{6}$/i;
 
-/**
- * An uploaded file is referenced as `attachment://filename`; Discord only
- * matches filenames made of ASCII letters, digits, dots, dashes and underscores.
- */
-const attachmentReference = /^attachment:\/\/(?!\.+$)[\w.-]+$/;
-
-/**
- * Whether Discord would accept the link; empty counts as acceptable, since every link is optional.
- * Title and author links open in a browser, so they must be web links; images
- * and icons may also point at a file uploaded with the message.
- */
+/** Whether an optional web or uploaded-media link is accepted by Discord. */
 export function isAcceptedLink(url: string, media: boolean): boolean {
   return linkProblem(url, media) === null;
-}
-
-function linkProblem(url: string, media: boolean): string | null {
-  const value = url.trim();
-  if (!value) return null;
-  const schemes = media
-    ? ["http:", "https:", "attachment:"]
-    : ["http:", "https:"];
-  let protocol: string;
-  try {
-    protocol = new URL(value).protocol;
-  } catch {
-    return media
-      ? "Use a full link that starts with https://, or attachment:// for an uploaded file."
-      : "Use a full link that starts with https://.";
-  }
-  if (protocol === "attachment:" && media)
-    return attachmentReference.test(value)
-      ? null
-      : "Name an uploaded file as attachment://filename, using only letters, digits, dots, dashes and underscores.";
-  if (schemes.includes(protocol)) return null;
-  return media
-    ? `Discord only shows images from https://, http:// or attachment:// links, not ${protocol}//.`
-    : `Discord only accepts https:// or http:// links here, not ${protocol}//.`;
 }
 
 /** Whether an embed has anything Discord would show; an empty one is never sent. */
@@ -346,7 +321,11 @@ export function validateMessage(
       );
   };
 
-  if (!message.content.trim() && message.embeds.length === 0)
+  if (
+    !message.content.trim() &&
+    message.embeds.length === 0 &&
+    !message.components?.some((row) => row.components.length)
+  )
     add("content", "Message", "Add message text or an embed.");
   limit(
     "content",
@@ -361,6 +340,33 @@ export function validateMessage(
       "Embeds",
       `A message holds at most ${discordLimits.embedsPerMessage} embeds; remove ${message.embeds.length - discordLimits.embedsPerMessage}.`,
     );
+
+  const rows = message.components ?? [];
+  if (rows.length > discordLimits.buttonRows)
+    add(
+      "components",
+      "Buttons",
+      `Use at most ${discordLimits.buttonRows} rows.`,
+    );
+  rows.forEach((row, r) => {
+    if (
+      !row.components.length ||
+      row.components.length > discordLimits.buttonsPerRow
+    )
+      add(
+        `components.${r}`,
+        `Button row ${r + 1}`,
+        `Add between 1 and ${discordLimits.buttonsPerRow} buttons, or remove the row.`,
+      );
+    row.components.forEach((button, b) => {
+      for (const problem of buttonProblems(button))
+        add(
+          `components.${r}.components.${b}.${problem.field}`,
+          `Row ${r + 1}, button ${b + 1}: ${{ label: "Label", url: "Button URL", emoji: "Button emoji" }[problem.field]}`,
+          problem.message,
+        );
+    });
+  });
 
   const files = message.attachments;
   if (files.length > uploadLimits.attachmentsPerMessage)

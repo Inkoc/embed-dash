@@ -29,6 +29,7 @@ export function MessageSlip({ draft }: { draft: Draft }) {
   const parts = [
     summary.text ? <>text</> : null,
     summary.embeds ? counted(summary.embeds, "embed", "embeds") : null,
+    summary.buttons ? counted(summary.buttons, "button", "buttons") : null,
     summary.files ? counted(summary.files, "file", "files") : null,
   ].filter((part) => part !== null);
   return (
