@@ -43,6 +43,14 @@
   color: var(--danger);
   font-weight: var(--weight-strong);
 }
+/*
+ * A failure has no name to give way, so it keeps its full width: squeezed, its
+ * words would print over its neighbours, and the bar couldn't see that it needs
+ * to shed (see TopBar.tsx).
+ */
+.bar[data-state="error"] {
+  flex-shrink: 0;
+}
 .icon {
   width: var(--icon-sm);
   height: var(--icon-sm);
@@ -51,6 +59,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: var(--tap);
   min-height: var(--tap);
   padding: 0 var(--space-2);
   border: 0;
@@ -107,7 +116,21 @@
   font-size: var(--text-key);
   font-weight: var(--weight-strong);
 }
-/* Phones: a failure moves out of the bar into a notice above the view. */
+/*
+ * Phones, or a bar short of room (TopBar.tsx): a failure moves out of the bar
+ * into a notice above the view.
+ */
+[data-shed-failure] .bar[data-state="error"] {
+  display: none;
+}
+[data-shed-failure] ~ * .notice {
+  display: flex;
+}
+@media (640px < width <= 1100px) {
+  [data-shed-failure] ~ * .notice {
+    margin-inline: var(--space-4);
+  }
+}
 @media (max-width: 640px) {
   .bar[data-state="error"] {
     display: none;

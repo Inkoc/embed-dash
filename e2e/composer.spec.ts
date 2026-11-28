@@ -112,6 +112,32 @@ test("the signed-in bar keeps to one line without overlap from tablet to wide de
   ).toBeInViewport();
 });
 
+test("when the bot can't connect after the page loads, the bar refits around the failure", async ({
+  page,
+}) => {
+  // Held briefly, so the bar first fits the connecting state and then has to refit.
+  await page.route("/api/bot", async (route) => {
+    await new Promise((done) => setTimeout(done, 300));
+    await route.fulfill({ status: 502, json: {} });
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  const banner = page.getByRole("banner");
+  await expect(banner.getByText("Connecting to Discord…")).toBeVisible();
+  await expect(banner.getByText("Not connected")).toBeVisible();
+  await expectHeaderFits(page);
+  // Short of room, the failure moves to the notice above the view, Retry and all.
+  await page.setViewportSize({ width: 768, height: 800 });
+  await expect(banner.getByText("Not connected")).toBeHidden();
+  const notice = page.getByRole("main").getByRole("alert");
+  await expect(notice).toContainText("Unable to connect to Discord");
+  const retry = await notice
+    .getByRole("button", { name: "Retry connection" })
+    .boundingBox();
+  expect(retry!.width).toBeGreaterThanOrEqual(44);
+  expect(retry!.height).toBeGreaterThanOrEqual(44);
+});
+
 test("on phones the views take their own row, with or without Sign out, and hold four views", async ({
   page,
 }) => {

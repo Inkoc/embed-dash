@@ -22,6 +22,16 @@ async function compose(page: Page, title: string) {
     .fill("Maintenance starts at 06:00 UTC.");
 }
 
+async function axe(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  return results.violations.map((violation) => ({
+    id: violation.id,
+    targets: violation.nodes.map((node) => node.target.join(" ")),
+  }));
+}
+
 async function pick(page: Page, guild: string, channel: string) {
   await drawer(page, guild).getByRole("checkbox", { name: channel }).check();
 }
@@ -128,6 +138,47 @@ test("one refused channel fails on its own slip and retry sends only that one", 
   });
   await expect(results).not.toBeChecked();
   await expect(results).toHaveAccessibleDescription(/Already has this message/);
+});
+
+test("a send to many channels keeps its destinations and slips reachable from the keyboard", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // Settled colours for axe, and an instant scroll to measure.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await compose(page, "Season finale");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Main channel of each server/ })
+    .click();
+  await expect(tray(page)).toContainText("12 channels in 12 servers");
+  const slips = tray(page).getByRole("region", { name: "Ticked channels" });
+  await expect(slips).toHaveAttribute("tabindex", "0");
+
+  await tray(page).getByRole("button", { name: "Send to 12 channels" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send to 12 channels?" });
+  const destinations = dialog.getByRole("region", {
+    name: "Destinations, 12 channels",
+  });
+  // The list is taller than its box, so it scrolls, and the keyboard scrolls it.
+  expect(
+    await destinations.evaluate(
+      (list) => list.scrollHeight > list.clientHeight,
+    ),
+  ).toBe(true);
+  await destinations.focus();
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => destinations.evaluate((list) => list.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await axe(page)).toEqual([]);
+
+  await dialog.getByRole("button", { name: "Send to 12 channels" }).click();
+  const sending = tray(page).getByRole("region", { name: "Sending" });
+  await expect(sending).toBeVisible();
+  await expect(sending).toHaveAttribute("tabindex", "0");
+  expect(await axe(page)).toEqual([]);
+  await expect(tray(page)).toContainText("12 sent.");
 });
 
 test("after a send, Compose a new message clears the draft and the selection", async ({

@@ -410,16 +410,26 @@ export function SendControls({
             This posts to <b>{count}</b> in{" "}
             <b>{plural(servers.size, "server", "servers")}</b>.
           </p>
-          <ul className={styles.destinations} aria-label="Destinations">
-            {byServer.map(({ guild, channels }) => (
-              <li key={guild.id}>
-                <b>{guild.name}</b>
-                <span>
-                  {channels.map((entry) => `#${entry.channel.name}`).join(", ")}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {/* A long list scrolls, so it takes focus for keyboard scrolling. */}
+          <div
+            className={styles.destinations}
+            role="region"
+            aria-label={`Destinations, ${count}`}
+            tabIndex={0}
+          >
+            <ul aria-label="Destinations">
+              {byServer.map(({ guild, channels }) => (
+                <li key={guild.id}>
+                  <b>{guild.name}</b>
+                  <span>
+                    {channels
+                      .map((entry) => `#${entry.channel.name}`)
+                      .join(", ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
           {again.length > 0 && (
             <p className={styles.warning}>
               <CopyCheck aria-hidden="true" />

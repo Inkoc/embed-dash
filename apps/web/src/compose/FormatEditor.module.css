@@ -33,15 +33,21 @@
   padding-top: var(--space-2);
 }
 
+/*
+ * Groups are divided by a hairline, the same rule the sheet uses between
+ * sections. Every group carries one, and the toolbar starts that far left of
+ * the tray, which clips it: so the first group, and any group a wrap brings to
+ * the start of a row, shows no stray divider.
+ */
 .toolbar {
+  --divide: calc(var(--space-1) * 2 + var(--rule-width));
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
+  margin-left: calc(var(--divide) * -1);
 }
-/* groups are divided by a hairline, the same rule the sheet uses between sections */
 .group {
   display: flex;
-}
-.group + .group {
   margin-left: var(--space-1);
   padding-left: var(--space-1);
   border-left: var(--rule-width) solid var(--rule);
@@ -82,9 +88,11 @@
 
 .readout {
   display: flex;
+  flex: 1 0 auto;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
-  margin-left: auto;
+  padding-left: var(--space-3);
   font-size: var(--text-meta);
   color: var(--ink-2);
 }
@@ -226,7 +234,6 @@
     flex-wrap: nowrap;
   }
   .toolbar {
-    flex: 1 1 auto;
     flex-wrap: nowrap;
     min-width: 0;
     overflow-x: auto;

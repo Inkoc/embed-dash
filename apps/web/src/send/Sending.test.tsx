@@ -314,6 +314,10 @@ test("confirms with the message summary and channel count, then shows a result p
   expect(
     within(dialog).getByRole("list", { name: "Destinations" }),
   ).toHaveTextContent("Lanternfall#general, #news");
+  // A long list scrolls in its box, so the box takes focus for the keyboard.
+  expect(
+    within(dialog).getByRole("region", { name: "Destinations, 3 channels" }),
+  ).toHaveAttribute("tabindex", "0");
   expect(dialog).toHaveTextContent("Mentions won’t notify anyone.");
   // Nothing goes out before the answer.
   expect(sendRequests()).toEqual([]);
@@ -326,6 +330,10 @@ test("confirms with the message summary and channel count, then shows a result p
   expect(
     within(tray()).getByRole("button", { name: /Sending 1 of 3…/ }),
   ).toBeDisabled();
+  // Nothing in the slips takes focus mid-send, so their list does.
+  expect(
+    within(tray()).getByRole("region", { name: "Sending" }),
+  ).toHaveAttribute("tabindex", "0");
   expect(tray()).toHaveTextContent("Mentions notify nobody.");
   feed.release();
   // The last poll draws the verdicts a moment before the send is marked

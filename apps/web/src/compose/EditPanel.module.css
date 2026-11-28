@@ -87,13 +87,14 @@
   border-radius: var(--radius-lg);
   background: var(--edit-wash);
 }
-.action p,
-.mobileAction p {
+/* Direct children only: the update results below use the tray's own inks. */
+.action > p,
+.mobileAction > p {
   font-size: var(--text-label);
   color: var(--ink-2);
 }
-.action button:disabled,
-.mobileAction button:disabled {
+.action > button:disabled,
+.mobileAction > button:disabled {
   background: var(--rule);
   color: var(--ink-2);
   cursor: default;

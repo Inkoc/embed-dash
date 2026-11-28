@@ -518,6 +518,8 @@
     display: flex;
   }
   .actionMeta {
+    flex: none;
+    white-space: nowrap;
     font-family: var(--font-mono);
     font-size: var(--text-meta);
     font-variant-numeric: tabular-nums;
@@ -558,6 +560,13 @@
   }
   .actionBar .primary {
     flex: 1 1 auto;
+  }
+}
+/* The narrowest phones: the action tightens so its label and the count each keep one line. */
+@media (max-width: 25em) {
+  .actionBar .primary {
+    gap: var(--space-2);
+    padding-inline: var(--space-4);
   }
 }
 

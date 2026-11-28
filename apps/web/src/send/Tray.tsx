@@ -314,7 +314,16 @@ export function Tray({
           <ChevronDown aria-hidden="true" />
         </button>
       </div>
-      <div id="tray-slips" ref={list} className={styles.slips}>
+      {/* The slips scroll on their own, and while a send runs nothing in them
+          takes focus, so the list itself does, for keyboard scrolling. */}
+      <div
+        id="tray-slips"
+        ref={list}
+        className={styles.slips}
+        role="region"
+        aria-label={busy ? "Sending" : result ? "Results" : "Ticked channels"}
+        tabIndex={0}
+      >
         {total === 0 ? (
           <p className={styles.empty}>
             <b>The tray is empty.</b> Tick channels in the catalogue to file

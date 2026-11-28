@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 test("edit a history message across two channels", async ({ page }) => {
@@ -58,6 +59,18 @@ test("edit a history message across two channels", async ({ page }) => {
   await page.getByRole("button", { name: "Save updates", exact: true }).click();
   await expect(page.getByText("Updated", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  // The failed copy's reason and Retry sit on the results' deep ink in both themes.
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    expect(results.violations.map((v) => v.id)).toEqual([]);
+  }
   await page.getByRole("button", { name: "Close editor", exact: true }).click();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await page
