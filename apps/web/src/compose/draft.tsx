@@ -40,6 +40,8 @@ export interface ButtonRow extends ButtonRowDraft {
   components: (ButtonRowDraft["components"][number] & { key: string })[];
 }
 export interface Draft {
+  forumTitle?: string;
+  forumTags?: MessageDraft["forumTags"];
   components?: ButtonRow[];
   content: string;
   embeds: Embed[];
@@ -52,6 +54,8 @@ let lastId = 0;
 export const newId = () => `k${++lastId}`;
 
 export const withIds = (message: MessageDraft): Draft => ({
+  forumTitle: message.forumTitle,
+  forumTags: message.forumTags,
   content: message.content,
   ...(message.components?.length
     ? {
@@ -105,6 +109,8 @@ export const written = (draft: Draft): Draft =>
  * when sent, and is nothing to keep in a template or an export.
  */
 export const toMessage = (draft: Draft): MessageDraft => ({
+  forumTitle: draft.forumTitle,
+  forumTags: draft.forumTags,
   content: draft.content,
   ...(draft.components?.length
     ? { components: completeButtonRows(draft.components) }

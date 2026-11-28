@@ -482,3 +482,7 @@
   display: grid;
   gap: var(--space-4);
 }
+.quickHint {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}

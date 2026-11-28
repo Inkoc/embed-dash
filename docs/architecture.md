@@ -66,10 +66,11 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | `POST /api/uploads` | Upload a file (multipart) → `{id, filename, size, contentType}` |
 | `GET /api/uploads/:id`, `DELETE /api/uploads/:id` | A stored file's details (404 once gone, so the composer can mark it missing); remove it |
 | `GET /api/uploads/:id/content` | An uploaded image, for the preview after a reload; 404 for every other type |
-| `POST /api/sends` | `{id, payload, channelIds}` (`id` is a UUID the browser chooses; `payload` is the message plus `pings` and `silent`) → `202 {id}` once the send and its targets are stored as `pending`; delivery continues in the background. The same `id` again returns the existing send and posts nothing. `422` when the message or a stored upload fails the checks, `409` when a channel is gone, closed to the bot or a forum; nothing is stored or sent in either case |
+| `POST /api/sends` | `{id, payload, channelIds}` (`id` is a UUID the browser chooses; `payload` is the message plus `pings`, `silent`, forum title/tags and optional announcement publication) → `202 {id}` once the send and its targets are stored as `pending`; delivery continues in the background. The same `id` again returns the existing send and posts nothing. `422` when the message or a stored upload fails the checks, `409` when a channel is gone or closed to the bot; nothing is stored or sent in either case |
 | `GET /api/sends?q=&guildId=&channelId=&from=&to=&status=&cursor=` | History |
 | `GET /api/sends/:id` | One send with its targets in the operator's order and each target's status; the browser polls it while any target is `pending` or `posting` |
 | `POST /api/sends/:id/retry` | `{targetIds?}` → `202 {id}`; the failed targets (all, or the listed ones) go back to `pending` and are re-delivered in the background, then polled like a new send. `409` while the send is still being delivered (checked inside the claim, so two retries can't both start); targets with an unknown outcome are never retried |
+| `POST /api/sends/:id/publish/retry` | Retry only failed announcement publication; never posts a new message |
 | `PUT /api/sends/:id` | Edit payload; updates every sent copy (or reschedules) |
 | `DELETE /api/sends/:id` | Cancel a scheduled send |
 | `GET /api/templates`, `GET /api/templates/:id` | Templates, most recently updated first: `{id, name, updatedAt, message, missingFiles}`; `missingFiles` lists the ids of files the server no longer has |

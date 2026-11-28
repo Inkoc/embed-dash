@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  destinationProblem,
+  destinationFailure,
   attachmentName,
   botIdentitySchema,
   canPost,
@@ -472,7 +474,7 @@ test("names the permissions to check and builds an invite with them", () => {
     "Embed Links",
     "Attach Files",
   ]);
-  // 1024 + 2048 + 16384 + 32768
+  // View Channel, Send Messages, Embed Links and Attach Files.
   expect(inviteUrl("42")).toBe(
     "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
   );
@@ -535,13 +537,13 @@ describe("sending", () => {
     contentType: "image/png",
   });
 
-  test("forum channels can't be sent to, whatever the permissions", () => {
+  test("forum starters use the normal posting permissions", () => {
     expect(canSendTo({ kind: "text", missing: [] })).toBe(true);
     expect(canSendTo({ kind: "announcement", missing: ["attachFiles"] })).toBe(
       true,
     );
     expect(canSendTo({ kind: "text", missing: ["sendMessages"] })).toBe(false);
-    expect(canSendTo({ kind: "forum", missing: [] })).toBe(false);
+    expect(canSendTo({ kind: "forum", missing: [] })).toBe(true);
   });
 
   test("a payload defaults to no pings and a normal notification", () => {
@@ -708,4 +710,98 @@ test("embed links reject internal whitespace and accept trimmed or percent-encod
   }
   expect(validateMessage(make(" https://example.com/guide "))).toEqual([]);
   expect(validateMessage(make("https://example.com/a%20b"))).toEqual([]);
+});
+
+const forumChannel: GuildChannel = {
+  id: "123456789012345678",
+  name: "reports",
+  kind: "forum",
+  missing: [],
+  availableTags: [{ id: "123456789012345679", name: "Bug" }],
+};
+test.each([
+  [{}, forumChannel, "FORUM_TITLE_REQUIRED"],
+  [{ forumTitle: "  " }, forumChannel, "FORUM_TITLE_REQUIRED"],
+  [
+    { forumTitle: "Report" },
+    { ...forumChannel, requireTag: true },
+    "FORUM_TAG_REQUIRED",
+  ],
+  [
+    {
+      forumTitle: "Report",
+      forumTags: { [forumChannel.id]: ["123456789012345680"] },
+    },
+    forumChannel,
+    "FORUM_TAG_UNAVAILABLE",
+  ],
+  [
+    { forumTitle: "Report" },
+    {
+      ...forumChannel,
+      requireTag: true,
+      availableTags: [
+        {
+          id: "123456789012345679",
+          name: "Bug",
+          unavailable: "Requires Manage Threads",
+        },
+      ],
+    },
+    "FORUM_NO_TAG_ACCESS",
+  ],
+  [
+    {
+      forumTitle: "Report",
+      forumTags: { [forumChannel.id]: ["123456789012345679"] },
+    },
+    {
+      ...forumChannel,
+      availableTags: [
+        {
+          id: "123456789012345679",
+          name: "Bug",
+          unavailable: "Requires Manage Threads",
+        },
+      ],
+    },
+    "FORUM_TAG_PERMISSION",
+  ],
+  [{ forumTitle: "Report" }, forumChannel, null],
+  [{}, { ...forumChannel, kind: "text" }, null],
+] as const)("forum destination rule %j", (changes, channel, code) => {
+  const message = messagePayloadSchema.parse({
+    content: "Message",
+    embeds: [],
+    ...changes,
+  });
+  expect(destinationFailure(message, channel as GuildChannel)).toBe(code);
+  expect(destinationProblem(message, channel as GuildChannel)).toBe(
+    code ? `#${channel.name}: ${deliveryErrors[code]}` : null,
+  );
+});
+test("forum tags reject duplicate ids", () => {
+  expect(
+    messagePayloadSchema.safeParse({
+      content: "Message",
+      embeds: [],
+      forumTitle: "Report",
+      forumTags: {
+        [forumChannel.id]: ["123456789012345679", "123456789012345679"],
+      },
+    }).success,
+  ).toBe(false);
+});
+
+test("forum validation identifies the destination and removed tags offer a usable recovery", () => {
+  const message = messagePayloadSchema.parse({
+    content: "Message",
+    embeds: [],
+    forumTitle: "Report",
+    forumTags: { [forumChannel.id]: ["123456789012345680"] },
+  });
+  expect(destinationProblem(message, forumChannel)).toContain("#reports:");
+  expect(destinationProblem(message, forumChannel)).toContain(
+    "Compose a new send with current tags",
+  );
 });

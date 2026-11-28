@@ -28,9 +28,10 @@ export const refreshGuilds = (client: QueryClient) =>
     .catch(() => undefined);
 
 /** The bot's servers and channels; the server caches them for a minute, Refresh skips that. */
-export function useGuilds() {
+export function useGuilds(enabled = true) {
   const client = useQueryClient();
   const query = useQuery({
+    enabled,
     queryKey: ["guilds"],
     retry: false,
     staleTime: 60_000,

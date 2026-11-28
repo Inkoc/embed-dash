@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Guild } from "@embed-dash/shared";
 import { useGuilds } from "./guilds";
+import { ForumFields } from "./DestinationFields";
 import { SchedulePicker } from "./SchedulePicker";
 import { asAppError } from "../errors";
 import { Catalogue } from "./Catalogue";
@@ -24,6 +25,13 @@ export function ScheduledFields({
   return (
     <div className={styles.picker}>
       <SchedulePicker value={due} onChange={setDue} />
+      <ForumFields
+        channels={
+          guilds.data?.guilds
+            .flatMap((g) => g.channels)
+            .filter((c) => channels.includes(c.id)) ?? []
+        }
+      />
       {guilds.isPending ? (
         <p role="status">Loading channels…</p>
       ) : guilds.isError ? (

@@ -383,6 +383,7 @@ function Picker({
             <button
               type="button"
               className={styles.pick}
+              aria-describedby="forum-pick-hint"
               disabled={!allPostable.length || locked}
               onClick={() => onTickMany(allPostable, true)}
             >
@@ -401,6 +402,9 @@ function Picker({
               <span className={styles.n}>{entries.length}</span>
             </button>
           </div>
+          <p id="forum-pick-hint" className={styles.quickHint}>
+            Forums need a post title and may require tags.
+          </p>
         </div>
         {drawers.length ? (
           <Catalogue

@@ -136,14 +136,6 @@ export const kindLabel: Record<GuildChannel["kind"], string> = {
 /** Why the bot can't post in a channel, or null when it can. */
 export function blockedReason(channel: GuildChannel): string | null {
   if (canSendTo(channel)) return null;
-  // Forum posts are new threads, which sending doesn't do yet.
-  if (
-    channel.kind === "forum" &&
-    !channelPermissions.some(
-      (p) => p.required && channel.missing.includes(p.key),
-    )
-  )
-    return "Forum posting isn’t available yet";
   const labels = channelPermissions
     .filter((p) => p.required && channel.missing.includes(p.key))
     .map((p) => p.label);
