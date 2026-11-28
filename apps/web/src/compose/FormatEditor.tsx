@@ -41,6 +41,7 @@ import {
 } from "./markdown";
 import { formatTimestamp } from "../preview/timestamp";
 import styles from "./FormatEditor.module.css";
+import choice from "../ui/Choice.module.css";
 
 type Panel = "mention" | "timestamp";
 interface Command {
@@ -358,13 +359,15 @@ function MentionPanel({ onDone }: PanelProps) {
       <fieldset className={styles.kinds}>
         <legend>Mention a</legend>
         {(["user", "role", "channel"] as const).map((value) => (
-          <label key={value} className={styles.kind}>
+          <label key={value} className={choice.row}>
             <input
+              className={choice.input}
               type="radio"
               name={`${field}-kind`}
               checked={kind === value}
               onChange={() => setKind(value)}
             />
+            <span className={choice.mark} aria-hidden="true" />
             {value === "user"
               ? "Member"
               : value === "role"
