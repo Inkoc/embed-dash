@@ -1,3 +1,5 @@
+import { ScheduledFields } from "../send/ScheduledFields";
+import { localInput, scheduleInstant } from "../send/SchedulePicker";
 import {
   createContext,
   useContext,
@@ -62,6 +64,7 @@ export function EditGuard() {
 }
 
 interface Editing {
+  scheduleFields: ReactNode;
   busy: boolean;
   saved: HistoryDetail | null;
   problem: AppError | null;
@@ -81,8 +84,15 @@ function useEditing() {
 
 /** Shared by the desktop action and its mobile counterpart; one request owns both. */
 export function EditProvider({ children }: { children: ReactNode }) {
-  const { editing, draft, markEdited } = useDraft();
+  const { editing, draft, markEdited, setScheduleDirty } = useDraft();
   const client = useQueryClient();
+  const [due, setDue] = useState(
+    editing?.scheduledAt ? localInput(editing.scheduledAt) : "",
+  );
+  const [channels, setChannels] = useState(
+    editing?.targets.map((t) => t.channelId) ?? [],
+  );
+  const [scheduledSaved, setScheduledSaved] = useState(false);
   const [problem, setProblem] = useState<AppError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(
@@ -124,6 +134,41 @@ export function EditProvider({ children }: { children: ReactNode }) {
       pings: editing.payload.pings,
       silent: editing.payload.silent,
     };
+    if (editing.status === "scheduled") {
+      try {
+        const instant = scheduleInstant(due);
+        if (!instant || !channels.length)
+          throw new AppError(
+            !instant
+              ? "Choose a future date and time."
+              : "Choose at least one channel.",
+          );
+        await startSend(
+          "schedule",
+          `/api/sends/${editing.id}/schedule`,
+          {
+            payload,
+            scheduledAt: new Date(instant).toISOString(),
+            channelIds: channels,
+          },
+          csrf(),
+          "PUT",
+        );
+        markEdited(payload);
+        setScheduleDirty(false);
+        setScheduledSaved(true);
+        void client.invalidateQueries({ queryKey: ["history"] });
+        void client.invalidateQueries({
+          queryKey: ["history-detail", editing.id],
+        });
+      } catch (error) {
+        setProblem(asAppError("schedule", error));
+      } finally {
+        running.current = false;
+        setSubmitting(false);
+      }
+      return;
+    }
     // An unchanged lost request keeps its ID; changed content is a new full-state edit.
     if (
       !attempt.current ||
@@ -180,6 +225,26 @@ export function EditProvider({ children }: { children: ReactNode }) {
   return (
     <EditContext
       value={{
+        scheduleFields:
+          editing?.status === "scheduled" ? (
+            <>
+              <ScheduledFields
+                due={due}
+                setDue={(value) => {
+                  setScheduleDirty(true);
+                  setDue(value);
+                  setScheduledSaved(false);
+                }}
+                channels={channels}
+                setChannels={(value) => {
+                  setScheduleDirty(true);
+                  setChannels(value);
+                  setScheduledSaved(false);
+                }}
+              />
+              {scheduledSaved && <p role="status">Schedule saved.</p>}
+            </>
+          ) : null,
         busy: !!busy,
         saved: query.data?.edit?.id === activeId ? query.data : editing,
         problem,
@@ -265,8 +330,14 @@ export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
     <div className={mobile ? styles.mobileAction : styles.action}>
       {!mobile && (
         <p>
-          Update {count} existing {count === 1 ? "copy" : "copies"} with the
-          original mention settings.
+          {editing.status === "scheduled" ? (
+            "Save the message, due time and destinations."
+          ) : (
+            <>
+              Update {count} existing {count === 1 ? "copy" : "copies"} with the
+              original mention settings.
+            </>
+          )}
         </p>
       )}
       <button
@@ -276,7 +347,11 @@ export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
         disabled={busy || issues.length > 0}
         onClick={() => void save()}
       >
-        {busy ? "Updating copies…" : "Save updates"}
+        {busy
+          ? "Saving…"
+          : editing.status === "scheduled"
+            ? "Save schedule"
+            : "Save updates"}
         <ForwardKeys />
       </button>
       {issues.length > 0 && (
@@ -403,7 +478,7 @@ function UpdateOutcome() {
 
 export function EditPanel() {
   const { editing, dirty, endEdit } = useDraft();
-  const { busy, saved } = useEditing();
+  const { busy, saved, scheduleFields } = useEditing();
   const wide = useWide();
   const [confirmClose, setConfirmClose] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -433,15 +508,23 @@ export function EditPanel() {
       <header className={styles.head}>
         <div>
           <h2 id="edit-heading" tabIndex={-1} ref={heading}>
-            Edit sent message
+            {editing.status === "scheduled"
+              ? "Edit scheduled message"
+              : "Edit sent message"}
           </h2>
           <p className={styles.title}>{title}</p>
           <p className={styles.meta}>
-            Sent{" "}
+            {editing.status === "scheduled" ? "Prepared" : "Sent"}{" "}
             <time dateTime={new Date(editing.createdAt).toISOString()}>
               {new Date(editing.createdAt).toLocaleString()}
             </time>{" "}
-            · {copies} {copies === 1 ? "copy" : "copies"} to update
+            {editing.status === "scheduled" ? (
+              "· Waiting for the scheduled time"
+            ) : (
+              <>
+                · {copies} {copies === 1 ? "copy" : "copies"} to update
+              </>
+            )}
           </p>
         </div>
         <button
@@ -456,7 +539,7 @@ export function EditPanel() {
       <p className={styles.note}>
         Your earlier draft comes back when you close the editor.
       </p>
-      <ReadOnlyChannels send={message} />
+      {scheduleFields ?? <ReadOnlyChannels send={message} />}
       {!wide && <UpdateOutcome />}
       <ConfirmDialog
         open={confirmClose}

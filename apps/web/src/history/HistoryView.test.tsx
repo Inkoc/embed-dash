@@ -404,3 +404,37 @@ test("ArrowDown during debounce waits for matching results before focusing", asy
   resolve(Response.json(listing([row("patch", "Patch")])));
   expect(await screen.findByRole("link", { name: /Patch/ })).toHaveFocus();
 });
+
+test("Scheduled filter requests scheduled entries and shows their due time", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      entries: [
+        {
+          id: "scheduled",
+          title: "Planned update",
+          color: "",
+          status: "scheduled",
+          createdAt: 1,
+          scheduledAt: 1900000000000,
+          channelCount: 1,
+        },
+      ],
+      hasMore: false,
+      destinations: [],
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  show();
+  fireEvent.change(screen.getByLabelText("Status"), {
+    target: { value: "scheduled" },
+  });
+  expect(await screen.findByText("Planned update")).toBeVisible();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some((call) =>
+        String((call as unknown[])[0]).includes("status=scheduled"),
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByText(/^Due /)).toBeVisible();
+});

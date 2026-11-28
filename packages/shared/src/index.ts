@@ -623,6 +623,7 @@ export const messagePayloadSchema = messageDraftSchema.extend({
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
 export const sendRequestSchema = z.object({
+  scheduledAt: z.iso.datetime({ offset: true }).optional(),
   /** Chosen by the browser, so repeating a request that may have been lost can't post twice. */
   id: z.uuid(),
   payload: messagePayloadSchema,
@@ -631,6 +632,11 @@ export const sendRequestSchema = z.object({
     .min(1)
     .refine((ids) => new Set(ids).size === ids.length),
 });
+export const scheduleEditSchema = sendRequestSchema
+  .omit({ id: true })
+  .required({ scheduledAt: true })
+  .strict();
+export const sendIdSchema = z.object({ id: z.uuid() });
 export type SendRequest = z.infer<typeof sendRequestSchema>;
 
 export const editRequestSchema = z
@@ -695,6 +701,7 @@ export const sendTargetSchema = z.object({
 export type SendTarget = z.infer<typeof sendTargetSchema>;
 
 export const sendResultSchema = z.object({
+  scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   editId: z.string().nullable().optional(),
   edit: z
@@ -706,7 +713,14 @@ export const sendResultSchema = z.object({
     .nullable()
     .optional(),
   lastEditedAt: z.number().nullable().optional(),
-  status: z.enum(["sending", "done", "partial", "failed"]),
+  status: z.enum([
+    "scheduled",
+    "cancelled",
+    "sending",
+    "done",
+    "partial",
+    "failed",
+  ]),
   targets: z.array(sendTargetSchema),
 });
 export type SendResult = z.infer<typeof sendResultSchema>;
@@ -739,7 +753,9 @@ export const historyQuerySchema = z
     channelId: z.string().min(1).max(100).optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
-    status: z.enum(["sending", "done", "partial", "failed"]).optional(),
+    status: z
+      .enum(["scheduled", "cancelled", "sending", "done", "partial", "failed"])
+      .optional(),
     page: z.coerce.number().int().min(1).max(1000000).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
@@ -766,6 +782,7 @@ export const historyFiltersSchema = z
     path: ["to"],
   });
 export const historyEntrySchema = z.object({
+  scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   title: z.string(),
   color: z.string(),

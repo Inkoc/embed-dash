@@ -46,6 +46,7 @@ const discordApp = await createApp(
   { spaRoot, logger: false },
 );
 await discordApp.listen({ port: discordPort, host: "127.0.0.1" });
+let scheduleOffset = 0;
 const app = await createApp(
   {
     botToken: "e2e-test-token",
@@ -58,8 +59,17 @@ const app = await createApp(
     uploadRetentionDays: 14,
     discordApiBase,
   },
-  { spaRoot, logger: false },
+  {
+    spaRoot,
+    logger: false,
+    sendClock: { now: () => Date.now() + scheduleOffset, intervalMs: 50 },
+  },
 );
+// This route exists only in the fake-Discord test harness, behind the ordinary auth and CSRF hooks.
+app.post("/api/test/scheduler/advance", async () => {
+  scheduleOffset += 60000;
+  return { ok: true };
+});
 await app.listen({ port, host: "127.0.0.1" });
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {

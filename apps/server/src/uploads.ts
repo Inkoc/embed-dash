@@ -114,7 +114,7 @@ const sweepEveryMs = 60 * 60 * 1000;
  */
 const referenced = sql`(exists (
   select 1 from sends, json_each(sends.payload_json, '$.attachments') as attachment
-  where json_extract(attachment.value, '$.id') = ${uploads.id}
+  where sends.status != 'cancelled' and json_extract(attachment.value, '$.id') = ${uploads.id}
 ) or exists (
   select 1 from templates, json_each(templates.payload_json, '$.attachments') as attachment
   where json_extract(attachment.value, '$.id') = ${uploads.id}

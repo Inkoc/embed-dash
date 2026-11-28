@@ -1,0 +1,41 @@
+.picker {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.picker input {
+  min-height: var(--tap);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-2);
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  color-scheme: inherit;
+}
+.picker p {
+  font-size: var(--text-label);
+}
+.channel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+}
+.picker fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.picker details {
+  border-top: var(--rule-width) solid var(--edit-rule);
+}
+.picker summary {
+  min-height: var(--tap);
+  align-content: center;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}

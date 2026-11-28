@@ -1902,3 +1902,184 @@ test("history identifies a send with only unconfirmed copies", async () => {
   const list = await s.app.inject({ url: "/api/sends", headers: s.headers });
   expect(list.json().entries[0]).toMatchObject({ unconfirmed: true });
 });
+
+test("scheduled sends survive restart, claim once, allow edits and cancellation, and release files", async () => {
+  const env = await setup();
+  const due = Date.now() + 60000;
+  const create = (
+    id: string,
+    attachments: MessagePayload["attachments"] = [],
+  ) =>
+    env.app.inject({
+      method: "POST",
+      url: "/api/sends",
+      headers: env.headers,
+      payload: {
+        id,
+        payload: payload({ attachments }),
+        channelIds: [news],
+        scheduledAt: new Date(due).toISOString(),
+      },
+    });
+  const id = randomUUID();
+  expect((await create(id)).statusCode).toBe(202);
+  expect((await create(id)).statusCode).toBe(202);
+  expect(
+    (
+      await env.app.inject({ url: `/api/sends/${id}`, headers: env.headers })
+    ).json().status,
+  ).toBe("scheduled");
+  const cancelled = randomUUID();
+  await create(cancelled);
+  expect(
+    (
+      await env.app.inject({
+        method: "DELETE",
+        url: `/api/sends/${cancelled}`,
+        headers: env.headers,
+      })
+    ).statusCode,
+  ).toBe(204);
+  const update = {
+    payload: payload({ content: "Changed before delivery" }),
+    channelIds: [general],
+    scheduledAt: new Date(due + 1000).toISOString(),
+  };
+  expect(
+    (
+      await env.app.inject({
+        method: "PUT",
+        url: `/api/sends/${id}/schedule`,
+        headers: env.headers,
+        payload: update,
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await env.app.inject({
+        method: "PUT",
+        url: `/api/sends/${id}/schedule`,
+        headers: env.headers,
+        payload: { ...update, scheduledAt: new Date(0).toISOString() },
+      })
+    ).statusCode,
+  ).toBe(422);
+  const history = await env.app.inject({
+    url: "/api/sends?status=scheduled",
+    headers: env.headers,
+  });
+  expect(
+    history.json().entries.map((entry: { id: string }) => entry.id),
+  ).toContain(id);
+  await env.app.close();
+  const sqlite = openDatabase(env.dir);
+  const app = Fastify({ logger: false });
+  let posts = 0;
+  const discord = createDiscord(env.config);
+  const scheduler = await registerSends(
+    app,
+    env.config,
+    sqlite,
+    {
+      ...discord,
+      createMessage: async (...args) => {
+        posts++;
+        return discord.createMessage(...args);
+      },
+    },
+    { now: () => due + 2000, intervalMs: 60000 },
+  );
+  await app.ready();
+  await Promise.all([scheduler.tick(), scheduler.tick()]);
+  await app.close();
+  expect(posts).toBe(1);
+  expect(
+    sqlite.prepare("SELECT status FROM sends WHERE id = ?").get(id),
+  ).toEqual({ status: "done" });
+  expect(
+    sqlite.prepare("SELECT status FROM sends WHERE id = ?").get(cancelled),
+  ).toEqual({ status: "cancelled" });
+  expect(
+    sqlite
+      .prepare("SELECT channel_id FROM send_targets WHERE send_id = ?")
+      .get(id),
+  ).toEqual({ channel_id: general });
+  sqlite.close();
+});
+
+test("schedule routes require auth and CSRF", async () => {
+  const env = await setup();
+  const id = randomUUID();
+  for (const method of ["PUT", "DELETE"] as const) {
+    const url = `/api/sends/${id}${method === "PUT" ? "/schedule" : ""}`;
+    expect(
+      (
+        await env.app.inject({
+          method,
+          url,
+          headers: { origin: "http://localhost", host: "localhost" },
+          payload: method === "PUT" ? {} : undefined,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await env.app.inject({
+          method,
+          url,
+          headers: { ...env.headers, "x-csrf-token": "" },
+          payload: method === "PUT" ? {} : undefined,
+        })
+      ).statusCode,
+    ).toBe(403);
+  }
+});
+
+test("scheduled upload retention ends on cancellation unless another record needs it", async () => {
+  const env = await setup();
+  const held = await upload(env, "scheduled.png");
+  const shared = await upload(env, "shared.png");
+  const id = randomUUID();
+  await env.app.inject({
+    method: "POST",
+    url: "/api/sends",
+    headers: env.headers,
+    payload: {
+      id,
+      payload: payload({ attachments: [held, shared] }),
+      channelIds: [news],
+      scheduledAt: new Date(Date.now() + 60000).toISOString(),
+    },
+  });
+  await env.app.inject({
+    method: "POST",
+    url: "/api/templates",
+    headers: env.headers,
+    payload: {
+      name: "Shared file",
+      message: { content: "Kept", embeds: [], attachments: [shared] },
+    },
+  });
+  const db = openDatabase(env.dir);
+  try {
+    sweepUploads(env.dir, db, 14, Date.now() + 30 * 86400000);
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(held.id),
+    ).toBeTruthy();
+    await env.app.inject({
+      method: "DELETE",
+      url: `/api/sends/${id}`,
+      headers: env.headers,
+    });
+    sweepUploads(env.dir, db, 14, Date.now() + 30 * 86400000);
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(held.id),
+    ).toBeUndefined();
+    expect(
+      db.prepare("SELECT id FROM uploads WHERE id = ?").get(shared.id),
+    ).toBeTruthy();
+  } finally {
+    db.close();
+  }
+});
