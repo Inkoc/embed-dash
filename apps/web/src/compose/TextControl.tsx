@@ -8,6 +8,7 @@ import { useImageFailed } from "./imageCheck";
 import styles from "./TextControl.module.css";
 
 interface Props {
+  className?: string;
   id: string;
   /** The issue path this control answers for, such as `embeds.0.title`. */
   path: string;
@@ -59,6 +60,7 @@ export function Problem({ id, message }: { id: string; message?: string }) {
 }
 
 export function TextControl({
+  className,
   id,
   path,
   label,
@@ -102,7 +104,7 @@ export function TextControl({
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => onChange(event.target.value);
   return (
-    <div className={styles.control}>
+    <div className={[styles.control, className].filter(Boolean).join(" ")}>
       <div className={styles.top}>
         <label htmlFor={id}>
           {label}

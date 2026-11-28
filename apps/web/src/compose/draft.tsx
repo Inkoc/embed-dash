@@ -338,7 +338,11 @@ export function locate(
     const row = draft.components?.[Number(parts[1])];
     const button = row?.components[Number(parts[3])];
     return {
-      id: button ? `${button.key}-${parts[4] ?? "label"}` : "buttons-add-row",
+      id: button
+        ? `${button.key}-${parts[4] ?? "label"}`
+        : row
+          ? `${row.key}-add`
+          : "buttons-add-row",
       open: [],
       unfold: [],
     };

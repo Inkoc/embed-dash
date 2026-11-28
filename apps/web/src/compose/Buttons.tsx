@@ -98,6 +98,9 @@ export function Buttons() {
             <h4 id={`${row.key}-head`} tabIndex={-1}>
               Row {r + 1}
             </h4>
+            <span>
+              {row.components.length} of {discordLimits.buttonsPerRow} buttons
+            </span>
             <div className={styles.actions}>
               <button
                 type="button"
@@ -192,8 +195,8 @@ export function Buttons() {
               <TextControl
                 id={`${button.key}-label`}
                 path={`components.${r}.components.${b}.label`}
+                className={styles.labelControl}
                 label="Button label"
-                untrimmed
                 value={button.label}
                 max={discordLimits.buttonLabel}
                 onChange={(label) =>
@@ -201,18 +204,9 @@ export function Buttons() {
                 }
               />
               <TextControl
-                id={`${button.key}-url`}
-                path={`components.${r}.components.${b}.url`}
-                label="Button URL"
-                untrimmed
-                link
-                value={button.url}
-                max={discordLimits.buttonUrl}
-                onChange={(url) => changeButton(row.key, button.key, { url })}
-              />
-              <TextControl
                 id={`${button.key}-emoji`}
                 path={`components.${r}.components.${b}.emoji`}
+                className={styles.emojiControl}
                 label="Button emoji"
                 optional
                 value={
@@ -238,10 +232,21 @@ export function Buttons() {
                   });
                 }}
               />
+              <TextControl
+                id={`${button.key}-url`}
+                path={`components.${r}.components.${b}.url`}
+                className={styles.urlControl}
+                label="Button URL"
+                link
+                value={button.url}
+                max={discordLimits.buttonUrl}
+                onChange={(url) => changeButton(row.key, button.key, { url })}
+              />
             </div>
           ))}
           <button
             id={`${row.key}-add`}
+            className={styles.add}
             type="button"
             disabled={row.components.length >= discordLimits.buttonsPerRow}
             onClick={() => {
@@ -263,6 +268,7 @@ export function Buttons() {
       ))}
       <button
         id="buttons-add-row"
+        className={styles.add}
         type="button"
         disabled={rows.length >= discordLimits.buttonRows}
         onClick={() => {

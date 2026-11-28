@@ -1,3 +1,4 @@
+import { settled } from "./header.js";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 test("find a sent title and inspect every channel result", async ({ page }) => {
@@ -64,6 +65,7 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   await page.getByRole("switch", { name: "Dark theme" }).click();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.setViewportSize({ width: 360, height: 800 });
+  await settled(page);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

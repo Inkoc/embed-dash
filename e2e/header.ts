@@ -5,7 +5,7 @@ import { expect, type Page } from "@playwright/test";
  * observers report after layout in one frame, the bar refits in the next, and
  * the third lets anything that refit moved report and settle.
  */
-const settled = (page: Page) =>
+export const settled = (page: Page) =>
   page.evaluate(
     () =>
       new Promise((done) =>

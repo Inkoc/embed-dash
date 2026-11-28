@@ -62,7 +62,8 @@ export function discordMessage(
       type: row.type,
       components: row.components.map((button) => ({
         ...button,
-        label: button.label || undefined,
+        label: present(button.label),
+        url: button.url.trim(),
       })),
     })),
     content: present(payload.content) ? payload.content : undefined,

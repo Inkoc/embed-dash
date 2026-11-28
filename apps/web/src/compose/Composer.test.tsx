@@ -668,3 +668,50 @@ test("link buttons add, validate, reorder with the keyboard, remove and persist"
   renderApp();
   expect(field("Button label").value).toBe("Status");
 });
+
+test("custom emoji entry and clearing update the preview, and export omits unfinished buttons", () => {
+  renderApp();
+  fireEvent.click(button("Add button row"));
+  fireEvent.change(field("Button URL"), {
+    target: { value: " https://example.com " },
+  });
+  const emoji = field("Button emoji (optional)");
+  for (const [value, extension] of [
+    ["<:wave:123456789012345678>", "png"],
+    ["<a:wave:123456789012345678>", "gif"],
+  ]) {
+    fireEvent.change(emoji, { target: { value } });
+    expect(
+      within(preview()).getByAltText(":wave:").getAttribute("src"),
+    ).toContain(`123456789012345678.${extension}`);
+  }
+  fireEvent.change(emoji, { target: { value: "" } });
+  expect(within(preview()).queryByAltText(":wave:")).toBeNull();
+  fireEvent.change(field("Button label"), { target: { value: " Guide " } });
+  fireEvent.click(button("Add button to row 1"));
+  fireEvent.change(screen.getAllByLabelText("Button label")[1]!, {
+    target: { value: "Unfinished" },
+  });
+  fireEvent.click(button("Export JSON"));
+  const exported = JSON.parse(
+    (screen.getByLabelText("Message JSON") as HTMLTextAreaElement).value,
+  );
+  expect(exported.components).toEqual([
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Guide", url: "https://example.com" },
+      ],
+    },
+  ]);
+});
+
+test("an empty row problem focuses its enabled add control when all rows are present", () => {
+  renderApp();
+  for (let r = 0; r < 5; r++) fireEvent.click(button("Add button row"));
+  expect((button("Add button row") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(button("Remove button 1 from row 1"));
+  fireEvent.click(button(/Button row 1:/));
+  expect(document.activeElement).toBe(button("Add button to row 1"));
+  expect((document.activeElement as HTMLButtonElement).disabled).toBe(false);
+});

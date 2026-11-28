@@ -1950,3 +1950,100 @@ test("link components survive sending, retry, editing and removal", async () => 
     ),
   ).toBe(true);
 });
+
+test("Discord payload trims button text and URLs and omits blank labels", () => {
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "  Guide  ",
+          url: "  https://example.com/guide \n",
+        },
+        {
+          type: 2,
+          style: 5,
+          label: " \t ",
+          url: " https://example.com ",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  expect(
+    JSON.parse(
+      JSON.stringify(discordMessage(payload({ components }), new Date())),
+    ).components,
+  ).toEqual([
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Guide", url: "https://example.com/guide" },
+        {
+          type: 2,
+          style: 5,
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ]);
+});
+
+test("the fake Discord rejects malformed raw components independently", async () => {
+  const s = await setup();
+  const address = s.fake.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  const button = {
+    type: 2 as const,
+    style: 5 as const,
+    label: "Guide",
+    url: "https://example.com",
+  };
+  const row = (change: object) => [
+    { type: 1, components: [{ ...button, ...change }] },
+  ];
+  for (const components of [
+    row({ url: " https://example.com " }),
+    row({ url: "https://example.com/a b" }),
+    row({ url: "ftp://example.com" }),
+    row({ label: " " }),
+    row({ label: " Guide " }),
+    row({ label: "x".repeat(81) }),
+    row({ url: "https://example.com/".padEnd(513, "a") }),
+    row({ style: 1 }),
+    row({ emoji: { name: "" } }),
+    [{ type: 1, components: [] }],
+    Array.from({ length: 6 }, () => ({ type: 1, components: [button] })),
+    [{ type: 1, components: Array.from({ length: 6 }, () => button) }],
+  ]) {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v10/channels/${news}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bot e2e-test-token",
+        },
+        body: JSON.stringify({ content: "Resources", components }),
+      },
+    );
+    expect(response.status, JSON.stringify(components)).toBe(400);
+  }
+  const sentMessage = await sent(s, [news], {
+    components: [
+      {
+        type: 1,
+        components: [
+          { ...button, label: " Guide ", url: " https://example.com " },
+        ],
+      },
+    ],
+  });
+  expect(sentMessage.status).toBe("done");
+  expect(s.fake.messages[0].payload.components).toEqual([
+    { type: 1, components: [button] },
+  ]);
+});

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { linkProblem } from "./links.js";
 
 export const buttonLimits = {
   buttonRows: 5,
@@ -35,16 +36,13 @@ export function buttonProblems(button: LinkButtonDraft) {
     problems.push({ field, message });
   if (!button.label.trim() && !button.emoji)
     add("label", "Add a label or an emoji.");
-  if ([...button.label].length > buttonLimits.buttonLabel)
+  if ([...button.label.trim()].length > buttonLimits.buttonLabel)
     add("label", `Use at most ${buttonLimits.buttonLabel} characters.`);
-  if ([...button.url].length > buttonLimits.buttonUrl)
+  if ([...button.url.trim()].length > buttonLimits.buttonUrl)
     add("url", `Use at most ${buttonLimits.buttonUrl} characters.`);
-  try {
-    const url = new URL(button.url);
-    if (!["http:", "https:"].includes(url.protocol)) throw new Error();
-  } catch {
-    add("url", "Use a full http:// or https:// link.");
-  }
+  const problem = linkProblem(button.url, false);
+  if (!button.url.trim()) add("url", "Add a web link for this button.");
+  else if (problem) add("url", problem);
   if (button.emoji) {
     const { name, id, animated } = button.emoji;
     const unicode =
@@ -64,28 +62,6 @@ export function buttonProblems(button: LinkButtonDraft) {
   return problems;
 }
 
-export const linkButtonSchema = linkButtonDraftSchema.superRefine(
-  (button, ctx) => {
-    for (const problem of buttonProblems(button))
-      ctx.addIssue({
-        code: "custom",
-        path: [problem.field],
-        message: problem.message,
-      });
-  },
-);
-export const buttonRowsSchema = z
-  .array(
-    z.object({
-      type: z.literal(1),
-      components: z
-        .array(linkButtonSchema)
-        .min(1)
-        .max(buttonLimits.buttonsPerRow),
-    }),
-  )
-  .max(buttonLimits.buttonRows);
-
 /** An explicit allowlist strips editor keys and excludes unfinished buttons from portable messages. */
 export function completeButtonRows(
   rows: readonly ButtonRowDraft[] = [],
@@ -95,7 +71,13 @@ export function completeButtonRows(
       type: 1 as const,
       components: row.components
         .filter((button) => buttonProblems(button).length === 0)
-        .map((button) => linkButtonDraftSchema.parse(button)),
+        .map((button) =>
+          linkButtonDraftSchema.parse({
+            ...button,
+            label: button.label.trim(),
+            url: button.url.trim(),
+          }),
+        ),
     }))
     .filter((row) => row.components.length > 0);
 }

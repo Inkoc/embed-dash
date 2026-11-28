@@ -205,9 +205,19 @@ export function importMessageJson(text: string): JsonImportResult {
       notices.push(`Unsupported component: row ${r + 1}.`);
       return [];
     }
+    notices.push(...unsupported(rawRow, row.data, `components[${r}]`));
     const buttons = row.data.components.flatMap((rawButton, b) => {
-      const button =
-        buttonRowDraftSchema.shape.components.element.safeParse(rawButton);
+      const button = buttonRowDraftSchema.shape.components.element
+        .extend({
+          label: z
+            .string()
+            .nullish()
+            .transform((value) => value ?? ""),
+          emoji: buttonRowDraftSchema.shape.components.element.shape.emoji
+            .nullish()
+            .transform((value) => value ?? undefined),
+        })
+        .safeParse(rawButton);
       if (!button.success) {
         const isLink = z
           .object({ type: z.literal(2), style: z.literal(5) })

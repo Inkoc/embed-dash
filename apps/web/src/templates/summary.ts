@@ -1,4 +1,4 @@
-import type { MessageDraft } from "@embed-dash/shared";
+import { completeButtonRows, type MessageDraft } from "@embed-dash/shared";
 
 const count = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
@@ -7,7 +7,18 @@ const count = (n: number, one: string, many: string) =>
 export function messageSummary(message: MessageDraft): string {
   const embeds = message.embeds.length;
   const fields = message.embeds.reduce((n, e) => n + e.fields.length, 0);
-  const parts = [embeds === 0 ? "Text only" : count(embeds, "embed", "embeds")];
+  const buttons = completeButtonRows(message.components).reduce(
+    (n, row) => n + row.components.length,
+    0,
+  );
+  const parts = embeds
+    ? [count(embeds, "embed", "embeds")]
+    : buttons
+      ? message.content.trim()
+        ? ["text"]
+        : []
+      : ["Text only"];
+  if (buttons) parts.push(count(buttons, "button", "buttons"));
   if (fields > 0) parts.push(count(fields, "field", "fields"));
   if (message.attachments.length > 0)
     parts.push(count(message.attachments.length, "file", "files"));

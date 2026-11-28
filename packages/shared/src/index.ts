@@ -1,3 +1,4 @@
+import { attachmentReference, linkProblem } from "./links.js";
 import { z } from "zod";
 import {
   buttonLimits,
@@ -253,43 +254,9 @@ const characters = (n: number) =>
   `${format(n)} ${n === 1 ? "character" : "characters"}`;
 const hexColor = /^#[0-9a-f]{6}$/i;
 
-/**
- * An uploaded file is referenced as `attachment://filename`; Discord only
- * matches filenames made of ASCII letters, digits, dots, dashes and underscores.
- */
-const attachmentReference = /^attachment:\/\/(?!\.+$)[\w.-]+$/;
-
-/**
- * Whether Discord would accept the link; empty counts as acceptable, since every link is optional.
- * Title and author links open in a browser, so they must be web links; images
- * and icons may also point at a file uploaded with the message.
- */
+/** Whether an optional web or uploaded-media link is accepted by Discord. */
 export function isAcceptedLink(url: string, media: boolean): boolean {
   return linkProblem(url, media) === null;
-}
-
-function linkProblem(url: string, media: boolean): string | null {
-  const value = url.trim();
-  if (!value) return null;
-  const schemes = media
-    ? ["http:", "https:", "attachment:"]
-    : ["http:", "https:"];
-  let protocol: string;
-  try {
-    protocol = new URL(value).protocol;
-  } catch {
-    return media
-      ? "Use a full link that starts with https://, or attachment:// for an uploaded file."
-      : "Use a full link that starts with https://.";
-  }
-  if (protocol === "attachment:" && media)
-    return attachmentReference.test(value)
-      ? null
-      : "Name an uploaded file as attachment://filename, using only letters, digits, dots, dashes and underscores.";
-  if (schemes.includes(protocol)) return null;
-  return media
-    ? `Discord only shows images from https://, http:// or attachment:// links, not ${protocol}//.`
-    : `Discord only accepts https:// or http:// links here, not ${protocol}//.`;
 }
 
 /** Whether an embed has anything Discord would show; an empty one is never sent. */
@@ -395,7 +362,7 @@ export function validateMessage(
       for (const problem of buttonProblems(button))
         add(
           `components.${r}.components.${b}.${problem.field}`,
-          `Row ${r + 1}, button ${b + 1} ${problem.field}`,
+          `Row ${r + 1}, button ${b + 1}: ${{ label: "Label", url: "Link", emoji: "Emoji" }[problem.field]}`,
           problem.message,
         );
     });

@@ -1,6 +1,5 @@
 import { expect, test } from "vitest";
 import {
-  buttonRowsSchema,
   completeButtonRows,
   discordLimits,
   importMessageJson,
@@ -9,6 +8,16 @@ import {
   validateMessage,
   type LinkButtonDraft,
 } from "./index.js";
+const acceptsRows = (components: unknown) => {
+  const parsed = messageDraftSchema.safeParse({
+    content: "Links",
+    embeds: [],
+    components,
+  });
+  return {
+    success: parsed.success && validateMessage(parsed.data).length === 0,
+  };
+};
 const button: LinkButtonDraft = {
   type: 2,
   style: 5,
@@ -28,34 +37,27 @@ test("accepts the full row and button budget and rejects excess and empty rows",
       () => button,
     ),
   }));
-  expect(buttonRowsSchema.safeParse(full).success).toBe(true);
-  expect(buttonRowsSchema.safeParse([...full, row()]).success).toBe(false);
+  expect(acceptsRows(full).success).toBe(true);
+  expect(acceptsRows([...full, row()]).success).toBe(false);
   expect(
-    buttonRowsSchema.safeParse([
-      { type: 1, components: [...full[0]!.components, button] },
-    ]).success,
+    acceptsRows([{ type: 1, components: [...full[0]!.components, button] }])
+      .success,
   ).toBe(false);
-  expect(
-    buttonRowsSchema.safeParse([{ type: 1, components: [] }]).success,
-  ).toBe(false);
+  expect(acceptsRows([{ type: 1, components: [] }]).success).toBe(false);
 });
 
 test("enforces label and URL lengths and requires HTTP(S)", () => {
   expect(
-    buttonRowsSchema.safeParse([
-      row({ label: "x".repeat(discordLimits.buttonLabel) }),
-    ]).success,
+    acceptsRows([row({ label: "x".repeat(discordLimits.buttonLabel) })])
+      .success,
   ).toBe(true);
   expect(
-    buttonRowsSchema.safeParse([
-      row({ label: "x".repeat(discordLimits.buttonLabel + 1) }),
-    ]).success,
+    acceptsRows([row({ label: "x".repeat(discordLimits.buttonLabel + 1) })])
+      .success,
   ).toBe(false);
   const url = "https://example.com/".padEnd(discordLimits.buttonUrl, "x");
-  expect(buttonRowsSchema.safeParse([row({ url })]).success).toBe(true);
-  expect(buttonRowsSchema.safeParse([row({ url: url + "x" })]).success).toBe(
-    false,
-  );
+  expect(acceptsRows([row({ url })]).success).toBe(true);
+  expect(acceptsRows([row({ url: url + "x" })]).success).toBe(false);
   for (const url of [
     "",
     "relative",
@@ -63,10 +65,8 @@ test("enforces label and URL lengths and requires HTTP(S)", () => {
     "javascript:alert(1)",
     "attachment://a.png",
   ])
-    expect(buttonRowsSchema.safeParse([row({ url })]).success).toBe(false);
-  expect(
-    buttonRowsSchema.safeParse([row({ url: "http://example.com" })]).success,
-  ).toBe(true);
+    expect(acceptsRows([row({ url })]).success).toBe(false);
+  expect(acceptsRows([row({ url: "http://example.com" })]).success).toBe(true);
 });
 
 test("accepts Unicode and custom emoji, including emoji-only buttons", () => {
@@ -77,9 +77,7 @@ test("accepts Unicode and custom emoji, including emoji-only buttons", () => {
     { name: "1️⃣" },
     { name: "wave", id: "123456789012345678", animated: true },
   ])
-    expect(
-      buttonRowsSchema.safeParse([row({ label: "", emoji })]).success,
-    ).toBe(true);
+    expect(acceptsRows([row({ label: "", emoji })]).success).toBe(true);
   for (const emoji of [
     { name: "" },
     { name: "hello" },
@@ -88,8 +86,8 @@ test("accepts Unicode and custom emoji, including emoji-only buttons", () => {
     { name: "🔗", animated: true },
     { name: "wave", id: "bad" },
   ])
-    expect(buttonRowsSchema.safeParse([row({ emoji })]).success).toBe(false);
-  expect(buttonRowsSchema.safeParse([row({ label: "" })]).success).toBe(false);
+    expect(acceptsRows([row({ emoji })]).success).toBe(false);
+  expect(acceptsRows([row({ label: "" })]).success).toBe(false);
 });
 
 test("shared validation identifies the exact button field and supports buttons-only messages", () => {
@@ -101,7 +99,10 @@ test("shared validation identifies the exact button field and supports buttons-o
   expect(validateMessage(message)).toEqual([]);
   message.components![0]!.components[0]!.url = "invalid";
   expect(validateMessage(message)).toContainEqual(
-    expect.objectContaining({ path: "components.0.components.0.url" }),
+    expect.objectContaining({
+      path: "components.0.components.0.url",
+      label: "Row 1, button 1: Link",
+    }),
   );
 });
 
@@ -160,4 +161,75 @@ test("malformed link button fields refuse an import instead of being discarded a
     );
     expect(result.ok).toBe(false);
   }
+});
+
+test("button validation counts trimmed labels and links and rejects remaining URL whitespace", () => {
+  expect(
+    acceptsRows([
+      row({
+        label: `  ${"x".repeat(discordLimits.buttonLabel)}  `,
+        url: `  ${"https://example.com/".padEnd(discordLimits.buttonUrl, "x")}  `,
+      }),
+    ]).success,
+  ).toBe(true);
+  expect(acceptsRows([row({ label: " \t " })]).success).toBe(false);
+  expect(
+    acceptsRows([row({ label: " \t ", emoji: { name: "🔗" } })]).success,
+  ).toBe(true);
+  for (const url of [
+    "https://example.com/a b",
+    "https://example.com/a\nb",
+    "https://exa\tmple.com",
+    "https://example.com/a\u00a0b",
+  ])
+    expect(acceptsRows([row({ url })]).success).toBe(false);
+  expect(acceptsRows([row({ url: "https://example.com/a%20b" })]).success).toBe(
+    true,
+  );
+});
+
+test("exports trimmed buttons, omits whitespace-only labels with emoji and drops unfinished buttons", () => {
+  const message = messageDraftSchema.parse({
+    content: "Links",
+    embeds: [],
+    components: [
+      row({ label: "  Guide  ", url: "  https://example.com/guide  " }),
+      row({ label: "   ", emoji: { name: "🔗" } }),
+      row({ url: "" }),
+      row({ url: "https://example.com/a b" }),
+      row({ label: "   " }),
+    ],
+  });
+  expect(
+    JSON.parse(exportMessageJson(message, new Date()).json).components,
+  ).toEqual([
+    row({ label: "Guide", url: "https://example.com/guide" }),
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, url: button.url, emoji: { name: "🔗" } },
+      ],
+    },
+  ]);
+});
+
+test("imports missing optional button values and reports row metadata", () => {
+  const result = importMessageJson(
+    JSON.stringify({
+      content: "Links",
+      components: [
+        {
+          ...row({ emoji: { name: "🔗" } }),
+          id: 12,
+          components: [{ ...button, label: null, emoji: { name: "🔗" } }],
+        },
+        { ...row(), components: [{ ...button, emoji: null }] },
+      ],
+    }),
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    message: { components: [row({ label: "", emoji: { name: "🔗" } }), row()] },
+    notices: ["Unsupported field: components[0].id."],
+  });
 });
