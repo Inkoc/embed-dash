@@ -228,7 +228,7 @@ test("sends to every channel in order and records one target per channel", async
     {
       status: "done",
       payload_json: expect.stringContaining("Patch 0.9.4 is out."),
-      search_text: "Patch 0.9.4 is out.",
+      search_text: "patch 0.9.4 is out.",
     },
   ]);
   expect(
@@ -1818,4 +1818,48 @@ test("History flags an entirely failed update without changing its delivery filt
   expect(
     s.fake.messages.every((m) => m.payload.content === payload().content),
   ).toBe(true);
+});
+
+test("a second send queued for the same channel remains retryable after restart", async () => {
+  const s = await setup();
+  s.fake.slow(500);
+  const first = (await post(s, [news])).json().id as string;
+  const second = (await post(s, [news])).json().id as string;
+  expect(statuses(s.dir, first)).toEqual(["posting"]);
+  expect(statuses(s.dir, second)).toEqual(["pending"]);
+  const snapshot = mkdtempSync(join(tmpdir(), "queued-restart-"));
+  const db = openDatabase(s.dir);
+  await db.backup(join(snapshot, "embed-dash.db"));
+  db.close();
+  const restarted = await createApp(
+    { ...s.config, dataDir: snapshot },
+    { logger: false },
+  );
+  cleanups.push(async () => {
+    await restarted.close();
+    rmSync(snapshot, { recursive: true });
+  });
+  expect(statuses(snapshot, first)).toEqual(["unknown:UNKNOWN_OUTCOME"]);
+  expect(statuses(snapshot, second)).toEqual(["failed:NOT_ATTEMPTED"]);
+  await settle(s, first);
+  await settle(s, second);
+  expect(
+    (await retried({ ...s, app: restarted, dir: snapshot }, second)).status,
+  ).toBe("done");
+});
+
+test("deleted copies do not contribute to the history update-failure count", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  s.fake.failEdit(news, { status: 404, code: 10008 });
+  expect((await edit(s, initial.id)).statusCode).toBe(202);
+  await settle(s, initial.id);
+  const response = await s.app.inject({
+    url: "/api/sends",
+    headers: s.headers,
+  });
+  expect(response.json().entries[0]).toMatchObject({
+    updateFailureCount: 0,
+    lastEditedAt: expect.any(Number),
+  });
 });

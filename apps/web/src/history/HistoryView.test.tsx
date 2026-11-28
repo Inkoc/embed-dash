@@ -85,6 +85,11 @@ test("history rows show title, date, channels and result", async () => {
   const link = await screen.findByRole("link", { name: /Release notes/ });
   expect(link).toHaveTextContent("2 channels");
   expect(link).toHaveTextContent("Partial");
+  screen.getByRole("searchbox").focus();
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "ArrowDown" });
+  expect(link).toHaveFocus();
+  fireEvent.keyDown(link, { key: "ArrowUp" });
+  expect(screen.getByRole("searchbox")).toHaveFocus();
   expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
 });
@@ -126,7 +131,7 @@ test("an invalid date range in the URL does not fetch", () => {
     "aria-invalid",
     "true",
   );
-  expect(screen.getByRole("button", { name: /Filters/ })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: /Hide filters/ })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -308,6 +313,9 @@ test("history preserves delivery outcomes, shows failed/unconfirmed/deleted upda
   expect(
     await within(news).findByText("Updated", { exact: true }),
   ).toBeVisible();
+  await waitFor(() =>
+    expect(news.querySelector("[id^=update-]")).toHaveFocus(),
+  );
   expect(within(news).getByText("Sent", { exact: true })).toBeVisible();
   expect(
     within(news).queryByRole("button", { name: /Retry update/ }),
@@ -319,4 +327,20 @@ test("history preserves delivery outcomes, shows failed/unconfirmed/deleted upda
     "content-type": "application/json",
     "x-csrf-token": "history-csrf",
   });
+});
+
+test("history waits for a pause in typing before searching", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({ entries: [], hasMore: false, destinations: [] }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  show();
+  await screen.findByText("Your history starts here");
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "re" } });
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "release" },
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(fetcher.mock.calls[1]).toEqual(["/api/sends?q=release"]);
 });

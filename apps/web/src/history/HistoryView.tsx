@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Link, useParams, useSearchParams, useNavigate } from "react-router";
 import {
@@ -21,11 +21,18 @@ import {
   failureFrom,
   type AppError,
 } from "../errors";
+import { Verdict } from "../send/SendPanel";
+import trayStyles from "../send/Tray.module.css";
+import catalogueStyles from "../send/Catalogue.module.css";
+import { messageSummary } from "../send/summary";
 import { startSend } from "../send/sendApi";
 import type { Session } from "../shell/SessionGate";
 import type { Theme } from "../theme";
 import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./HistoryView.module.css";
+
+const date = (value: number) =>
+  new Date(value).toLocaleString(undefined, { timeZone: "UTC" }) + " UTC";
 
 const statusLabel = {
   done: "All sent",
@@ -73,6 +80,28 @@ export default function HistoryView({ theme }: { theme: Theme }) {
 }
 export function HistoryList() {
   const [params, setParams] = useSearchParams();
+  const search = useRef<HTMLInputElement>(null);
+  const results = useRef<HTMLUListElement>(null);
+  const cursor = useRef<HTMLSpanElement>(null);
+  const [active, setActive] = useState<string | null>(null);
+  const [searchValue, setSearchValue] = useState(params.get("q") ?? "");
+  const urlQuery = params.get("q") ?? "";
+  const [previousQuery, setPreviousQuery] = useState(urlQuery);
+  if (previousQuery !== urlQuery) {
+    setPreviousQuery(urlQuery);
+    setSearchValue(urlQuery);
+  }
+  useEffect(() => {
+    if (searchValue === (params.get("q") ?? "")) return;
+    const timer = setTimeout(() => {
+      const next = new URLSearchParams(params);
+      if (searchValue) next.set("q", searchValue);
+      else next.delete("q");
+      next.delete("page");
+      setParams(next, { replace: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchValue, params, setParams]);
   const validation = historyQuerySchema.safeParse(Object.fromEntries(params));
   const [filtersOpen, setFiltersOpen] = useState(!validation.success);
   const dateError = validation.success
@@ -152,8 +181,18 @@ export function HistoryList() {
             <input
               data-shortcut="search"
               type="search"
-              value={params.get("q") ?? ""}
-              onChange={(event) => change("q", event.target.value)}
+              ref={search}
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  if (searchValue !== urlQuery) change("q", searchValue);
+                  results.current
+                    ?.querySelector<HTMLAnchorElement>("a")
+                    ?.focus();
+                }
+              }}
               placeholder="Message text, server or channel"
               maxLength={500}
             />
@@ -165,7 +204,8 @@ export function HistoryList() {
             aria-controls="history-filters"
             onClick={() => setFiltersOpen(!filtersOpen)}
           >
-            Filters <span>{activeFilters} active</span>
+            {filtersOpen ? "Hide filters" : "Filters"}{" "}
+            <span>{activeFilters} active</span>
             <ChevronDown aria-hidden="true" />
           </button>
           <div
@@ -281,48 +321,123 @@ export function HistoryList() {
           </div>
         ) : (
           <>
-            <ul className={styles.entries} aria-label="Sent messages">
-              {query.data.entries.map((entry) => (
-                <li key={entry.id}>
-                  <Link
-                    className={styles.entry}
-                    to={`/history/${entry.id}?${params}`}
-                  >
-                    <span
-                      className={styles.swatch}
-                      style={{
-                        backgroundColor: /^#[\da-f]{6}$/i.test(entry.color)
-                          ? entry.color
-                          : undefined,
-                      }}
-                      aria-hidden="true"
-                    />
-                    <strong>
-                      {entry.title}
-                      {entry.updateFailureCount > 0 && (
-                        <span className={styles.updateNotice}>
-                          {entry.updateFailureCount}{" "}
-                          {entry.updateFailureCount === 1
-                            ? "copy not updated"
-                            : "copies not updated"}
+            <div className={styles.resultList}>
+              <span
+                ref={cursor}
+                className={catalogueStyles.cursor}
+                aria-hidden="true"
+              />
+              <ul
+                ref={results}
+                className={styles.entries}
+                aria-label="Sent messages"
+                onFocus={(event) => {
+                  const link = (event.target as HTMLElement).closest("a");
+                  if (!link || !cursor.current || !results.current) return;
+                  setActive(link.dataset.id!);
+                  const row = link.getBoundingClientRect();
+                  const box = results.current.getBoundingClientRect();
+                  cursor.current.style.transform = `translateY(${row.top - box.top}px)`;
+                  cursor.current.style.height = `${row.height}px`;
+                  cursor.current.dataset.show = "";
+                }}
+                onBlur={(event) => {
+                  if (!results.current?.contains(event.relatedTarget as Node)) {
+                    if (cursor.current) delete cursor.current.dataset.show;
+                  }
+                }}
+                onKeyDown={(event) => {
+                  const rows = [...results.current!.querySelectorAll("a")];
+                  const at = rows.indexOf(event.target as HTMLAnchorElement);
+                  const to =
+                    event.key === "ArrowDown"
+                      ? at + 1
+                      : event.key === "ArrowUp"
+                        ? at - 1
+                        : event.key === "Home"
+                          ? 0
+                          : event.key === "End"
+                            ? rows.length - 1
+                            : null;
+                  if (to === null) return;
+                  event.preventDefault();
+                  if (to < 0) search.current?.focus();
+                  else rows[Math.min(to, rows.length - 1)]?.focus();
+                }}
+              >
+                {query.data.entries.map((entry) => (
+                  <li key={entry.id}>
+                    <Link
+                      className={styles.entry}
+                      data-id={entry.id}
+                      tabIndex={
+                        entry.id === (active ?? query.data.entries[0]?.id)
+                          ? 0
+                          : -1
+                      }
+                      to={`/history/${entry.id}?${params}`}
+                    >
+                      <span
+                        className={styles.swatch}
+                        style={{
+                          backgroundColor: /^#[\da-f]{6}$/i.test(entry.color)
+                            ? entry.color
+                            : undefined,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <strong>
+                        {entry.title}
+                        <span className={styles.names}>
+                          {entry.destinations
+                            .map(
+                              (target) =>
+                                `${target.guildName || target.guildId} / #${target.channelName || target.channelId}`,
+                            )
+                            .join(" · ")}
                         </span>
-                      )}
-                    </strong>
-                    <time dateTime={new Date(entry.createdAt).toISOString()}>
-                      {new Date(entry.createdAt).toLocaleString()}
-                    </time>
-                    <span>
-                      {entry.channelCount}{" "}
-                      {entry.channelCount === 1 ? "channel" : "channels"}
-                    </span>
-                    <span data-status={entry.status}>
-                      {statusLabel[entry.status]}
-                    </span>
-                    <span aria-hidden="true">→</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                        {entry.lastEditedAt && (
+                          <span className={styles.names}>
+                            Last edited {date(entry.lastEditedAt)}
+                          </span>
+                        )}
+                        {entry.updateFailureCount > 0 && (
+                          <span className={styles.updateNotice}>
+                            {entry.updateFailureCount}{" "}
+                            {entry.updateFailureCount === 1
+                              ? "copy not updated"
+                              : "copies not updated"}
+                          </span>
+                        )}
+                      </strong>
+                      <time dateTime={new Date(entry.createdAt).toISOString()}>
+                        {date(entry.createdAt)}
+                      </time>
+                      <span>
+                        {entry.channelCount}{" "}
+                        {entry.channelCount === 1 ? "channel" : "channels"}
+                      </span>
+                      <span data-status={entry.status}>
+                        <Verdict
+                          state={
+                            entry.status === "done"
+                              ? "sent"
+                              : entry.status === "sending"
+                                ? "posting"
+                                : entry.status === "partial"
+                                  ? "unknown"
+                                  : "failed"
+                          }
+                          label={statusLabel[entry.status]}
+                          index={0}
+                        />
+                      </span>
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
             {(page > 1 || query.data.hasMore) && (
               <nav className={styles.pagination} aria-label="History pages">
                 <button
@@ -352,6 +467,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
   const { beginEdit } = useDraft();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const retryFocus = useRef<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [retryProblem, setRetryProblem] = useState<AppError | null>(null);
   const query = useQuery({
@@ -367,6 +483,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
         ? 1000
         : false,
   });
+  useEffect(() => {
+    if (retryFocus.current && query.data?.edit?.status === "done") {
+      document.getElementById(`update-${retryFocus.current}`)?.focus();
+      retryFocus.current = null;
+    }
+  }, [query.data]);
   async function retryCopy(targetId: string, update = false) {
     setRetrying(true);
     setRetryProblem(null);
@@ -377,6 +499,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
         { targetIds: [targetId] },
         client.getQueryData<Session>(["session"])?.csrfToken ?? "",
       );
+      if (update) retryFocus.current = targetId;
       await query.refetch();
       void client.invalidateQueries({ queryKey: ["history"] });
     } catch (error) {
@@ -393,14 +516,19 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
     <>
       <header className={styles.head}>
         <div>
-          <h2 tabIndex={-1}>Send details</h2>
+          <h2 tabIndex={-1}>
+            {query.data
+              ? messageSummary(withIds(query.data.payload)).headline
+              : "Send details"}
+          </h2>
           {query.data?.lastEditedAt && (
-            <p>
-              Last edited {new Date(query.data.lastEditedAt).toLocaleString()}
-            </p>
+            <p>Last edited {date(query.data.lastEditedAt)}</p>
           )}
-          <Link to={`/history?${params}`}>
-            ← Back to history <kbd data-k="back">Esc</kbd>
+          <Link to={`/history?${params}`} aria-keyshortcuts="Escape">
+            ← Back to history{" "}
+            <kbd data-k="back" aria-hidden="true">
+              Esc
+            </kbd>
           </Link>
         </div>
         {query.data && (
@@ -460,7 +588,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                 <h3>Message preview</h3>
                 <span>Discord {theme}</span>
                 <time dateTime={new Date(query.data.createdAt).toISOString()}>
-                  {new Date(query.data.createdAt).toLocaleString()}
+                  {date(query.data.createdAt)}
                 </time>
               </div>
               {query.data.edit?.targets.some((t) => t.status !== "sent") && (
@@ -475,7 +603,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   draft={draft}
                   bot={bot.data}
                   botPending={bot.isPending}
-                  time={new Date(query.data.createdAt).toLocaleString()}
+                  time={date(query.data.createdAt)}
                 />
               </div>
             </section>
@@ -499,22 +627,14 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                     (t) => t.id === target.id,
                   );
                   return (
-                    <li className={styles.target} key={target.id}>
+                    <li
+                      className={`${trayStyles.slip} ${styles.target}`}
+                      key={target.id}
+                    >
                       <strong>#{target.channelName || target.channelId}</strong>
                       <span>{target.guildName || target.guildId}</span>
                       <p>
-                        Delivery:{" "}
-                        <span>
-                          {
-                            {
-                              sent: "Sent",
-                              failed: "Failed",
-                              unknown: "Unknown outcome",
-                              pending: "Pending",
-                              posting: "Sending",
-                            }[target.status]
-                          }
-                        </span>
+                        Delivery: <Verdict state={target.status} index={0} />
                       </p>
                       {target.error && <p>{target.error.message}</p>}
                       {target.status === "failed" && !target.messageId && (
@@ -534,24 +654,33 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         </button>
                       )}
                       {update && (
-                        <div className={styles.updateResult}>
+                        <div
+                          className={styles.updateResult}
+                          id={`update-${target.id}`}
+                          tabIndex={-1}
+                        >
                           <p>
                             Latest update:{" "}
-                            <strong>
-                              {update.error?.code === "MESSAGE_DELETED"
-                                ? "Deleted in Discord"
-                                : update.error?.code === "EDIT_UNCONFIRMED" ||
-                                    update.status === "unknown"
-                                  ? "Unconfirmed"
-                                  : {
-                                      sent: "Updated",
-                                      failed:
-                                        "Not updated to the latest version",
-                                      pending: "Pending",
-                                      posting: "Updating",
-                                      unknown: "Unconfirmed",
-                                    }[update.status]}
-                            </strong>
+                            <Verdict
+                              index={0}
+                              state={
+                                update.error?.code === "MESSAGE_DELETED" ||
+                                update.error?.code === "EDIT_UNCONFIRMED"
+                                  ? "unknown"
+                                  : update.status
+                              }
+                              label={
+                                update.error?.code === "MESSAGE_DELETED"
+                                  ? "Deleted in Discord"
+                                  : update.error?.code === "EDIT_UNCONFIRMED"
+                                    ? "Unconfirmed"
+                                    : update.status === "sent"
+                                      ? "Updated"
+                                      : update.status === "failed"
+                                        ? "Not updated to the latest version"
+                                        : "Updating"
+                              }
+                            />
                           </p>
                           {update.error && <p>{update.error.message}</p>}
                           {update.status === "failed" &&

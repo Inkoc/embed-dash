@@ -31,6 +31,7 @@ export const sends = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
+    index("sends_created_at_idx").on(table.createdAt, table.id),
     check(
       "sends_status_check",
       sql`${table.status} IN ('draft', 'scheduled', 'sending', 'done', 'partial', 'failed', 'cancelled')`,

@@ -38,11 +38,7 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   await page.getByRole("searchbox").fill(title);
   const entry = page.getByRole("link", { name: new RegExp(title) });
   await expect(entry).toContainText("All sent");
-  for (let step = 0; step < 20; step++) {
-    if (await entry.evaluate((element) => element === document.activeElement))
-      break;
-    await page.keyboard.press("Tab");
-  }
+  await page.keyboard.press("ArrowDown");
   await expect(entry).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(

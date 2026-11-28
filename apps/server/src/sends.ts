@@ -30,7 +30,7 @@ import type {
   StoredAttachment,
 } from "./discord.js";
 import { deliveryFailure, discordFailure } from "./errors.js";
-import { discordMessage, searchText } from "./payload.js";
+import { discordMessage, searchText, messageTitle } from "./payload.js";
 import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
@@ -138,6 +138,8 @@ export async function registerSends(
   // Delivery runs after the answer has gone out. Closing lets the post in
   // flight finish, but starts no more: the rest are recorded as not sent.
   const running = new Set<Promise<void>>();
+  const channelTurns = new Map<string, Promise<void>>();
+  let destinations: unknown[] | undefined;
   let closing = false;
   const inBackground = (task: Promise<void>) => {
     running.add(task);
@@ -247,8 +249,9 @@ export async function registerSends(
         "The server refused several updates. Check the bot’s access, then retry.",
     })[code as "MISSING_PERMISSION"] ?? deliveryErrors[code];
 
-  const readSend = (id: string) => {
-    const send = db.select().from(sends).where(eq(sends.id, id)).get()!;
+  const readSend = (send: typeof sends.$inferSelect) => {
+    const id = send.id;
+    const payload = messagePayloadSchema.parse(JSON.parse(send.payloadJson));
     const targets = db
       .select()
       .from(sendTargets)
@@ -257,11 +260,10 @@ export async function registerSends(
       .all();
     return {
       id,
-      payload: messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
+      payload,
       createdAt: send.createdAt,
-      retainedUploads: messagePayloadSchema
-        .parse(JSON.parse(send.payloadJson))
-        .attachments.filter((file) => {
+      retainedUploads: payload.attachments
+        .filter((file) => {
           const copies = targets.filter(
             (t) => t.messageId && t.editError !== "MESSAGE_DELETED",
           );
@@ -407,6 +409,23 @@ export async function registerSends(
         });
         continue;
       }
+      const previous = channelTurns.get(target.channelId) ?? Promise.resolve();
+      let release!: () => void;
+      const turn = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      channelTurns.set(target.channelId, turn);
+      await previous;
+      if (closing) {
+        record(target, {
+          status: "failed",
+          error: editing ? "EDIT_NOT_ATTEMPTED" : "NOT_ATTEMPTED",
+        });
+        release();
+        if (channelTurns.get(target.channelId) === turn)
+          channelTurns.delete(target.channelId);
+        continue;
+      }
       // Marked before the request goes out, so a crash can tell this copy,
       // which may have arrived, from the ones never tried.
       record(target, { status: "posting" });
@@ -475,6 +494,10 @@ export async function registerSends(
         )
           refusals.set(target.guildId, (refusals.get(target.guildId) ?? 0) + 1);
         else refusals.delete(target.guildId);
+      } finally {
+        release();
+        if (channelTurns.get(target.channelId) === turn)
+          channelTurns.delete(target.channelId);
       }
     }
     if (editing)
@@ -564,6 +587,7 @@ export async function registerSends(
         .onConflictDoNothing()
         .run();
       if (inserted.changes === 0) return false;
+      destinations = undefined;
       db.insert(sendTargets)
         .values(
           channelIds.map((id, position) => {
@@ -641,23 +665,24 @@ export async function registerSends(
       // Escape LIKE metacharacters so an operator searches literal message text.
       const pattern = `%${term.replace(/[!%_]/g, "!$&")}%`;
       conditions.push(
-        "(fold(s.search_text) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (fold(t.guild_name) LIKE ? ESCAPE '!' OR fold(t.channel_name) LIKE ? ESCAPE '!' OR fold(t.guild_id) LIKE ? ESCAPE '!' OR fold(t.channel_id) LIKE ? ESCAPE '!')))",
+        "(s.search_text LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (fold(t.guild_name) LIKE ? ESCAPE '!' OR fold(t.channel_name) LIKE ? ESCAPE '!' OR t.guild_id LIKE ? ESCAPE '!' OR t.channel_id LIKE ? ESCAPE '!')))",
       );
       params.push(pattern, pattern, pattern, pattern, pattern);
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
       payload_json: string;
       created_at: number;
+      last_edited_at: number | null;
       status: string;
       channel_count: number;
       update_failure_count: number;
     }[];
-    const destinations = sqlite
+    destinations ??= sqlite
       .prepare(
         "SELECT DISTINCT t.guild_id AS guildId, t.guild_name AS guildName, t.channel_id AS channelId, t.channel_name AS channelName FROM send_targets t JOIN sends s ON s.id = t.send_id WHERE s.status IN ('sending', 'done', 'partial', 'failed') ORDER BY t.guild_name, t.channel_name",
       )
@@ -669,15 +694,18 @@ export async function registerSends(
         );
         return {
           id: row.id,
-          title:
-            payload.embeds.find((embed) => embed.title.trim())?.title ||
-            payload.content.split("\n").find((line) => line.trim()) ||
-            payload.embeds
-              .find((embed) => embed.description.trim())
-              ?.description.split("\n")[0] ||
-            "Untitled message",
+          title: messageTitle(payload),
           color: payload.embeds[0]?.color ?? "",
           createdAt: row.created_at,
+          lastEditedAt: row.last_edited_at,
+          destinations: copiesFor(row.id).map(
+            ({ guildName, guildId, channelName, channelId }) => ({
+              guildName,
+              guildId,
+              channelName,
+              channelId,
+            }),
+          ),
           channelCount: row.channel_count,
           updateFailureCount: row.update_failure_count,
           status: row.status,
@@ -700,11 +728,12 @@ export async function registerSends(
 
   app.get("/api/sends/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
-    if (!db.select().from(sends).where(eq(sends.id, id)).get())
+    const send = db.select().from(sends).where(eq(sends.id, id)).get();
+    if (!send)
       return reply
         .code(404)
         .send(sendError("NOT_FOUND", "That send doesn’t exist."));
-    return readSend(id);
+    return readSend(send);
   });
 
   const copiesFor = (id: string) =>
@@ -879,17 +908,6 @@ export async function registerSends(
         const claimed = sqlite.transaction(() => {
           const current = db.select().from(sends).where(eq(sends.id, id)).get();
           if (!current) return "missing" as const;
-          if (editing && body.data.id) {
-            const previous = db
-              .select()
-              .from(editRuns)
-              .where(eq(editRuns.id, body.data.id))
-              .get();
-            if (previous)
-              return previous.sendId === id
-                ? ("duplicate" as const)
-                : ("conflict" as const);
-          }
           if (locked(current)) return "blocked" as const;
           const failed = copiesFor(id).filter(
             (t) =>
@@ -913,8 +931,6 @@ export async function registerSends(
               .length
           )
             return { invalid: loaded };
-          if (editing && body.data.id)
-            db.insert(editRuns).values({ id: body.data.id, sendId: id }).run();
           db.update(sendTargets)
             .set(
               editing
@@ -942,12 +958,7 @@ export async function registerSends(
           return reply
             .code(404)
             .send(sendError("NOT_FOUND", "That send doesn’t exist."));
-        if (claimed === "duplicate") return reply.code(202).send({ id });
-        if (
-          claimed === "conflict" ||
-          claimed === "blocked" ||
-          claimed === "empty"
-        )
+        if (claimed === "blocked" || claimed === "empty")
           return reply
             .code(409)
             .send(

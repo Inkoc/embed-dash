@@ -86,5 +86,17 @@ export function searchText(payload: MessagePayload): string {
   ]
     .map((text) => text.trim())
     .filter(Boolean)
-    .join("\n");
+    .join("\n")
+    .toLowerCase();
+}
+
+/** Prefer an embed heading, then the first visible message or description line. */
+export function messageTitle(payload: MessagePayload): string {
+  const line = (text: string) => text.split("\n").find((part) => part.trim());
+  return (
+    payload.embeds.find((embed) => embed.title.trim())?.title ||
+    line(payload.content) ||
+    payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
+    "Untitled message"
+  );
 }

@@ -637,7 +637,6 @@ export const editRequestSchema = z
   .strict();
 
 export const retryRequestSchema = z.object({
-  id: z.uuid().optional(),
   /** Only these failed copies; omitted, every failed copy. */
   targetIds: z.array(z.string()).min(1).optional(),
 });
@@ -754,6 +753,17 @@ export const historyEntrySchema = z.object({
   color: z.string(),
   createdAt: z.number(),
   channelCount: z.number(),
+  lastEditedAt: z.number().nullable().default(null),
+  destinations: z
+    .array(
+      z.object({
+        guildId: z.string(),
+        guildName: z.string(),
+        channelId: z.string(),
+        channelName: z.string(),
+      }),
+    )
+    .default([]),
   updateFailureCount: z.number().int().nonnegative().default(0),
   status: sendResultSchema.shape.status,
 });
@@ -769,7 +779,6 @@ export const historyResponseSchema = z.object({
     }),
   ),
 });
-export type HistoryResponse = z.infer<typeof historyResponseSchema>;
 export const historyDetailSchema = sendResultSchema.extend({
   retainedUploads: z.array(z.string()).optional(),
   payload: messagePayloadSchema,

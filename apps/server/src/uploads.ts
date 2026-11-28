@@ -140,7 +140,13 @@ export function sweepUploads(
     .returning({ id: uploads.id })
     .all();
   const { directory, find } = createUploadStore(dataDir, sqlite);
-  for (const { id } of stale) rmSync(join(directory, id), { force: true });
+  for (const { id } of stale) {
+    try {
+      rmSync(join(directory, id), { force: true });
+    } catch {
+      /* Leave inaccessible files for the next sweep. */
+    }
+  }
   let names: string[] = [];
   try {
     names = readdirSync(directory);
@@ -149,8 +155,12 @@ export function sweepUploads(
   }
   for (const name of names) {
     const path = join(directory, name);
-    if (!find(name) && statSync(path).mtimeMs < cutoff)
-      rmSync(path, { force: true });
+    try {
+      if (!find(name) && statSync(path).mtimeMs < cutoff)
+        rmSync(path, { force: true });
+    } catch {
+      /* One inaccessible entry must not hold up the rest. */
+    }
   }
 }
 
