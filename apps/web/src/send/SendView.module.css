@@ -476,3 +476,9 @@
     transition: none;
   }
 }
+
+/* saved groups stay reachable above a closed catalogue */
+.closedWithGroups {
+  display: grid;
+  gap: var(--space-4);
+}

@@ -106,3 +106,11 @@ export const templates = sqliteTable("templates", {
   payloadJson: text("payload_json").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const channelGroups = sqliteTable("channel_groups", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** `{id, name, guildId, guildName}` per channel, in the order they were ticked in the catalogue. */
+  channelsJson: text("channels_json").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

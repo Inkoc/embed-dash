@@ -518,6 +518,8 @@
     display: flex;
   }
   .actionMeta {
+    flex: none;
+    white-space: nowrap;
     font-family: var(--font-mono);
     font-size: var(--text-meta);
     font-variant-numeric: tabular-nums;
@@ -558,6 +560,22 @@
   }
   .actionBar .primary {
     flex: 1 1 auto;
+  }
+}
+/*
+ * The narrowest phones: the action tightens, and below about 340px its arrow
+ * steps aside, so its label and a full count ("6,000 / 6,000") each keep one line.
+ */
+@media (max-width: 25em) {
+  .actionBar .primary {
+    gap: var(--space-2);
+    padding-inline: var(--space-4);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 21.25em) {
+  .actionBar .primary > svg {
+    display: none;
   }
 }
 

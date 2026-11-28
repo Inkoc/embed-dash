@@ -754,6 +754,54 @@ export const channelsUnavailableSchema = z.object({
   ),
 });
 
+/**
+ * A named set of channels to tick again in one step. Each channel keeps the
+ * names it had when saved, so one that has since gone can still be named.
+ */
+export const channelGroupNameMax = 100;
+/** Bounds that keep the picker's group row and each group readable. */
+export const channelGroupLimits = { groups: 50, channels: 500 } as const;
+/** Two group names that only differ in case or surrounding spaces are the same name. */
+export const channelGroupNameKey = (name: string) =>
+  name.trim().toLocaleLowerCase();
+export const channelGroupNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(channelGroupNameMax);
+const groupChannelIdsSchema = z
+  .array(z.string().min(1))
+  .min(1)
+  .max(channelGroupLimits.channels)
+  .refine((ids) => new Set(ids).size === ids.length);
+export const channelGroupInputSchema = z.object({
+  name: channelGroupNameSchema,
+  channelIds: groupChannelIdsSchema,
+});
+/** Rename, replace the channels, or both. */
+export const channelGroupUpdateSchema = z
+  .object({
+    name: channelGroupNameSchema.optional(),
+    channelIds: groupChannelIdsSchema.optional(),
+  })
+  .refine(
+    (update) => update.name !== undefined || update.channelIds !== undefined,
+  );
+export const channelGroupSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  updatedAt: z.iso.datetime(),
+  channels: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      guildId: z.string(),
+      guildName: z.string(),
+    }),
+  ),
+});
+export type ChannelGroup = z.infer<typeof channelGroupSchema>;
+
 /** Where a sent message can be opened in Discord. */
 export const messageLink = (target: {
   guildId: string;

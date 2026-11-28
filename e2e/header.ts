@@ -23,7 +23,8 @@ export const headerWidths = [
 
 /**
  * At each width the bar stays one line, nothing in it overlaps the centred
- * Compose/Send control, and nothing runs past the page edge.
+ * Compose/Send control or its neighbours, nothing spills out of its own box,
+ * every button is a full tap target, and nothing runs past the page edge.
  */
 export async function expectHeaderFits(page: Page) {
   for (const width of headerWidths) {
@@ -47,7 +48,21 @@ export async function expectHeaderFits(page: Page) {
           text: item.textContent?.trim(),
           left: box(item).left,
           right: box(item).right,
+          // Visually hidden text is absolutely placed and isn't in the row.
+          parts: [...item.children]
+            .filter(
+              (part) =>
+                visible(part) && getComputedStyle(part).position !== "absolute",
+            )
+            .map((part) => ({ left: box(part).left, right: box(part).right })),
         })),
+        buttons: [...cluster!.querySelectorAll("button")]
+          .filter(visible)
+          .map((button) => ({
+            name: button.getAttribute("aria-label") ?? button.textContent,
+            width: box(button).width,
+            height: box(button).height,
+          })),
       };
     });
     const where = `at ${width}px`;
@@ -60,6 +75,27 @@ export async function expectHeaderFits(page: Page) {
         layout.nav.right,
       );
       expect(item.right, `${where}: ${item.text}`).toBeLessThanOrEqual(width);
+      for (const part of item.parts) {
+        expect(part.left, `${where}: in ${item.text}`).toBeGreaterThanOrEqual(
+          item.left - 0.5,
+        );
+        expect(part.right, `${where}: in ${item.text}`).toBeLessThanOrEqual(
+          item.right + 0.5,
+        );
+      }
+    }
+    for (const [before, after] of layout.items.slice(1).entries())
+      expect(
+        after.left,
+        `${where}: ${after.text} after ${layout.items[before]!.text}`,
+      ).toBeGreaterThanOrEqual(layout.items[before]!.right - 0.5);
+    for (const button of layout.buttons) {
+      expect(button.width, `${where}: ${button.name}`).toBeGreaterThanOrEqual(
+        44,
+      );
+      expect(button.height, `${where}: ${button.name}`).toBeGreaterThanOrEqual(
+        44,
+      );
     }
   }
 }

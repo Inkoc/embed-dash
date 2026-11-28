@@ -112,6 +112,8 @@
   --templates-max: 68rem; /* the Templates view: one ruled list */
   --mini-w: 20rem; /* a template's small preview */
   --mini-h: 10rem;
+  --group-name-max: 16rem; /* a channel group's name on its pick, before it shortens */
+  --dialog-wide: 32rem; /* a dialog that lists things, such as a group's channels */
   --mini-scale: 0.5; /* the real preview at the Desktop preset width (40rem), drawn at half size */
 
   /* motion: exponential ease-out for arrivals, a quick ease-in for departures */

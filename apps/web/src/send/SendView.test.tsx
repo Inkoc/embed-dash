@@ -10,7 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { Guild, GuildsResponse } from "@embed-dash/shared";
+import type { ChannelGroup, Guild, GuildsResponse } from "@embed-dash/shared";
 import { DraftProvider } from "../compose/draft";
 import { SelectionProvider } from "./selection";
 import { SendingProvider } from "./sending";
@@ -35,9 +35,14 @@ const listing = (guilds: Guild[]): GuildsResponse => ({
   fetchedAt: "2026-11-27T10:00:00.000Z",
 });
 
+/** What the groups API answers with; most tests have none saved. */
+let savedGroups: ChannelGroup[] = [];
+
 function stub(guilds: Response[]) {
   const fetcher = vi.fn((url: string) => {
     if (url === "/api/bot") return Promise.resolve(Response.json(bot));
+    if (url === "/api/channel-groups")
+      return Promise.resolve(Response.json(savedGroups));
     const next = guilds.shift();
     return next ? Promise.resolve(next) : new Promise<Response>(() => {});
   });
@@ -75,8 +80,15 @@ beforeEach(() => {
     },
   );
   vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.open = false;
+  };
 });
 afterEach(() => {
+  savedGroups = [];
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -155,7 +167,9 @@ test("when no server could be read, the notice stands without the no-servers inv
   expect(
     await screen.findByText("None of the bot’s servers could be read"),
   ).toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent(
+  expect(
+    screen.getByText(/Couldn’t read 1 server/).closest("[role='status']"),
+  ).toHaveTextContent(
     "Couldn’t read 1 server the bot is listed in: Old Docks.",
   );
   expect(screen.queryByText("The bot isn’t in any servers yet")).toBeNull();
@@ -313,10 +327,105 @@ test("a refresh drops ticked channels the bot can no longer post in and says so"
   const tray = screen.getByRole("complementary", { name: "Tray" });
   expect(tray).toHaveTextContent("3 channels in 1 server");
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  expect(await screen.findByRole("status")).toHaveTextContent(
+  const dropped = await screen.findByText(/ticked channels are no longer/);
+  expect(dropped.closest("[role=status]")).toHaveTextContent(
     "2 ticked channels are no longer available to the bot and were taken out of the tray.",
   );
   expect(tray).toHaveTextContent("1 channel in 1 server");
   fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(screen.queryByText(/no longer available to the bot/)).toBeNull();
+});
+
+const lanternGroup: ChannelGroup = {
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "Lantern news",
+  updatedAt: "2026-11-27T10:00:00.000Z",
+  channels: [
+    { id: "10", name: "general", guildId: "1", guildName: "Lantern Hall" },
+    { id: "11", name: "news", guildId: "1", guildName: "Lantern Hall" },
+  ],
+};
+
+test("when a refresh finds no readable server, saved groups stay to inspect, with every channel unavailable", async () => {
+  savedGroups = [lanternGroup];
+  stub([
+    Response.json(listing([guild("1", "Lantern Hall", ["general", "news"])])),
+    Response.json({
+      ...listing([]),
+      unavailable: [{ id: "1", name: "Lantern Hall" }],
+    }),
+  ]);
+  renderSend();
+  const pick = await screen.findByRole("button", {
+    name: /^Lantern news\s*\(2 channels\)$/,
+  });
+  expect(pick).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Save as group" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await screen.findByText("None of the bot’s servers could be read");
+  const closed = screen.getByRole("button", {
+    name: /^Lantern news\s*\(2 channels, all unavailable\)$/,
+  });
+  expect(closed).toBeDisabled();
+  expect(
+    screen.getByText(
+      "None of the groups’ channels can be posted to right now. Open a group with ⋯ to see why, rename it or delete it.",
+    ),
+  ).toBeInTheDocument();
+  // Nothing to tick, so nothing to save.
+  expect(screen.queryByRole("button", { name: "Save as group" })).toBeNull();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open group Lantern news" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "Lantern news" });
+  expect(dialog).toHaveTextContent(
+    "2 channels in 1 server; 2 are unavailable and will be skipped.",
+  );
+  expect(
+    within(dialog).getAllByText("The bot couldn’t read this server"),
+  ).toHaveLength(2);
+  expect(within(dialog).getByRole("button", { name: "Rename" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "Delete" })).toBeEnabled();
+  expect(
+    within(dialog).getByRole("button", {
+      name: "Add 0 channels to the selection",
+    }),
+  ).toBeDisabled();
+});
+
+test("a bot in no servers still lists saved groups, each channel marked as out of reach", async () => {
+  savedGroups = [lanternGroup];
+  stub([Response.json(listing([]))]);
+  renderSend();
+  await screen.findByText("The bot isn’t in any servers yet");
+  expect(
+    await screen.findByRole("button", {
+      name: /^Lantern news\s*\(2 channels, all unavailable\)$/,
+    }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open group Lantern news" }),
+  );
+  expect(
+    within(screen.getByRole("dialog", { name: "Lantern news" })).getAllByText(
+      "The bot is no longer in this server",
+    ),
+  ).toHaveLength(2);
+  // The invite stays the way forward.
+  expect(
+    screen.getByRole("link", { name: /Invite the bot/ }),
+  ).toBeInTheDocument();
+});
+
+test("with no groups saved, an empty listing shows only the closed catalogue", async () => {
+  stub([Response.json(listing([]))]);
+  renderSend();
+  await screen.findByText("The bot isn’t in any servers yet");
+  await vi.waitFor(() =>
+    expect(screen.queryByRole("group", { name: "Groups" })).toBeNull(),
+  );
 });

@@ -1,4 +1,8 @@
-import { templateNameMax } from "@embed-dash/shared";
+import {
+  channelGroupLimits,
+  channelGroupNameMax,
+  templateNameMax,
+} from "@embed-dash/shared";
 
 /**
  * Every failure the app shows goes through here, so the copy stays specific
@@ -14,6 +18,10 @@ export type Action =
   | "save-template"
   | "change-template"
   | "delete-template"
+  | "load-groups"
+  | "save-group"
+  | "change-group"
+  | "delete-group"
   | "schedule"
   | "send"
   | "retry"
@@ -32,6 +40,10 @@ const lead: Record<Action, string> = {
   "save-template": "Couldn’t save the template",
   "change-template": "Couldn’t change the template",
   "delete-template": "Couldn’t delete the template",
+  "load-groups": "Couldn’t load channel groups",
+  "save-group": "Couldn’t save the group",
+  "change-group": "Couldn’t change the group",
+  "delete-group": "Couldn’t delete the group",
   schedule: "Couldn’t save the schedule",
   send: "Couldn’t send",
   retry: "Couldn’t retry",
@@ -108,6 +120,16 @@ const byCode: Record<string, string> = {
   INVALID_TEMPLATE_NAME: `give it a name of 1 to ${templateNameMax} characters.`,
   INVALID_TEMPLATE_MESSAGE:
     "the server couldn’t read the message. Refresh the page and try again.",
+  GROUP_NOT_FOUND:
+    "the group no longer exists. Someone may have deleted it; refresh the page.",
+  INVALID_GROUP_NAME: `give it a name of 1 to ${channelGroupNameMax} characters.`,
+  INVALID_GROUP_CHANNELS: "tick at least one channel first.",
+  TOO_MANY_GROUP_CHANNELS: `a group holds at most ${channelGroupLimits.channels} channels. Untick some, then try again.`,
+  GROUP_NAME_TAKEN:
+    "another group already has this name. Choose a different one.",
+  GROUP_LIMIT_REACHED: `there are already ${channelGroupLimits.groups} groups. Delete one you no longer need, then save again.`,
+  GROUP_CHANNELS_UNAVAILABLE:
+    "some ticked channels can’t be posted to any more. Refresh the list, then try again.",
 };
 
 /** Causes by HTTP status, for answers that carry no code. */
