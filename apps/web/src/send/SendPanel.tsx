@@ -38,7 +38,8 @@ import type { Draft } from "../compose/draft";
 import { AppError } from "../errors";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { FailureDetail } from "../ui/FailureDetail";
-import { useSending, type Received } from "./sending";
+import { useSending, usePublicationUpdate, type Received } from "./sending";
+import { deliveryPayload } from "./delivery";
 import { messageSummary, plural, progress, tally } from "./summary";
 import type { TrayEntry } from "./Tray";
 import styles from "./SendPanel.module.css";
@@ -223,10 +224,15 @@ export function SlipDetail({
   if (target.status === "sent" && target.messageId)
     return (
       <div className={styles.detail}>
+        <ForumReceipt target={target} />
+        <PublishOutcome target={target} />
         <a
           href={messageLink({
             guildId: target.guildId,
-            channelId: target.channelId,
+            channelId:
+              target.channelKind === "forum"
+                ? target.messageId
+                : target.channelId,
             messageId: target.messageId,
           })}
           target="_blank"
@@ -309,6 +315,7 @@ export function SendControls({
     retry,
     pings,
     silent,
+    publish,
     startOver,
   } = useSending();
   const navigate = useNavigate();
@@ -333,7 +340,10 @@ export function SendControls({
         "/api/sends",
         {
           id: scheduleId.current,
-          payload: { ...toMessage(draft), pings, silent },
+          payload: deliveryPayload(
+            { ...toMessage(draft), pings: [...pings], silent, publish },
+            entries.map((e) => e.channel),
+          ),
           channelIds: entries.map((e) => e.channel.id),
           scheduledAt: new Date(instant).toISOString(),
         },
@@ -580,6 +590,44 @@ export function SendControls({
               Mentions won’t notify anyone.
             </p>
           )}
+          {entries.some((e) => e.channel.kind === "forum") && (
+            <div className={styles.due}>
+              <p>
+                Post title: <strong>{draft.forumTitle}</strong>
+              </p>
+              {entries
+                .filter((e) => e.channel.kind === "forum")
+                .map(({ channel }) => (
+                  <p key={channel.id}>
+                    Tags for #{channel.name}:{" "}
+                    <strong>
+                      {(draft.forumTags?.[channel.id] ?? [])
+                        .map(
+                          (id) =>
+                            channel.availableTags?.find((t) => t.id === id)
+                              ?.name ?? id,
+                        )
+                        .join(", ") || "None"}
+                    </strong>
+                  </p>
+                ))}
+            </div>
+          )}
+          {publish &&
+            entries.some((e) => e.channel.kind === "announcement") && (
+              <div className={styles.due}>
+                <p>
+                  Publish to following servers:{" "}
+                  <strong>
+                    {entries
+                      .filter((e) => e.channel.kind === "announcement")
+                      .map((e) => `#${e.channel.name}`)
+                      .join(", ")}
+                  </strong>
+                </p>
+                <small>Up to 10 publishes per hour per channel.</small>
+              </div>
+            )}
           <p className={styles.quietNote}>
             {silent ? (
               <>
@@ -595,6 +643,102 @@ export function SendControls({
           </p>
         </div>
       </ConfirmDialog>
+    </div>
+  );
+}
+
+export function PublishOutcome({ target }: { target: SendTarget }) {
+  const client = useQueryClient();
+  const publicationUpdated = usePublicationUpdate();
+  const [busy, setBusy] = useState(false);
+  const [retryResult, setRetryResult] = useState<{
+    source: SendTarget;
+    result: SendTarget;
+  } | null>(null);
+  const outcome = retryResult?.source === target ? retryResult.result : target;
+  const [problem, setProblem] = useState<string | null>(null);
+  if (target.status !== "sent" || !outcome.publishStatus) return null;
+  async function retry() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch(
+        `/api/sends/${target.sendId}/publish/retry`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-csrf-token":
+              client.getQueryData<Session>(["session"])?.csrfToken ?? "",
+          },
+          body: JSON.stringify({ targetIds: [target.id] }),
+        },
+      );
+      if (!response.ok)
+        throw new Error("Publishing could not be retried. Try again.");
+      const result = (await response.json()) as SendResult;
+      setRetryResult({
+        source: target,
+        result: result.targets.find((t) => t.id === target.id)!,
+      });
+      publicationUpdated?.(result);
+      void client.invalidateQueries({ queryKey: ["history"] });
+      void client.invalidateQueries({
+        queryKey: ["history-detail", target.sendId],
+      });
+      void client.invalidateQueries({
+        queryKey: ["edit-result", target.sendId],
+      });
+    } catch {
+      setProblem("Publishing could not be retried. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div>
+      <Verdict
+        state={
+          outcome.publishStatus === "published"
+            ? "sent"
+            : outcome.publishStatus === "failed"
+              ? "failed"
+              : "waiting"
+        }
+        label={
+          outcome.publishStatus === "published"
+            ? "Published"
+            : outcome.publishStatus === "failed"
+              ? "Publish failed"
+              : "Publishing"
+        }
+        index={0}
+      />
+      <p>
+        {outcome.publishStatus === "published"
+          ? "Published to following servers"
+          : outcome.publishStatus === "failed"
+            ? outcome.publishError
+            : "Publishing to following servers…"}
+      </p>
+      {problem && <p role="alert">{problem}</p>}
+      {outcome.publishStatus === "failed" && (
+        <button type="button" disabled={busy} onClick={() => void retry()}>
+          {busy ? "Publishing…" : "Retry publish"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function ForumReceipt({ target }: { target: SendTarget }) {
+  if (target.channelKind !== "forum" || !target.forumTitle) return null;
+  return (
+    <div className={styles.receipt}>
+      <p>
+        Post title: <strong>{target.forumTitle}</strong>
+      </p>
+      <p>Tags: {target.forumTags?.join(", ") || "None"}</p>
     </div>
   );
 }

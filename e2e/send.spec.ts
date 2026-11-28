@@ -249,22 +249,25 @@ test("after a send, Compose a new message clears the draft and the selection", a
   expect(errors).toEqual([]);
 });
 
-test("forum channels are listed with a reason and can't be picked", async ({
+test("forum and announcement copies show independent delivery and publishing results", async ({
   page,
 }) => {
-  await page.goto("/send");
-  const bugs = drawer(page, "Lanternfall Community").getByRole("checkbox", {
-    name: "bug-reports",
-  });
-  await expect(bugs).toHaveAttribute("aria-disabled", "true");
-  await expect(
-    drawer(page, "Lanternfall Community").getByText(
-      "Forum posting isn’t available yet",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await bugs.click({ force: true });
-  await expect(bugs).not.toBeChecked();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await compose(page, "Community update");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await pick(page, "Lanternfall Community", "bug-reports");
+  await pick(page, "Lanternfall Community", "announcements");
+  await tray(page).getByLabel("Post title (required)").fill("Community update");
+  await tray(page).getByLabel("Bug", { exact: true }).check();
+  await tray(page)
+    .getByLabel(/Publish to following servers/)
+    .check();
+  await tray(page).getByRole("button", { name: "Send to 2 channels" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Post title: Community update");
+  await dialog.getByRole("button", { name: "Send to 2 channels" }).click();
+  await expect(tray(page).getByText("Sent", { exact: true })).toHaveCount(2);
+  await expect(tray(page)).toContainText("Published to following servers");
 });
 
 test("a draft with problems keeps Send disabled and points at the field", async ({
@@ -371,4 +374,73 @@ test("reloading mid-send shows its progress again, the lock note stays in view a
   await expect(
     tray(page).getByRole("link", { name: /Open in Discord/ }),
   ).toHaveCount(3);
+});
+
+test("forum receipts survive History and editing, and stale options stay out of text sends", async ({
+  page,
+}) => {
+  await compose(page, "Embed heading");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await pick(page, "Lanternfall Community", "bug-reports");
+  await pick(page, "Lanternfall Community", "announcements");
+  await tray(page)
+    .getByLabel("Post title (required)")
+    .fill("Weekly forum bulletin");
+  await tray(page).getByRole("checkbox", { name: "Bug", exact: true }).check();
+  await tray(page)
+    .getByRole("checkbox", { name: /Publish to following servers/ })
+    .check();
+  await drawer(page, "Lanternfall Community")
+    .getByRole("checkbox", { name: "bug-reports", exact: true })
+    .uncheck();
+  await drawer(page, "Lanternfall Community")
+    .getByRole("checkbox", { name: "announcements", exact: true })
+    .uncheck();
+  await pick(page, "Lanternfall Community", "general");
+  await tray(page)
+    .getByRole("button", { name: "Send to 1 channel", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).not.toContainText("Post title:");
+  await expect(page.getByRole("dialog")).not.toContainText(
+    "Publish to following servers:",
+  );
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await drawer(page, "Lanternfall Community")
+    .getByRole("checkbox", { name: "general", exact: true })
+    .uncheck();
+  await pick(page, "Lanternfall Community", "bug-reports");
+  await pick(page, "Lanternfall Community", "announcements");
+  await tray(page)
+    .getByRole("button", { name: "Send to 2 channels", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Tags for #bug-reports: Bug");
+  await expect(dialog).toContainText(
+    "Publish to following servers: #announcements",
+  );
+  await dialog
+    .getByRole("button", { name: "Send to 2 channels", exact: true })
+    .click();
+  await expect(tray(page)).toContainText("Post title: Weekly forum bulletin");
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await page.getByRole("searchbox").first().fill("Weekly forum bulletin");
+  const entry = page
+    .getByRole("link")
+    .filter({ hasText: "Weekly forum bulletin" })
+    .first();
+  await expect(entry).toContainText("#bug-reports: Bug");
+  await entry.click();
+  await expect(page.getByText("Post title:", { exact: false })).toContainText(
+    "Weekly forum bulletin",
+  );
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(
+    page.getByText(/Forum updates change only the starter message/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Weekly forum bulletin", { exact: true }).last(),
+  ).toBeVisible();
 });

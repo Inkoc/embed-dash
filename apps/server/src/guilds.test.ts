@@ -170,7 +170,14 @@ test("lists postable channels per server, cached for a minute unless refreshed",
           missing: ["attachFiles"],
         },
         { id: "10003", name: "staff", kind: "text", missing: ["sendMessages"] },
-        { id: "10002", name: "help", kind: "forum", missing: ["attachFiles"] },
+        {
+          id: "10002",
+          name: "help",
+          kind: "forum",
+          missing: ["attachFiles"],
+          availableTags: [],
+          requireTag: false,
+        },
       ],
     });
     expect(guilds[1].iconUrl).toBeNull();

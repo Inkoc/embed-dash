@@ -85,13 +85,18 @@ export function tally(result: SendResult) {
   const failed = count("failed");
   const unknown = count("unknown");
   const pending = result.targets.filter(inFlight).length;
+  const publishFailed = result.targets.filter(
+    (t) => t.status === "sent" && t.publishStatus === "failed",
+  ).length;
   const parts = [
     `${sent} sent`,
+    publishFailed ? `${publishFailed} not published` : null,
     failed ? `${failed} failed` : null,
     unknown ? `${unknown} unconfirmed` : null,
   ].filter(Boolean);
   return {
     sent,
+    publishFailed,
     failed,
     unknown,
     stoppedByToken: result.targets.some(

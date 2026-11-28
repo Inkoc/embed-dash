@@ -41,13 +41,13 @@ test("checks each saved channel against the listing and keeps the group's order"
     ],
   };
   const state = groupState(group, listing);
-  expect(state.available).toEqual(["11"]);
+  expect(state.available).toEqual(["13", "11"]);
   expect(state.entries).toEqual([
     {
       id: "13",
       name: "clips",
       guildName: "Lanternfall Cup EU",
-      unavailable: "Forum posting isn’t available yet",
+      unavailable: null,
     },
     // Renamed in Discord since it was saved: the current name wins.
     {

@@ -71,7 +71,19 @@ export const attachmentSchema = z.object({
   size: z.number().int().nonnegative(),
   contentType: z.string(),
 });
+export const forumLimits = { title: 100, tags: 5 } as const;
 export const messageDraftSchema = z.object({
+  forumTitle: z.string().max(forumLimits.title).optional(),
+  forumTags: z
+    .record(
+      z.string(),
+      z
+        .array(snowflakeSchema)
+        .max(forumLimits.tags)
+        .refine((ids) => new Set(ids).size === ids.length),
+    )
+    .optional(),
+
   content: z.string(),
   components: z.array(buttonRowDraftSchema).optional(),
   embeds: z.array(embedDraftSchema),
@@ -555,6 +567,16 @@ export const guildChannelSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   kind: channelKindSchema,
+  availableTags: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        unavailable: z.string().optional(),
+      }),
+    )
+    .optional(),
+  requireTag: z.boolean().optional(),
   /** Permissions the bot lacks here, in `channelPermissions` order. */
   missing: z.array(
     z.enum(channelPermissions.map((p) => p.key) as [ChannelPermission]),
@@ -587,11 +609,11 @@ export function canPost(channel: Pick<GuildChannel, "missing">): boolean {
   );
 }
 
-/** Forum channels take posts, not messages, so they wait for forum posting. */
+/** Forum creation uses the same delivery eligibility as other destinations. */
 export function canSendTo(
   channel: Pick<GuildChannel, "missing" | "kind">,
 ): boolean {
-  return channel.kind !== "forum" && canPost(channel);
+  return canPost(channel);
 }
 
 /**
@@ -625,6 +647,8 @@ export const messagePayloadSchema = messageDraftSchema.extend({
     .default([]),
   /** Delivered without a push or desktop notification. */
   silent: z.boolean().default(false),
+  publish: z.boolean().optional(),
+  forumTagNames: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
@@ -665,6 +689,16 @@ export const retryRequestSchema = z.object({
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  THREAD_ARCHIVED:
+    "This forum post is archived. Unarchive it in Discord, then retry the update.",
+  FORUM_TITLE_REQUIRED: "Enter a post title for forum destinations.",
+  FORUM_TAG_REQUIRED: "Choose at least one tag for this forum.",
+  FORUM_TAG_UNAVAILABLE:
+    "A selected forum tag is no longer available. Compose a new send with current tags.",
+  FORUM_TAG_PERMISSION:
+    "A selected tag requires Manage Threads. Choose another tag or grant that permission.",
+  FORUM_NO_TAG_ACCESS:
+    "This forum requires a tag, but none can be applied. Grant Manage Threads or make a tag available in Discord.",
   UPLOAD_MISSING:
     "A file needed for this message is missing from the server. Compose it again with the file restored or removed.",
   EDIT_UNCONFIRMED:
@@ -706,11 +740,20 @@ const deliveryErrorSchema = z.object({
 });
 
 export const sendTargetSchema = z.object({
+  sendId: z.string().optional(),
   id: z.string(),
   guildId: z.string(),
   guildName: z.string(),
   channelId: z.string(),
   channelName: z.string(),
+  forumTitle: z.string().optional(),
+  forumTags: z.array(z.string()).optional(),
+  channelKind: channelKindSchema.optional(),
+  publishStatus: z
+    .enum(["pending", "publishing", "published", "failed"])
+    .nullable()
+    .optional(),
+  publishError: z.string().nullable().optional(),
   status: z.enum(["pending", "posting", "sent", "failed", "unknown"]),
   messageId: z.string().nullable(),
   error: deliveryErrorSchema.nullable(),
@@ -847,6 +890,8 @@ export const historyFiltersSchema = z
     path: ["to"],
   });
 export const historyEntrySchema = z.object({
+  forumTags: z.array(z.string()).optional(),
+  publishFailureCount: z.number().optional(),
   scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   title: z.string(),
@@ -900,6 +945,7 @@ export type HistoryDestination = z.infer<
 /** What a later search will look in: every text a reader sees. */
 export function searchText(payload: MessagePayload): string {
   return [
+    payload.forumTitle ?? "",
     payload.content,
     ...payload.embeds.flatMap((embed) => [
       embed.title,
@@ -919,9 +965,42 @@ export function searchText(payload: MessagePayload): string {
 export function messageTitle(payload: MessagePayload): string {
   const line = (text: string) => text.split("\n").find((part) => part.trim());
   return (
+    payload.forumTitle?.trim() ||
     payload.embeds.find((embed) => embed.title.trim())?.title ||
     line(payload.content) ||
     payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
     "Untitled message"
   );
+}
+
+/** Destination-specific checks also run when a schedule is delivered. */
+export function destinationFailure(
+  payload: MessagePayload,
+  channel: GuildChannel,
+): DeliveryErrorCode | null {
+  if (channel.kind !== "forum") return null;
+  if (!payload.forumTitle?.trim()) return "FORUM_TITLE_REQUIRED";
+  const tags = payload.forumTags?.[channel.id] ?? [];
+  if (
+    channel.requireTag &&
+    !channel.availableTags?.some((tag) => !tag.unavailable)
+  )
+    return "FORUM_NO_TAG_ACCESS";
+  if (channel.requireTag && !tags.length) return "FORUM_TAG_REQUIRED";
+  if (tags.some((id) => !channel.availableTags?.some((tag) => tag.id === id)))
+    return "FORUM_TAG_UNAVAILABLE";
+  if (
+    tags.some(
+      (id) => channel.availableTags?.find((tag) => tag.id === id)?.unavailable,
+    )
+  )
+    return "FORUM_TAG_PERMISSION";
+  return null;
+}
+export function destinationProblem(
+  payload: MessagePayload,
+  channel: GuildChannel,
+): string | null {
+  const code = destinationFailure(payload, channel);
+  return code ? `#${channel.name}: ${deliveryErrors[code]}` : null;
 }

@@ -189,11 +189,17 @@ test("only saves channels the bot can post to now, and names the ones it can't",
   expect(response.statusCode).toBe(409);
   expect(response.json()).toMatchObject({
     code: "GROUP_CHANNELS_UNAVAILABLE",
-    channelIds: [moderators, bugReports, "1234567890123456789"],
+    channelIds: [moderators, "1234567890123456789"],
   });
   expect(await list(s)).toEqual([]);
 
-  const group = (await create(s, { name: "Cup", channelIds: [news] })).json();
+  const group = (
+    await create(s, { name: "Cup", channelIds: [news, bugReports] })
+  ).json();
+  expect(group.channels.map((c: { id: string }) => c.id)).toEqual([
+    news,
+    bugReports,
+  ]);
   s.fake.remove(results);
   await s.app.inject({ url: "/api/guilds?refresh=1", headers: s.headers });
   const update = await change(s, group.id, {

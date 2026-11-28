@@ -12,6 +12,7 @@ import type {
   PingKind,
   SendResult,
   SendTarget,
+  GuildsResponse,
 } from "@embed-dash/shared";
 import { toMessage, useDraft, type Draft } from "../compose/draft";
 import { asAppError, type AppError } from "../errors";
@@ -25,12 +26,16 @@ import {
   SendFailure,
   startSend,
 } from "./sendApi";
+import { deliveryPayload } from "./delivery";
 import { inFlight } from "./summary";
 
 interface Sending {
+  publicationUpdated: (result: SendResult) => void;
   /** Who the message may notify; none unless the operator ticks a kind. */
   pings: readonly PingKind[];
   setPing: (kind: PingKind, on: boolean) => void;
+  publish: boolean;
+  setPublish: (on: boolean) => void;
   silent: boolean;
   setSilent: (on: boolean) => void;
   /**
@@ -127,6 +132,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
   const [, setSelected] = useSelection();
   const [pings, setPings] = useState<readonly PingKind[]>([]);
   const [silent, setSilent] = useState(false);
+  const [publish, setPublish] = useState(false);
   // What a reload interrupted, read once; it also decides the first `busy`.
   const [resumed] = useState(recallInFlight);
   const [busy, setBusy] = useState<Sending["busy"]>(
@@ -267,6 +273,10 @@ export function SendingProvider({ children }: { children: ReactNode }) {
             : [...kinds, kind]
           : kinds.filter((other) => other !== kind),
       ),
+    publish,
+    setPublish,
+    publicationUpdated: (next) =>
+      setResult((before) => (before?.id === next.id ? next : before)),
     silent,
     setSilent,
     busy,
@@ -288,7 +298,13 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         url: "/api/sends",
         body: {
           id,
-          payload: { ...message, pings, silent },
+          payload: deliveryPayload(
+            { ...message, pings: [...pings], silent, publish },
+            client
+              .getQueryData<GuildsResponse>(["guilds"])
+              ?.guilds.flatMap((g) => g.channels)
+              .filter((c) => channelIds.includes(c.id)) ?? [],
+          ),
           channelIds,
         },
         id,
@@ -321,6 +337,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       setSelected(new Set());
       setPings([]);
       setSilent(false);
+      setPublish(false);
       clear();
     },
   };
@@ -332,3 +349,6 @@ export function useSending() {
   if (!value) throw new Error("useSending needs a SendingProvider");
   return value;
 }
+
+export const usePublicationUpdate = () =>
+  useContext(SendingContext)?.publicationUpdated;

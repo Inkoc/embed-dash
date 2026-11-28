@@ -1,7 +1,12 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
-import type { Guild, GuildChannel, SendTarget } from "@embed-dash/shared";
+import {
+  destinationProblem,
+  type Guild,
+  type GuildChannel,
+  type SendTarget,
+} from "@embed-dash/shared";
 import { ChevronDown, CopyCheck, X } from "lucide-react";
-import { isBlank, useDraft } from "../compose/draft";
+import { toMessage, isBlank, useDraft } from "../compose/draft";
 import {
   BlockedList,
   DeliveryOptions,
@@ -10,6 +15,7 @@ import {
   Verdict,
 } from "./SendPanel";
 import { useSending, type Received } from "./sending";
+import { DestinationFields } from "./DestinationFields";
 import { inFlight, plural, tally } from "./summary";
 import styles from "./Tray.module.css";
 
@@ -118,15 +124,24 @@ export function Tray({
   const waiting = (slip: Slip) =>
     slip.target ? inFlight(slip.target) : !!busy;
 
+  const destinationError = entries
+    .map((e) =>
+      destinationProblem(
+        { ...toMessage(draft), pings: [], silent: false },
+        e.channel,
+      ),
+    )
+    .find(Boolean);
   const blocked = busy
     ? null
-    : entries.length === 0
-      ? "Tick channels in the catalogue to choose where this goes."
-      : isBlank(draft)
-        ? "Nothing to send yet. Write a message in Compose."
-        : issues.length > 0
-          ? `${plural(issues.length, "problem", "problems")} to fix before sending.`
-          : null;
+    : (destinationError ??
+      (entries.length === 0
+        ? "Tick channels in the catalogue to choose where this goes."
+        : isBlank(draft)
+          ? "Nothing to send yet. Write a message in Compose."
+          : issues.length > 0
+            ? `${plural(issues.length, "problem", "problems")} to fix before sending.`
+            : null));
 
   // The summary takes focus when results arrive, so they are read out and the
   // Retry button that vanished doesn't leave focus nowhere. A layout effect, so
@@ -351,7 +366,10 @@ export function Tray({
           </button>
         )}
         {!result && !busy && entries.length > 0 && (
-          <DeliveryOptions channels={entries.length} />
+          <>
+            <DestinationFields channels={entries.map((e) => e.channel)} />
+            <DeliveryOptions channels={entries.length} />
+          </>
         )}
         {!result &&
           !busy &&
@@ -407,7 +425,16 @@ export function Tray({
               ? "Retry sends only to the failed channels."
               : outcome.unknown
                 ? "Look at the unconfirmed channels in Discord before sending again."
-                : "Every copy arrived."}
+                : outcome.publishFailed
+                  ? null
+                  : "Every copy arrived."}
+          {!!outcome.publishFailed && (
+            <>
+              {" "}
+              Some announcements were not published. Use Retry publish on those
+              copies.
+            </>
+          )}
         </p>
       ) : (
         <p

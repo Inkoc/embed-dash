@@ -1144,3 +1144,61 @@ test("Schedule opens with an empty picker and rejects review until a future time
   );
   expect(sendRequests()).toHaveLength(0);
 });
+
+test.each([
+  { postFailed: true, publishFailed: true },
+  { postFailed: true, publishFailed: false },
+  { postFailed: false, publishFailed: true },
+])(
+  "tray retains independent retry hints for $postFailed / $publishFailed",
+  async ({ postFailed, publishFailed }) => {
+    draftWith({ content: "Community notice" });
+    serve({
+      id: "s1",
+      status: postFailed ? "partial" : "done",
+      targets: [
+        {
+          ...target("t1", "1", "11", "news"),
+          publishStatus: publishFailed ? "failed" : "published",
+          publishError: publishFailed ? "Publication refused." : null,
+        },
+        target(
+          "t2",
+          "1",
+          "10",
+          "general",
+          postFailed ? "failed" : "sent",
+          postFailed ? "MISSING_PERMISSION" : undefined,
+        ),
+      ],
+    });
+    renderSend();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "news" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Publish to following servers/ }),
+    );
+    fireEvent.click(
+      within(tray()).getByRole("button", {
+        name: "Send to 2 channels",
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Send to 2 channels",
+      }),
+    );
+    await within(tray()).findByRole("button", {
+      name: "Compose a new message",
+    });
+    const note = tray().querySelector("#tray-note")!;
+    expect(
+      note.textContent?.includes("Retry sends only to the failed channels."),
+    ).toBe(postFailed);
+    expect(
+      note.textContent?.includes("Use Retry publish on those copies."),
+    ).toBe(publishFailed);
+    expect(note).not.toHaveTextContent("Every copy arrived.");
+    expect(note.textContent?.includes("1 not published")).toBe(publishFailed);
+  },
+);

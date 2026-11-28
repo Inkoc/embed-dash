@@ -386,3 +386,10 @@
   color: var(--ink-2);
   font-size: var(--text-label);
 }
+
+.due + .due {
+  border-top: 0;
+}
+.receipt {
+  flex-basis: 100%;
+}

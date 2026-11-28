@@ -1,3 +1,4 @@
+import { PublishOutcome, ForumReceipt } from "../send/SendPanel";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -435,6 +436,16 @@ export function HistoryList() {
                         <span className={styles.names}>
                           {destinationSummary(entry.destinations, urlQuery)}
                         </span>
+                        {entry.forumTags?.map((tags) => (
+                          <span className={styles.names} key={tags}>
+                            {tags}
+                          </span>
+                        ))}
+                        {!!entry.publishFailureCount && (
+                          <span className={styles.updateNotice}>
+                            {entry.publishFailureCount} not published
+                          </span>
+                        )}
                         {entry.lastEditedAt && (
                           <span className={styles.names}>
                             Last edited {date(entry.lastEditedAt)}
@@ -769,6 +780,14 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
               </div>
+              {query.data.targets.some(
+                (t) => t.status === "sent" && t.publishStatus === "failed",
+              ) && (
+                <p className={styles.updateNotice}>
+                  Some announcements were not published. Use Retry publish on
+                  those copies.
+                </p>
+              )}
               {retryProblem && (
                 <div className={styles.state}>
                   <p role="alert">{retryProblem.message}</p>
@@ -808,6 +827,8 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         />
                       </p>
                       {target.error && <p>{target.error.message}</p>}
+                      <ForumReceipt target={target} />
+                      <PublishOutcome target={target} />
                       {target.status === "failed" && !target.messageId && (
                         <button
                           disabled={
@@ -879,6 +900,10 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         <a
                           href={messageLink({
                             ...target,
+                            channelId:
+                              target.channelKind === "forum"
+                                ? target.messageId!
+                                : target.channelId,
                             messageId: target.messageId,
                           })}
                           target="_blank"

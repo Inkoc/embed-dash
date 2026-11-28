@@ -22,7 +22,7 @@ import {
 } from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import { safeErrorDetails } from "./errors.js";
-import { missingPermissions } from "./permissions.js";
+import { channelPermissionBits, missingPermissions } from "./permissions.js";
 
 /** Discord's maximum page size for the current user's guilds. */
 const maxGuildPageSize = 200;
@@ -63,6 +63,14 @@ export function createDiscord(
   // Tests page through a handful of guilds instead of hundreds of rate-limited calls.
   { guildPageSize = maxGuildPageSize } = {},
 ): {
+  createForum: (
+    channelId: string,
+    name: string,
+    tags: string[],
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) => Promise<DiscordMessage>;
+  publishMessage: (channelId: string, messageId: string) => Promise<void>;
   editMessage: (
     channelId: string,
     messageId: string,
@@ -286,7 +294,40 @@ export function createDiscord(
     });
     return turn;
   }
-  return { getBot, listGuilds, createMessage, editMessage };
+  async function createForum(
+    channelId: string,
+    name: string,
+    tags: string[],
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+  ) {
+    rateLimitPauses.delete(channelId);
+    try {
+      const thread = (await client(posting).post(Routes.threads(channelId), {
+        body: { name, applied_tags: tags, message: body },
+        files: files.map((file) => ({ ...file })),
+      })) as {
+        id: string;
+        message?: { attachments: DiscordMessage["attachments"] };
+      };
+      return { id: thread.id, attachments: thread.message?.attachments ?? [] };
+    } finally {
+      rateLimitPauses.delete(channelId);
+    }
+  }
+  async function publishMessage(channelId: string, messageId: string) {
+    await client(rest).post(
+      Routes.channelMessageCrosspost(channelId, messageId),
+    );
+  }
+  return {
+    getBot,
+    listGuilds,
+    createMessage,
+    editMessage,
+    createForum,
+    publishMessage,
+  };
 }
 
 async function fetchGuild(
@@ -319,6 +360,35 @@ async function fetchGuild(
         id: channel.id,
         name: channel.name,
         kind,
+        ...(channel.type === ChannelType.GuildForum
+          ? {
+              availableTags: (
+                (
+                  channel as {
+                    available_tags?: {
+                      id: string;
+                      name: string;
+                      moderated: boolean;
+                    }[];
+                  }
+                ).available_tags ?? []
+              ).map((tag) => ({
+                id: tag.id,
+                name: tag.name,
+                ...(tag.moderated &&
+                !(
+                  channelPermissionBits(
+                    context,
+                    channel.permission_overwrites ?? [],
+                  ) &
+                  (1n << 34n)
+                )
+                  ? { unavailable: "Requires Manage Threads" }
+                  : {}),
+              })),
+              requireTag: !!((channel.flags ?? 0) & 16),
+            }
+          : {}),
         missing: missingPermissions(
           context,
           channel.permission_overwrites ?? [],

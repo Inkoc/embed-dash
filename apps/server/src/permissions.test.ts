@@ -111,3 +111,10 @@ test("without View Channel or Send Messages only that one is named", () => {
     ]),
   ).toEqual(["sendMessages"]);
 });
+
+test("forum starters and own-message publication use Send Messages without thread permission bits", () => {
+  expect(missingPermissions(context(posting), [])).toEqual([]);
+  expect(
+    missingPermissions(context(posting), [member(0n, SendMessages)]),
+  ).toEqual(["sendMessages"]);
+});

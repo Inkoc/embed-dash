@@ -141,6 +141,7 @@ export function deliveryFailure(error: unknown): {
   });
   if (error instanceof RateLimitError || status === 429)
     return failed("RATE_LIMITED");
+  if (discordCode === 50083) return failed("THREAD_ARCHIVED");
   if (status === 401) return failed("INVALID_TOKEN", true);
   if (
     status === 403 ||

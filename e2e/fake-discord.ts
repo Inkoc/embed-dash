@@ -90,6 +90,8 @@ interface FakeChannel {
   id: string;
   name: string;
   type: 0 | 4 | 5 | 15;
+  flags?: number;
+  available_tags?: { id: string; name: string; moderated: boolean }[];
   position: number;
   parent_id?: string;
   permission_overwrites?: {
@@ -149,7 +151,17 @@ export const fakeGuilds: FakeGuild[] = [
       ["Chat", 4],
       ["general", 0, { parent_id: id(1, 4) }],
       ["events", 0, { parent_id: id(1, 4) }],
-      ["bug-reports", 15, { parent_id: id(1, 4) }],
+      [
+        "bug-reports",
+        15,
+        {
+          parent_id: id(1, 4),
+          flags: 16,
+          available_tags: [
+            { id: "123456789012345679", name: "Bug", moderated: false },
+          ],
+        },
+      ],
       ["moderators", 0, { parent_id: id(1, 4), ...denySend(1) }],
     ],
     4,
@@ -266,10 +278,19 @@ export function startFakeDiscord(port: number) {
   const messageReads: string[] = [];
   let lastAttachment = 91000000000000000n;
   const forced = new Map<string, Forced>();
+  const published: string[] = [];
+  const threads: {
+    id: string;
+    parentId: string;
+    name: string;
+    tags: string[];
+  }[] = [];
+  const forcedPublishes = new Map<string, Forced>();
   const forcedEdits = new Map<string, Forced>();
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
   let postDelayMs = 0;
+  let publishDelayMs = 0;
   let listingDelayMs = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
@@ -333,11 +354,43 @@ export function startFakeDiscord(port: number) {
           .map((g) => ({ id: g.id, name: g.name, icon: null })),
       );
     }
-    const [, section, guildId, sub, memberId] = path.split("/");
+    const [, section, guildId, sub, memberId, action] = path.split("/");
+    if (
+      section === "channels" &&
+      action === "crosspost" &&
+      request.method === "POST"
+    ) {
+      const answer = forcedPublishes.get(guildId);
+      if (answer) {
+        if (--answer.times <= 0) forcedPublishes.delete(guildId);
+        if (answer.retryAfter)
+          response.setHeader("retry-after", String(answer.retryAfter));
+        return reply(
+          { message: "Publish refused", code: answer.code ?? 0 },
+          answer.status,
+        );
+      }
+      const message = messages.find(
+        (m) => m.id === memberId && m.channelId === guildId,
+      );
+      if (
+        !message ||
+        !fakeGuilds.some((g) =>
+          g.channels.some((c) => c.id === guildId && c.type === 5),
+        )
+      )
+        return reply({ code: 10008 }, 404);
+      if (published.includes(memberId))
+        return reply({ message: "Already crossposted", code: 40033 }, 400);
+      published.push(memberId);
+      if (publishDelayMs)
+        await new Promise((resolve) => setTimeout(resolve, publishDelayMs));
+      return reply({ id: memberId });
+    }
     if (
       ["POST", "PATCH", "GET"].includes(request.method ?? "") &&
       section === "channels" &&
-      sub === "messages"
+      (sub === "messages" || sub === "threads")
     ) {
       // Here `guildId` is the channel: the path is /channels/{id}/messages.
       const channel = guildId;
@@ -357,9 +410,11 @@ export function startFakeDiscord(port: number) {
           answer.status,
         );
       }
-      const exists = fakeGuilds.some((g) =>
-        g.channels.some((c) => c.id === channel && !removed.has(c.id)),
-      );
+      const exists =
+        threads.some((t) => t.id === channel) ||
+        fakeGuilds.some((g) =>
+          g.channels.some((c) => c.id === channel && !removed.has(c.id)),
+        );
       if (!exists)
         return reply({ message: "Unknown Channel", code: 10003 }, 404);
       const existing = messages.find(
@@ -379,7 +434,47 @@ export function startFakeDiscord(port: number) {
       const json = multipart
         ? parts.find((part) => part.name === "payload_json")?.data.toString()
         : body.toString();
-      const payload = JSON.parse(json || "{}") as FakeMessage["payload"];
+      let payload = JSON.parse(json || "{}") as FakeMessage["payload"];
+      let thread: (typeof threads)[number] | undefined;
+      if (sub === "threads") {
+        const forum = fakeGuilds
+          .flatMap((g) => g.channels)
+          .find((c) => c.id === channel && c.type === 15);
+        const tags = payload.applied_tags;
+        if (
+          !forum ||
+          typeof payload.name !== "string" ||
+          !payload.name.trim() ||
+          payload.name.length > 100 ||
+          !payload.message ||
+          !Array.isArray(tags) ||
+          tags.length > 5 ||
+          new Set(tags).size !== tags.length ||
+          tags.some((t) => !forum.available_tags?.some((a) => a.id === t)) ||
+          tags.some(
+            (t) =>
+              forum.available_tags?.find((a) => a.id === t)?.moderated &&
+              !forum.permission_overwrites?.some(
+                (o) => BigInt(o.allow) & (1n << 34n),
+              ),
+          ) ||
+          ((forum.flags ?? 0) & 16 && !tags.length)
+        )
+          return reply({ message: "Invalid forum post", code: 50035 }, 400);
+        thread = {
+          id: String(++lastMessage),
+          parentId: channel,
+          name: payload.name,
+          tags: tags as string[],
+        };
+        payload = payload.message as FakeMessage["payload"];
+      } else if (
+        request.method === "POST" &&
+        fakeGuilds
+          .flatMap((g) => g.channels)
+          .some((c) => c.id === channel && c.type === 15)
+      )
+        return reply({ code: 50035 }, 400);
       const files = parts
         .filter((part) => part.filename !== undefined)
         .map((part) => ({
@@ -458,14 +553,21 @@ export function startFakeDiscord(port: number) {
         return reply({ id: existing!.id, attachments });
       }
       const message = {
-        id: String(++lastMessage),
-        channelId: channel,
+        id: thread?.id ?? String(++lastMessage),
+        channelId: thread?.id ?? channel,
         attachments,
         payload,
         files,
         multipart,
       };
       messages.push(message);
+      if (thread) {
+        threads.push(thread);
+        return reply({
+          id: thread.id,
+          message: { id: thread.id, attachments },
+        });
+      }
       return reply({ id: message.id, channel_id: channel, attachments });
     }
     const found = fakeGuilds.find((g) => g.id === guildId);
@@ -488,6 +590,13 @@ export function startFakeDiscord(port: number) {
   return Object.assign(server.listen(port, "127.0.0.1"), {
     /** Every message accepted so far, oldest first. */
     messages,
+    threads,
+    published,
+    slowPublish: (ms: number) => void (publishDelayMs = ms),
+    failPublish: (
+      channelId: string,
+      failure: Omit<Forced, "times"> & { times?: number },
+    ) => void forcedPublishes.set(channelId, { times: 1, ...failure }),
     messageReads,
     /** Answers the next `times` posts to a channel with this failure. */
     fail: (
