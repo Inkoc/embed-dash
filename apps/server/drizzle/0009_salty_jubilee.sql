@@ -1,0 +1,1 @@
+CREATE INDEX `sends_due_idx` ON `sends` (`status`,`scheduled_at`);

@@ -574,3 +574,69 @@ test.each([
   expect(scrolled).not.toHaveBeenCalled();
   Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
+
+test("scheduled editing saves content, time and catalogue destinations", async () => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const due = Date.now() + 3600000;
+  const initial: HistoryDetail = {
+    ...send,
+    status: "scheduled",
+    scheduledAt: due,
+    targets: [{ ...send.targets[0], status: "pending", messageId: null }],
+  };
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/guilds")
+      return Response.json({
+        fetchedAt: new Date().toISOString(),
+        unavailable: [],
+        guilds: [
+          {
+            id: "guild",
+            name: "Observatory",
+            iconUrl: null,
+            mainChannelId: "channel",
+            channels: [
+              { id: "channel", name: "news", kind: "text", missing: [] },
+              { id: "other", name: "general", kind: "text", missing: [] },
+            ],
+          },
+        ],
+      });
+    if (options?.method === "PUT") return Response.json({ id: send.id });
+    return Response.json(initial);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  showEditor(initial);
+  expect(await screen.findByRole("checkbox", { name: "news" })).toBeChecked();
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find channels" }), {
+    target: { value: "general" },
+  });
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Revised plan" },
+  });
+  const next = new Date(due + 3600000);
+  const input = new Date(next.getTime() - next.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+  fireEvent.change(screen.getByLabelText(/Send date and time/), {
+    target: { value: input },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Save schedule/ }));
+  expect(await screen.findByText("Schedule saved.")).toBeVisible();
+  const put = fetcher.mock.calls.find(
+    ([, options]) => options?.method === "PUT",
+  )!;
+  expect(put[0]).toBe("/api/sends/send/schedule");
+  expect(JSON.parse(put[1]!.body as string)).toMatchObject({
+    payload: { content: "Revised plan" },
+    channelIds: ["channel", "other"],
+    scheduledAt: new Date(input).toISOString(),
+  });
+});

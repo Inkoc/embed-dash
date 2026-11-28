@@ -1,3 +1,4 @@
+import { ChannelFilter } from "./ChannelFilter";
 import {
   useCallback,
   useDeferredValue,
@@ -21,7 +22,6 @@ import {
   ListChecks,
   Lock,
   RefreshCw,
-  Search,
   Star,
   X,
 } from "lucide-react";
@@ -342,61 +342,14 @@ function Picker({
               </span>
             </p>
           )}
-          <label htmlFor="channel-search" className={styles.label}>
-            Find channels
-          </label>
-          <div className={styles.search}>
-            <Search aria-hidden="true" />
-            <input
-              ref={search}
-              id="channel-search"
-              type="search"
-              value={query}
-              placeholder="e.g. news, Cup EU or 1103…"
-              autoComplete="off"
-              spellCheck={false}
-              data-shortcut="search"
-              aria-keyshortcuts="/"
-              aria-describedby="channel-search-result"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown" || event.key === "Enter") {
-                  event.preventDefault();
-                  enterList();
-                } else if (event.key === "Escape" && query) {
-                  // Esc clears the search first; the next Esc goes back to Compose.
-                  event.preventDefault();
-                  setQuery("");
-                }
-              }}
-            />
-            {query ? (
-              <button
-                type="button"
-                className={styles.clear}
-                aria-label="Clear search"
-                onClick={() => {
-                  setQuery("");
-                  search.current?.focus();
-                }}
-              >
-                <X aria-hidden="true" />
-              </button>
-            ) : (
-              <kbd data-k="search" aria-hidden="true">
-                /
-              </kbd>
-            )}
-          </div>
-          <p
-            id="channel-search-result"
-            className="visually-hidden"
-            aria-live="polite"
-          >
-            {deferred.trim()
-              ? `${hits} channels in ${drawers.length} servers match.`
-              : ""}
-          </p>
+          <ChannelFilter
+            query={query}
+            onChange={setQuery}
+            inputRef={search}
+            enterList={enterList}
+            hits={hits}
+            servers={drawers.length}
+          />
           <ServerStrip guilds={guilds} selected={selected} onJump={onJump} />
           <div className={styles.picks} role="group" aria-labelledby="picks">
             <span id="picks">Quick picks</span>

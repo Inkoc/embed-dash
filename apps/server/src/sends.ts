@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   historyQuerySchema,
+  scheduleEditSchema,
+  sendIdSchema,
   editRequestSchema,
   canPost,
   canSendTo,
@@ -30,7 +32,7 @@ import type {
   DiscordMessage,
   StoredAttachment,
 } from "./discord.js";
-import { deliveryFailure, discordFailure } from "./errors.js";
+import { safeErrorDetails, deliveryFailure, discordFailure } from "./errors.js";
 import { discordMessage, searchText, messageTitle } from "./payload.js";
 import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
@@ -71,6 +73,7 @@ export async function registerSends(
   config: Config,
   sqlite: Database.Database,
   discord: Discord,
+  clock: { now: () => number; intervalMs?: number } = { now: Date.now },
 ) {
   const db = drizzle(sqlite);
   const store = createUploadStore(config.dataDir, sqlite);
@@ -85,7 +88,15 @@ export async function registerSends(
       const scope = (...status: TargetRow["status"][]) =>
         and(
           inArray(sendTargets.status, status),
-          sendId ? eq(sendTargets.sendId, sendId) : undefined,
+          sendId
+            ? eq(sendTargets.sendId, sendId)
+            : inArray(
+                sendTargets.sendId,
+                db
+                  .select({ id: sends.id })
+                  .from(sends)
+                  .where(ne(sends.status, "scheduled")),
+              ),
         );
       db.update(sendTargets)
         .set({ status: "unknown", error: "UNKNOWN_OUTCOME" })
@@ -263,6 +274,7 @@ export async function registerSends(
       id,
       payload,
       createdAt: send.createdAt,
+      scheduledAt: send.scheduledAt,
       retainedUploads: payload.attachments
         .filter((file) => {
           const copies = targets.filter(
@@ -519,6 +531,137 @@ export async function registerSends(
     );
   }
 
+  // A temporary listing outage delays delivery, but never holds a schedule indefinitely.
+  const maxListingFailureMs = 15 * 60 * 1000;
+  let nextListingAt = 0;
+  let listingFailures = 0;
+  let failingSince: number | null = null;
+  let listingInFlight = false;
+  function claimDue(cutoff = clock.now()) {
+    return sqlite.transaction(() => {
+      const claimedAt = clock.now();
+      const due = db
+        .select()
+        .from(sends)
+        .where(
+          and(eq(sends.status, "scheduled"), lte(sends.scheduledAt, cutoff)),
+        )
+        .all();
+      for (const send of due)
+        db.update(sends)
+          .set({
+            status: "sending",
+            createdAt: claimedAt,
+            updatedAt: claimedAt,
+          })
+          .where(eq(sends.id, send.id))
+          .run();
+      return due.map((send) => ({ ...send, createdAt: claimedAt }));
+    })();
+  }
+  function failScheduled(id: string, code: DeliveryErrorCode) {
+    db.update(sendTargets)
+      .set({ status: "failed", error: code })
+      .where(and(eq(sendTargets.sendId, id), eq(sendTargets.status, "pending")))
+      .run();
+    finish(id);
+  }
+  async function tick() {
+    try {
+      if (closing || listingInFlight || clock.now() < nextListingAt) return;
+      if (
+        !db
+          .select({ id: sends.id })
+          .from(sends)
+          .where(
+            and(
+              eq(sends.status, "scheduled"),
+              lte(sends.scheduledAt, clock.now()),
+            ),
+          )
+          .get()
+      )
+        return;
+      let listing: GuildsResponse;
+      listingInFlight = true;
+      try {
+        listing = await discord.listGuilds();
+        listingFailures = 0;
+        failingSince = null;
+        nextListingAt = 0;
+      } catch (error) {
+        const failure = discordFailure(error);
+        app.log.warn(
+          { code: failure.code },
+          "Scheduled delivery could not list servers",
+        );
+        failingSince ??= clock.now();
+        listingFailures++;
+        nextListingAt =
+          clock.now() +
+          Math.min(60000, 5000 * 2 ** Math.min(listingFailures - 1, 4));
+        if (!closing) {
+          const permanent =
+            failure.code === "DISCORD_INVALID_TOKEN" ||
+            (failure.status !== undefined &&
+              failure.status >= 400 &&
+              failure.status < 500 &&
+              failure.status !== 429);
+          const code: DeliveryErrorCode =
+            failure.code === "DISCORD_INVALID_TOKEN"
+              ? "INVALID_TOKEN"
+              : failure.code === "DISCORD_RATE_LIMITED"
+                ? "RATE_LIMITED"
+                : failure.code === "DISCORD_UNREACHABLE"
+                  ? "UNREACHABLE"
+                  : "DISCORD_UNAVAILABLE";
+          if (permanent || clock.now() - failingSince >= maxListingFailureMs)
+            for (const send of claimDue()) failScheduled(send.id, code);
+        }
+        return;
+      } finally {
+        listingInFlight = false;
+      }
+      if (closing) return;
+      for (const send of claimDue()) {
+        try {
+          const loaded = loadAttachments(
+            messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
+          );
+          if (loaded.missing.size) {
+            failScheduled(send.id, "UPLOAD_MISSING");
+            continue;
+          }
+          deliverInBackground(
+            send.id,
+            copiesFor(send.id),
+            loaded.payload,
+            loaded.files,
+            new Date(send.createdAt),
+            listing,
+          );
+        } catch {
+          settleInterrupted(send.id);
+        }
+      }
+    } catch (error) {
+      app.log.error(
+        { code: safeErrorDetails(error).causeCode ?? "SCHEDULER_FAILED" },
+        "Scheduler tick failed",
+      );
+    }
+  }
+  const timer = setInterval(() => {
+    inBackground(tick());
+  }, clock.intervalMs ?? 1000);
+  timer.unref();
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+  });
+  app.addHook("onReady", async () => {
+    inBackground(tick());
+  });
+
   const listingFailed = (reply: FastifyReply, error: unknown) => {
     const { code, message, statusCode, ...details } = discordFailure(error);
     app.log.warn({ code, ...details }, "Discord guild listing failed");
@@ -568,7 +711,14 @@ export async function registerSends(
           ),
         );
 
-    const now = Date.now();
+    const now = clock.now();
+    const due = parsed.data.scheduledAt
+      ? Date.parse(parsed.data.scheduledAt)
+      : null;
+    if (due !== null && due <= now)
+      return reply
+        .code(422)
+        .send(sendError("SCHEDULE_PAST", "Choose a future date and time."));
     // The same id may arrive twice while the listing above is awaited: the
     // second insert finds the row and hands back that send instead of posting.
     const stored = sqlite.transaction(() => {
@@ -578,7 +728,8 @@ export async function registerSends(
           id: sendId,
           payloadJson: JSON.stringify(payload),
           searchText: searchText(payload),
-          status: "sending",
+          status: due === null ? "sending" : "scheduled",
+          scheduledAt: due,
           createdAt: now,
           updatedAt: now,
         })
@@ -605,7 +756,7 @@ export async function registerSends(
         .run();
       return true;
     })();
-    if (!stored) return reply.code(202).send({ id: sendId });
+    if (!stored || due !== null) return reply.code(202).send({ id: sendId });
     const targets = db
       .select()
       .from(sendTargets)
@@ -630,7 +781,9 @@ export async function registerSends(
         .code(400)
         .send(sendError("INVALID_REQUEST", "The history filters are invalid."));
     const query = parsed.data;
-    const conditions = ["s.status IN ('sending', 'done', 'partial', 'failed')"];
+    const conditions = [
+      "s.status IN ('scheduled', 'cancelled', 'sending', 'done', 'partial', 'failed')",
+    ];
     const params: (string | number)[] = [];
     if (query.status) {
       conditions.push("s.status = ?");
@@ -669,12 +822,13 @@ export async function registerSends(
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.status = 'unknown') AS unknown_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.status = 'unknown') AS unknown_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ${query.status === "scheduled" ? "ORDER BY s.scheduled_at ASC, s.id ASC" : "ORDER BY s.created_at DESC, s.id DESC"} LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
       payload_json: string;
       created_at: number;
+      scheduled_at: number | null;
       last_edited_at: number | null;
       status: string;
       channel_count: number;
@@ -683,7 +837,7 @@ export async function registerSends(
     }[];
     destinations ??= sqlite
       .prepare(
-        "SELECT DISTINCT t.guild_id AS guildId, t.guild_name AS guildName, t.channel_id AS channelId, t.channel_name AS channelName FROM send_targets t JOIN sends s ON s.id = t.send_id WHERE s.status IN ('sending', 'done', 'partial', 'failed') ORDER BY t.guild_name, t.channel_name",
+        "SELECT DISTINCT t.guild_id AS guildId, t.guild_name AS guildName, t.channel_id AS channelId, t.channel_name AS channelName FROM send_targets t JOIN sends s ON s.id = t.send_id WHERE s.status IN ('scheduled', 'cancelled', 'sending', 'done', 'partial', 'failed') ORDER BY t.guild_name, t.channel_name",
       )
       .all() as HistoryDestination[];
     return {
@@ -696,6 +850,7 @@ export async function registerSends(
           title: messageTitle(payload),
           color: payload.embeds[0]?.color ?? "",
           createdAt: row.created_at,
+          scheduledAt: row.scheduled_at,
           lastEditedAt: row.last_edited_at,
           destinations: copiesFor(row.id).map(
             ({ guildName, guildId, channelName, channelId }) => ({
@@ -736,6 +891,126 @@ export async function registerSends(
     return readSend(send);
   });
 
+  app.delete("/api/sends/:id", async (request, reply) => {
+    const parsed = sendIdSchema.safeParse(request.params);
+    if (!parsed.success)
+      return reply
+        .code(400)
+        .send(sendError("INVALID_REQUEST", "Invalid send ID."));
+    const changed = db
+      .update(sends)
+      .set({ status: "cancelled", updatedAt: clock.now() })
+      .where(and(eq(sends.id, parsed.data.id), eq(sends.status, "scheduled")))
+      .run();
+    if (
+      !changed.changes &&
+      db
+        .select()
+        .from(sends)
+        .where(and(eq(sends.id, parsed.data.id), eq(sends.status, "cancelled")))
+        .get()
+    )
+      return reply.code(204).send();
+    if (!changed.changes)
+      return reply
+        .code(409)
+        .send(
+          sendError(
+            "SCHEDULE_STARTED",
+            "This schedule has already started or was cancelled.",
+          ),
+        );
+    return reply.code(204).send();
+  });
+
+  app.put("/api/sends/:id/schedule", async (request, reply) => {
+    const params = sendIdSchema.safeParse(request.params);
+    const body = scheduleEditSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply
+        .code(400)
+        .send(
+          sendError("INVALID_REQUEST", "The schedule request is malformed."),
+        );
+    let listing: GuildsResponse;
+    try {
+      listing = await discord.listGuilds();
+    } catch (error) {
+      return listingFailed(reply, error);
+    }
+    const channels = listed(listing);
+    const outcome = sqlite.transaction(() => {
+      const current = db
+        .select()
+        .from(sends)
+        .where(eq(sends.id, params.data.id))
+        .get();
+      if (current?.status !== "scheduled") return "started";
+      const due = Date.parse(body.data.scheduledAt);
+      if (due <= clock.now()) return "past";
+      if (
+        body.data.channelIds.some(
+          (id) => !channels.has(id) || !canSendTo(channels.get(id)!.channel),
+        )
+      )
+        return "channels";
+      const loaded = loadAttachments(body.data.payload);
+      if (
+        validateMessage(loaded.payload, { missingFiles: loaded.missing }).length
+      )
+        return { invalid: loaded };
+      db.update(sends)
+        .set({
+          payloadJson: JSON.stringify(loaded.payload),
+          searchText: searchText(loaded.payload),
+          scheduledAt: due,
+          updatedAt: clock.now(),
+        })
+        .where(eq(sends.id, current.id))
+        .run();
+      db.delete(sendTargets).where(eq(sendTargets.sendId, current.id)).run();
+      db.insert(sendTargets)
+        .values(
+          body.data.channelIds.map((id, position) => {
+            const { guild, channel } = channels.get(id)!;
+            return {
+              id: randomUUID(),
+              sendId: current.id,
+              guildId: guild.id,
+              guildName: guild.name,
+              channelId: id,
+              channelName: channel.name,
+              status: "pending" as const,
+              position,
+            };
+          }),
+        )
+        .run();
+      destinations = undefined;
+      return "saved";
+    })();
+    if (typeof outcome === "object")
+      return refusal(reply, outcome.invalid.payload, outcome.invalid.missing);
+    if (outcome !== "saved")
+      return reply
+        .code(outcome === "past" ? 422 : 409)
+        .send(
+          sendError(
+            outcome === "past"
+              ? "SCHEDULE_PAST"
+              : outcome === "channels"
+                ? "CHANNELS_UNAVAILABLE"
+                : "SCHEDULE_STARTED",
+            outcome === "past"
+              ? "Choose a future date and time."
+              : outcome === "channels"
+                ? "Refresh and choose available channels."
+                : "This schedule has already started or was cancelled.",
+          ),
+        );
+    return reply.send({ id: params.data.id });
+  });
+
   const copiesFor = (id: string) =>
     db
       .select()
@@ -746,7 +1021,10 @@ export async function registerSends(
   const editCopies = (targets: TargetRow[]) =>
     targets.filter((t) => t.messageId && t.editError !== "MESSAGE_DELETED");
   const locked = (send: typeof sends.$inferSelect) =>
-    send.status === "sending" || send.editStatus === "sending";
+    send.status === "scheduled" ||
+    send.status === "cancelled" ||
+    send.status === "sending" ||
+    send.editStatus === "sending";
 
   app.put("/api/sends/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -990,4 +1268,5 @@ export async function registerSends(
     );
   registerRetry(false);
   registerRetry(true);
+  return { tick };
 }

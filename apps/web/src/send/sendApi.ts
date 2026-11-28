@@ -84,7 +84,7 @@ async function request(
 
 /** Starts a send or a retry; the server answers once it has recorded it, and delivers on its own. */
 export async function startSend(
-  action: "send" | "retry" | "edit" | "retry-edit",
+  action: "schedule" | "send" | "retry" | "edit" | "retry-edit",
   url: string,
   body: object,
   csrfToken: string,
