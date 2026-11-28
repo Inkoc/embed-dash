@@ -30,13 +30,16 @@ const words = [
 ] as const;
 /**
  * Then, only if something would still overlap (a large root font size on a
- * tablet, say), one change at a time: the control moves to a second row, and
- * only if the first row still can't hold the rest does the brand's name go,
- * then the bot's name. The second row comes first because it frees the most
- * room; dropping a name first rarely saved the row, so the bar used to lose
- * both names and its row in a single step.
+ * tablet, say), one change at a time. A bot that failed to connect leaves the
+ * bar for a notice above the view first, as it does on phones, since the
+ * notice has room for the whole message. Then the control moves to a second
+ * row, and only if the first row still can't hold the rest does the brand's
+ * name go, then the bot's name. The second row comes before the names because
+ * it frees the most room; dropping a name first rarely saved the row, so the
+ * bar used to lose both names and its row in a single step.
  */
 const room = [
+  ["shedFailure", "(max-width: 640px)"],
   ["stacked", "(max-width: 639.98px)"],
   ["shedBrand", "(max-width: 719.98px)"],
   ["shedBot", "(max-width: 640px)"],

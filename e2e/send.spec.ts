@@ -22,6 +22,16 @@ async function compose(page: Page, title: string) {
     .fill("Maintenance starts at 06:00 UTC.");
 }
 
+async function axe(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  return results.violations.map((violation) => ({
+    id: violation.id,
+    targets: violation.nodes.map((node) => node.target.join(" ")),
+  }));
+}
+
 async function pick(page: Page, guild: string, channel: string) {
   await drawer(page, guild).getByRole("checkbox", { name: channel }).check();
 }
@@ -128,6 +138,79 @@ test("one refused channel fails on its own slip and retry sends only that one", 
   });
   await expect(results).not.toBeChecked();
   await expect(results).toHaveAccessibleDescription(/Already has this message/);
+});
+
+test("a send to many channels keeps its destinations and slips reachable from the keyboard", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // Settled colours for axe, and an instant scroll to measure.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await compose(page, "Season finale");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Main channel of each server/ })
+    .click();
+  await expect(tray(page)).toContainText("12 channels in 12 servers");
+  // Before a send the slips' own buttons are the stops, so their list isn't one.
+  await expect(page.locator("#tray-slips")).not.toHaveAttribute("tabindex");
+
+  await tray(page).getByRole("button", { name: "Send to 12 channels" }).focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Send to 12 channels?" });
+  const destinations = dialog.getByRole("region", {
+    name: "Destinations, 12 channels",
+  });
+  // The list is taller than its box, so it scrolls, and the keyboard scrolls it.
+  expect(
+    await destinations.evaluate(
+      (list) => list.scrollHeight > list.clientHeight,
+    ),
+  ).toBe(true);
+  // From Cancel, the keyboard goes back to the list, and its ring stands out on the sheet.
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(destinations).toBeFocused();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    expect(
+      await destinations.evaluate((list) => {
+        const canvas = document.createElement("canvas").getContext("2d")!;
+        const luminance = (colour: string) => {
+          canvas.fillStyle = colour;
+          canvas.fillRect(0, 0, 1, 1);
+          const [r, g, b] = [...canvas.getImageData(0, 0, 1, 1).data].map(
+            (v) => v / 255,
+          );
+          const lin = (c: number) =>
+            c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          return 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
+        };
+        const ring = luminance(getComputedStyle(list).outlineColor);
+        const sheet = luminance(
+          getComputedStyle(list.closest("dialog")!).backgroundColor,
+        );
+        return (Math.max(ring, sheet) + 0.05) / (Math.min(ring, sheet) + 0.05);
+      }),
+      colorScheme,
+    ).toBeGreaterThanOrEqual(3);
+  }
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => destinations.evaluate((list) => list.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await axe(page)).toEqual([]);
+
+  await dialog.getByRole("button", { name: "Send to 12 channels" }).click();
+  const sending = tray(page).getByRole("region", { name: "Sending" });
+  await expect(sending).toBeVisible();
+  await expect(sending).toHaveAttribute("tabindex", "0");
+  expect(await axe(page)).toEqual([]);
+  await expect(tray(page)).toContainText("12 sent.");
 });
 
 test("after a send, Compose a new message clears the draft and the selection", async ({

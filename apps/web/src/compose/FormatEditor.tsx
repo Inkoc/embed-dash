@@ -279,21 +279,23 @@ export function FormatEditor({
                 })}
               </div>
             ))}
+            {/* In the toolbar's own row, so when the tools wrap it shares their last line. */}
+            <p className={styles.readout} aria-hidden="true">
+              {described ? (
+                <>
+                  <span>{described.name}</span>
+                  {described.key && (
+                    <kbd>
+                      {modifier} {described.key.toUpperCase()}
+                    </kbd>
+                  )}
+                </>
+              ) : (
+                <span>Select text, then pick a format</span>
+              )}
+            </p>
           </div>
-          <p className={styles.readout} aria-hidden="true">
-            {described ? (
-              <>
-                <span>{described.name}</span>
-                {described.key && (
-                  <kbd>
-                    {modifier} {described.key.toUpperCase()}
-                  </kbd>
-                )}
-              </>
-            ) : (
-              <span>Select text, then pick a format</span>
-            )}
-          </p>
+
           {panel === "mention" && <MentionPanel onDone={closePanel} />}
           {panel === "timestamp" && <TimestampPanel onDone={closePanel} />}
         </div>

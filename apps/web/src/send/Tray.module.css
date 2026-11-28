@@ -30,6 +30,10 @@
 .tray :focus-visible {
   outline-color: var(--tray-accent);
 }
+/* The confirmation opens from the tray but sits on a light sheet, so it keeps the base ring. */
+.tray dialog :focus-visible {
+  outline-color: var(--ring);
+}
 
 .head {
   display: grid;
