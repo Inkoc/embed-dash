@@ -67,7 +67,12 @@ test("local mode has a permanent warning without dismissal or sign out", () => {
   expect(screen.getByRole("note").textContent).toContain(
     "open to anyone who can reach it",
   );
-  expect(screen.queryByRole("button")).toBeNull();
+  // Its only control folds the explanation on phones; there is no dismissal or sign out.
+  const details = screen.getByRole("button", { name: "Details" });
+  expect(screen.getAllByRole("button")).toEqual([details]);
+  expect(details.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(details);
+  expect(details.getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByText("Composer")).toBeTruthy();
 });
 test("unauthenticated visitors reach login with password focus", async () => {

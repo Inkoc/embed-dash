@@ -13,7 +13,7 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
     return variant === "bar" ? (
       <p className={styles.bar} data-state="loading" role="status">
         <span className={styles.dot} aria-hidden="true" />
-        <span className={styles.label} data-gives-way>
+        <span className={styles.label} data-gives-way data-shed-label="bot">
           Connecting to Discord…
         </span>
       </p>
@@ -56,7 +56,7 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
           </span>
         </>
       )}
-      <span className={styles.label} data-gives-way>
+      <span className={styles.label} data-gives-way data-shed-label="bot">
         Bot <b>{bot.data.name}</b>
       </span>
     </p>

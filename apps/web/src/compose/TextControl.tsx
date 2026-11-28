@@ -1,9 +1,10 @@
 import type { ChangeEvent } from "react";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, ImageOff } from "lucide-react";
 import { countedLength, textLength } from "@embed-dash/shared";
 import { useDraft } from "./draft";
 import { useEditorState } from "./editorState";
 import { FormatEditor } from "./FormatEditor";
+import { useImageFailed } from "./imageCheck";
 import styles from "./TextControl.module.css";
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
   format?: boolean;
   /** Links get a URL keyboard and no spell checking. */
   link?: boolean;
+  /** An image link: one that doesn't load says so here, not only in the preview. */
+  image?: boolean;
   placeholder?: string;
   /** Shown only while the control has focus. */
   focusHint?: string;
@@ -66,17 +69,23 @@ export function TextControl({
   optional,
   format: formatted,
   link,
+  image,
   placeholder,
   focusHint,
   untrimmed,
 }: Props) {
   const { touch } = useEditorState();
+  const { draft } = useDraft();
   const problem = useProblem(id, path);
+  const failed = useImageFailed(image ? value : "", draft.attachments);
+  // A validation problem says more; the load failure waits until it is fixed.
+  const broken = failed && !problem;
   const length = untrimmed ? textLength(value) : countedLength(value);
   const describedBy = [
     max && `${id}-count`,
     focusHint && `${id}-hint`,
     problem && `${id}-problem`,
+    broken && `${id}-broken`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -133,6 +142,15 @@ export function TextControl({
         />
       )}
       <Problem id={`${id}-problem`} message={problem} />
+      {broken && (
+        <p id={`${id}-broken`} className={styles.problem} role="status">
+          <ImageOff aria-hidden="true" />
+          <span>
+            This image didn’t load. Check that the link is right and public;
+            otherwise Discord shows it as broken too.
+          </span>
+        </p>
+      )}
       {focusHint && (
         <p id={`${id}-hint`} className={styles.hint}>
           <span>{focusHint}</span>

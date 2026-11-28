@@ -45,6 +45,16 @@ test("the proxy refusal names both settings and nothing else about the instance"
   expect(error.message).toContain("PUBLIC_URL");
 });
 
+test("sign-in details show only the status and code", () => {
+  expect(
+    describeFailure("sign-in", 401, {
+      code: "BAD_PASSWORD",
+      error: "Wrong password.",
+    }).detail,
+  ).toBe("HTTP 401 · BAD_PASSWORD");
+  expect(describeFailure("sign-in", 502, null).detail).toBe("HTTP 502");
+});
+
 test.each([
   ["sign-in", 401, "Couldn’t sign in: the password is incorrect."],
   ["send", 401, "Couldn’t send: your session ended."],

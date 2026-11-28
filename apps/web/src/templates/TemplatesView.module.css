@@ -16,11 +16,20 @@
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
 }
-.head .quiet {
+.head .quiet,
+.reason {
   margin-left: auto;
+}
+.reason {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
 }
 .meta {
   color: var(--ink-2);
+}
+/* the date never wraps away from its word */
+.updated {
+  white-space: nowrap;
 }
 .data {
   font-family: var(--font-mono);
@@ -71,7 +80,8 @@
 .mini {
   display: block;
   overflow: hidden;
-  height: var(--mini-h);
+  /* a short message gets a short frame; a long one is cut off like a card in a drawer */
+  max-height: var(--mini-h);
   border: var(--rule-width) solid var(--rule-2);
   border-radius: var(--radius-md);
   background: var(--dc-bg);
@@ -87,6 +97,7 @@
   justify-items: start;
   gap: var(--space-2);
   min-width: 0;
+  container-type: inline-size;
 }
 .details h3 {
   max-width: 100%;
@@ -116,12 +127,22 @@
   height: var(--icon-sm);
   margin-top: var(--space-hair);
 }
+/*
+ * An even two-by-two grid: every row has the same four actions, so columns
+ * sized to their content line up from row to row. A details column too narrow
+ * for two (the smallest phones, a large root font) takes one per line.
+ */
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-items: start;
+  gap: var(--space-1) var(--space-4);
   margin-top: var(--space-2);
+}
+@container (max-width: 20rem) {
+  .actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .start,
@@ -171,6 +192,15 @@
 .quiet:hover {
   background: var(--sheet-2);
   color: var(--ink);
+}
+/* still focusable, so its reason is read out, but plainly not available */
+.quiet[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.quiet[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--ink-2);
 }
 .primary {
   min-height: 3rem;
@@ -235,6 +265,9 @@
   }
   .head .quiet {
     margin-left: calc(var(--space-3) * -1);
+  }
+  .reason {
+    margin-left: 0;
   }
 }
 

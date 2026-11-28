@@ -34,23 +34,27 @@ export function MessageSlip({ draft }: { draft: Draft }) {
   return (
     <div className={styles.slip}>
       <p className={styles.what}>
-        <span className={styles.label}>Sending</span>{" "}
-        {summary.embeds > 0 && summary.color && (
-          <span
-            className={styles.dot}
-            // The embed's own side colour: user content, not the app palette.
-            style={{ "--embed-color": summary.color } as CSSProperties}
-            aria-hidden="true"
-          />
-        )}
-        <b className={styles.headline}>{summary.headline}</b>{" "}
-        <span className={styles.parts}>
-          {parts.map((part, i) => (
-            <span key={i}>
-              {i > 0 && " · "}
-              {part}
-            </span>
-          ))}
+        <span className={styles.lead}>
+          <span className={styles.label}>Sending</span>{" "}
+          {summary.embeds > 0 && summary.color && (
+            <span
+              className={styles.dot}
+              // The embed's own side colour: user content, not the app palette.
+              style={{ "--embed-color": summary.color } as CSSProperties}
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className={styles.body}>
+          <b className={styles.headline}>{summary.headline}</b>{" "}
+          <span className={styles.parts}>
+            {parts.map((part, i) => (
+              <span key={i}>
+                {i > 0 && " · "}
+                {part}
+              </span>
+            ))}
+          </span>
         </span>
       </p>
       <Link to="/" className={styles.edit}>

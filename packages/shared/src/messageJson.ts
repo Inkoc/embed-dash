@@ -71,7 +71,8 @@ function unsupported(raw: unknown, accepted: unknown, path = ""): string[] {
   });
 }
 
-function schemaError(issue: z.core.$ZodIssue): string {
+/** Names a schema failure in the composer's terms; exported for its tests. */
+export function schemaError(issue: z.core.$ZodIssue): string {
   const path = issue.path.filter(
     (part) => part !== "messages" && part !== "data",
   );
@@ -128,7 +129,13 @@ function schemaError(issue: z.core.$ZodIssue): string {
   }
   if (issue.code === "invalid_format")
     return `${label} must be an ISO 8601 date and time, such as 2026-11-27T18:00:00Z.`;
-  return `${label} must contain at least one message.`;
+  if (
+    issue.code === "too_small" &&
+    issue.path.length === 1 &&
+    issue.path[0] === "messages"
+  )
+    return `${label} must contain at least one message.`;
+  return `${label} is not valid.`;
 }
 
 function limitedNotices(notices: string[]): string[] {

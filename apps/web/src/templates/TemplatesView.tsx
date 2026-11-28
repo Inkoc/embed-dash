@@ -98,7 +98,11 @@ export function TemplatesView() {
   if (templates.isPending) body = <Loading />;
   else if (templates.isError)
     body = (
-      <ClosedDrawer label="Not loaded" title="The templates couldn’t be loaded">
+      <ClosedDrawer
+        label="Not loaded"
+        title="The templates couldn’t be loaded"
+        fill
+      >
         <p role="alert">
           {asAppError("load-templates", templates.error).reason}
         </p>
@@ -116,7 +120,7 @@ export function TemplatesView() {
     );
   else if (templates.data.length === 0)
     body = (
-      <ClosedDrawer label="No templates" title="No templates yet">
+      <ClosedDrawer label="No templates" title="No templates yet" fill>
         <p>
           Save a message you post again and again, such as server rules or a
           weekly digest, and start new messages from it here.
@@ -166,6 +170,11 @@ export function TemplatesView() {
         <p className={styles.meta}>
           Messages to start from, shared by everyone who signs in here.
         </p>
+        {templates.data && templates.data.length > 0 && composerBlank && (
+          <p id="overwrite-reason" className={styles.reason}>
+            Compose is empty, so there’s nothing to overwrite a template with.
+          </p>
+        )}
         {templates.data && templates.data.length > 0 && !composerBlank && (
           <SaveTemplate
             className={styles.quiet}
@@ -312,10 +321,13 @@ function Row({
       <div className={styles.details}>
         <h3 id={nameId}>{template.name}</h3>
         <p className={styles.meta}>
-          {messageSummary(template.message)} · Updated{" "}
-          <time dateTime={template.updatedAt} className={styles.data}>
-            {updatedAt(template.updatedAt)}
-          </time>
+          {messageSummary(template.message)} ·{" "}
+          <span className={styles.updated}>
+            Updated{" "}
+            <time dateTime={template.updatedAt} className={styles.data}>
+              {updatedAt(template.updatedAt)}
+            </time>
+          </span>
         </p>
         {missing.length > 0 && (
           <p className={styles.missing}>
@@ -348,18 +360,22 @@ function Row({
             <PencilLine aria-hidden="true" />
             Rename
           </button>
-          {/* With nothing in Compose there is nothing to overwrite it with. */}
-          {!composerBlank && (
-            <button
-              type="button"
-              className={styles.quiet}
-              aria-describedby={nameId}
-              onClick={() => onAction("overwrite")}
-            >
-              <Upload aria-hidden="true" />
-              Overwrite with Compose
-            </button>
-          )}
+          {/* With nothing in Compose there is nothing to overwrite it with;
+              the button stays, explained, so rows keep their shape. */}
+          <button
+            type="button"
+            className={styles.quiet}
+            aria-describedby={
+              composerBlank ? `${nameId} overwrite-reason` : nameId
+            }
+            aria-disabled={composerBlank || undefined}
+            onClick={() => {
+              if (!composerBlank) onAction("overwrite");
+            }}
+          >
+            <Upload aria-hidden="true" />
+            Overwrite with Compose
+          </button>
           <button
             type="button"
             className={styles.quiet}

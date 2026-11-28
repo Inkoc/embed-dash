@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { CornerDownLeft, X } from "lucide-react";
 import { isApplePlatform } from "../shortcuts";
 import styles from "./ShortcutsDialog.module.css";
+import { keepTabInside } from "../ui/dialogTab";
 
 interface Props {
   open: boolean;
@@ -44,6 +45,7 @@ export function ShortcutsDialog({ open, onClose }: Props) {
       className={styles.dialog}
       aria-labelledby="shortcuts-title"
       onClose={onClose}
+      onKeyDown={keepTabInside}
       onClick={(event) => {
         // A click on the backdrop lands on the dialog element itself.
         if (event.target === event.currentTarget) onClose();

@@ -358,6 +358,28 @@ test("with several embeds each folds to one line, and problems unfold it", () =>
   ).toMatch(/This embed is empty/);
 });
 
+test("empty embeds can be dropped in one step from their problem", () => {
+  renderApp();
+  fireEvent.click(button("Add embed"));
+  fireEvent.click(button("Add embed"));
+  expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(3);
+  // Going forward shows the first problem: an empty embed, with its way out.
+  fireEvent.click(
+    screen.getAllByRole("button", { name: /Choose channels/ })[0]!,
+  );
+  expect(
+    document.getElementById(
+      document.activeElement!.id.replace(/-head$/, "-problem"),
+    )!.textContent,
+  ).toMatch(/This embed is empty/);
+  fireEvent.click(button("Remove all 2 empty embeds"));
+  expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(1);
+  expect(screen.queryByText(/This embed is empty/)).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Embed 2/ })).toBeNull();
+  // Focus lands on what is left, never on nothing.
+  expect(document.activeElement).not.toBe(document.body);
+});
+
 test("JSON import errors leave the draft and stored draft untouched; success lists unsupported fields", () => {
   renderApp();
   const original = localStorage.getItem("embed-dash:draft");

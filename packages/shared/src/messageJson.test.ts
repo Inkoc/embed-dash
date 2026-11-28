@@ -6,6 +6,7 @@ import {
   importMessageJson,
   type MessageDraft,
 } from "./index.js";
+import { schemaError } from "./messageJson.js";
 
 const fixture = {
   content: "Community update",
@@ -279,4 +280,12 @@ test.each([
     expect(importMessageJson(JSON.stringify({ messages: [{ data }] }))).toEqual(
       result,
     );
+});
+
+test("names any other schema failure as not valid, not as an empty message list", () => {
+  const custom = (path: (string | number)[]) =>
+    schemaError({ code: "custom", path, message: "", input: undefined });
+  expect(custom(["embeds", 0, "title"])).toBe("Embed 1 title is not valid.");
+  expect(custom(["messages"])).toBe("Message list is not valid.");
+  expect(custom([])).toBe("Message is not valid.");
 });

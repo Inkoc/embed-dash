@@ -2,6 +2,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -70,8 +71,9 @@ export function SendView() {
       <Closed label="Not listed" title="The servers couldn’t be listed">
         {guilds.error && (
           <div>
+            {/* The heading already says the list couldn't load; this says why. */}
             <p role="alert">
-              {asAppError("load-servers", guilds.error).message}
+              {asAppError("load-servers", guilds.error).reason}
             </p>
             <FailureDetail error={asAppError("load-servers", guilds.error)} />
           </div>
@@ -259,6 +261,38 @@ function Picker({
     [],
   );
 
+  // What covers the catalogue: the sticky search above it and, on narrow
+  // screens, the tray sheet below. Measured, because both change height (a
+  // lock notice, the strip, an opened tray), into the page's scroll padding,
+  // so keyboard focus stops clear of them.
+  const layout = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const lookup = layout.current?.querySelector<HTMLElement>("[data-lookup]");
+    const tray = layout.current?.querySelector<HTMLElement>("aside");
+    if (!lookup || !tray) return;
+    const root = document.documentElement.style;
+    const measure = () => {
+      const covers = (part: HTMLElement, position: string) =>
+        getComputedStyle(part).position === position
+          ? part.getBoundingClientRect().height + "px"
+          : "0px";
+      root.setProperty("--lookup-height", covers(lookup, "sticky"));
+      root.setProperty("--sheet-height", covers(tray, "fixed"));
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    observer?.observe(lookup);
+    observer?.observe(tray);
+    return () => {
+      observer?.disconnect();
+      root.removeProperty("--lookup-height");
+      root.removeProperty("--sheet-height");
+    };
+  }, []);
+
   // Jumping to a server opens its drawer, clearing a search that hides it.
   const onJump = (guildId: string) => {
     if (!drawers.some((d) => d.guild.id === guildId)) setQuery("");
@@ -290,7 +324,7 @@ function Picker({
       ?.focus();
 
   return (
-    <div className={styles.layout}>
+    <div className={styles.layout} ref={layout}>
       <ServerRail
         guilds={guilds}
         selected={selected}
@@ -298,7 +332,7 @@ function Picker({
         onJump={onJump}
       />
       <div className={styles.main}>
-        <div className={styles.lookup}>
+        <div className={styles.lookup} data-lookup>
           {locked && (
             <p className={styles.locked} role="status">
               <Lock aria-hidden="true" />

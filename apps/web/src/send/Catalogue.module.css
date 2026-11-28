@@ -32,9 +32,9 @@
 }
 
 .drawer {
-  /* jumps from the server rail land below the sticky bar and search */
-  scroll-margin-top: calc(var(--bar-height) + 11rem);
-  /* offscreen drawers skip layout and paint, so long catalogues stay smooth */
+  /* offscreen drawers skip layout and paint, so long catalogues stay smooth;
+     jumps from the server rail land clear of the sticky bar and search
+     through the page's scroll padding (SendView.module.css) */
   content-visibility: auto;
   contain-intrinsic-size: auto 30rem;
 }
@@ -329,9 +329,6 @@
 }
 
 @media (max-width: 860px) {
-  .drawer {
-    scroll-margin-top: calc(var(--bar-height) + var(--space-3));
-  }
   .head {
     padding: var(--space-1) var(--space-1) var(--space-1) 0;
   }

@@ -328,7 +328,12 @@ test("confirms with the message summary and channel count, then shows a result p
   ).toBeDisabled();
   expect(tray()).toHaveTextContent("Mentions notify nobody.");
   feed.release();
-  expect(await within(tray()).findByText("Unconfirmed")).toBeInTheDocument();
+  // The last poll draws the verdicts a moment before the send is marked
+  // finished, so wait for the finished summary, which only then replaces the
+  // in-flight note, rather than for a verdict.
+  const summary = await within(tray()).findByText(
+    /Retry sends only to the failed channels\./,
+  );
   expect(sendRequests()).toEqual([
     {
       url: "/api/sends",
@@ -354,10 +359,9 @@ test("confirms with the message summary and channel count, then shows a result p
   ).toHaveAttribute("href", "https://discord.com/channels/2/20");
   // Every verdict is an icon and a word.
   expect(within(tray()).getByText("Unconfirmed")).toBeVisible();
-  expect(tray()).toHaveTextContent("1 sent, 1 failed, 1 unconfirmed.");
-  expect(tray()).toHaveTextContent("Retry sends only to the failed channels.");
+  expect(summary).toHaveTextContent("1 sent, 1 failed, 1 unconfirmed.");
   // The summary has focus so the outcome is read out.
-  expect(screen.getByText(/1 sent, 1 failed/).closest("p")).toHaveFocus();
+  expect(summary).toHaveFocus();
 });
 
 test("Retry failed re-sends to the failed channels only and updates the slips", async () => {

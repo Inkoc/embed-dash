@@ -16,22 +16,39 @@ interface Props {
   onShowShortcuts: () => void;
 }
 
-/** What the right cluster drops, in this order, when its share of the bar is too narrow. */
-const shedOrder = ["shedTheme", "shedShortcuts", "shedBadge", "shedSignOut"];
+/**
+ * What the bar sheds when it is short of room, in order, each with the widths
+ * where it is shed outright. First the cluster's words go, so it fits its
+ * share; the bot's name shortens only after all of them.
+ */
+const words = [
+  ["shedTheme", "(max-width: 860px)"],
+  ["shedShortcuts", "(max-width: 860px)"],
+  ["shedBadge", "(max-width: 860px)"],
+  ["shedSignOut", "(max-width: 860px)"],
+] as const;
+/**
+ * Then, only if something would still overlap (a large root font size on a
+ * tablet, say), the brand's name, the bot's name, and finally the second row.
+ */
+const room = [
+  ["shedBrand", "(max-width: 719.98px)"],
+  ["shedBot", "(max-width: 640px)"],
+  ["stacked", "(max-width: 639.98px)"],
+] as const;
+
+const matches = (query: string) => window.matchMedia?.(query).matches ?? false;
+
+/** Whether one box lies inside another, give or take a subpixel. */
+const within = (inner: DOMRect, outer: DOMRect) =>
+  inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5;
 
 /**
  * Whether everything in the cluster shows in full: nothing spills out, and the
  * part that gives way (the bot's name) isn't cut short of its own cap.
  */
 function fits(cluster: HTMLElement) {
-  // Boxes, not scrollWidth: the cluster is end-aligned, so it spills out to
-  // the left, which scrollWidth doesn't count.
-  const edge = cluster.getBoundingClientRect();
-  for (const item of cluster.children) {
-    const box = item.getBoundingClientRect();
-    if (box.left < edge.left - 0.5 || box.right > edge.right + 0.5)
-      return false;
-  }
+  if (!clusterClear(cluster)) return false;
   const label = cluster.querySelector<HTMLElement>("[data-gives-way]");
   // scrollWidth rounds up, so a name that fits to the subpixel can read one over.
   if (!label || label.scrollWidth <= label.clientWidth + 1) return true;
@@ -39,12 +56,51 @@ function fits(cluster: HTMLElement) {
   return label.clientWidth >= cap;
 }
 
-/** Sheds words one at a time until the cluster fits; the bot's name shortens only after all of them. */
-function fit(cluster: HTMLElement) {
-  for (const step of shedOrder) delete cluster.dataset[step];
-  for (const step of shedOrder) {
-    if (fits(cluster)) return;
-    cluster.dataset[step] = "";
+function clusterClear(cluster: HTMLElement) {
+  // Boxes, not scrollWidth: the cluster is end-aligned, so it spills out to
+  // the left, which scrollWidth doesn't count.
+  const edge = cluster.getBoundingClientRect();
+  for (const item of cluster.children) {
+    const box = item.getBoundingClientRect();
+    // A shed item has no box, and a notice hanging below the bar isn't in the row.
+    if (box.width === 0 && box.height === 0) continue;
+    if (getComputedStyle(item).position === "absolute") continue;
+    if (!within(box, edge)) return false;
+  }
+  return true;
+}
+
+/** Whether nothing in the bar overlaps or runs out of it. */
+function clear(bar: HTMLElement, cluster: HTMLElement) {
+  if (bar.scrollWidth > bar.clientWidth + 1 || !clusterClear(cluster))
+    return false;
+  const [brand, nav] = bar.children;
+  const track = nav?.firstElementChild;
+  if (!brand || !nav || !track) return true;
+  const navBox = nav.getBoundingClientRect();
+  const trackBox = track.getBoundingClientRect();
+  return (
+    within(trackBox, navBox) &&
+    brand.getBoundingClientRect().right <= trackBox.left + 0.5 &&
+    // A second row puts the control under the cluster, not beside it.
+    (trackBox.top >= cluster.getBoundingClientRect().bottom ||
+      trackBox.right <= cluster.getBoundingClientRect().left + 0.5)
+  );
+}
+
+/** Sheds one step at a time until the bar fits. */
+function fit(header: HTMLElement, bar: HTMLElement, cluster: HTMLElement) {
+  for (const [step, query] of [...words, ...room]) {
+    if (matches(query)) header.dataset[step] = "";
+    else delete header.dataset[step];
+  }
+  for (const [step] of words) {
+    if (fits(cluster)) break;
+    header.dataset[step] = "";
+  }
+  for (const [step] of room) {
+    if (clear(bar, cluster)) return;
+    header.dataset[step] = "";
   }
 }
 
@@ -57,52 +113,62 @@ const views = [
 
 export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
   const header = useRef<HTMLElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  // Measured rather than set by breakpoints alone: what fits depends on the
+  // sign-in mode, the person's name, the bot's name and the root font size.
   useLayoutEffect(() => {
     const element = header.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    // Sticky composer controls use the full header height, including the access notice.
-    const measure = () =>
+    const row = bar.current;
+    const cluster = end.current;
+    if (!element || !row || !cluster) return;
+    const refit = () => {
+      fit(element, row, cluster);
+      // Sticky composer controls use the full header height, including the access notice.
       document.documentElement.style.setProperty(
         "--bar-height",
         element.getBoundingClientRect().height + "px",
       );
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    measure();
-    return () => {
-      observer.disconnect();
-      document.documentElement.style.removeProperty("--bar-height");
     };
-  }, []);
-  // Measured rather than set by breakpoints: what fits depends on the sign-in
-  // mode, the person's name and the bot's name, not only on the width.
-  useLayoutEffect(() => {
-    const cluster = end.current;
-    if (!cluster || typeof ResizeObserver === "undefined") return;
-    const refit = () => fit(cluster);
+    // Fitted once whatever the browser supports; observers only keep it fitted.
+    refit();
+    void document.fonts?.ready.then(refit);
+    if (typeof ResizeObserver === "undefined")
+      return () =>
+        document.documentElement.style.removeProperty("--bar-height");
+    // Above 860px the cluster's box is a fixed share of the bar, so its own
+    // size doesn't change when what's inside it grows; each item is watched
+    // too, as are font loads, so a late change still refits.
     const resized = new ResizeObserver(refit);
-    resized.observe(cluster);
-    const changed = new MutationObserver(refit);
+    const watch = () => {
+      for (const part of [element, cluster, ...cluster.children])
+        resized.observe(part);
+    };
+    watch();
+    const changed = new MutationObserver(() => {
+      watch();
+      refit();
+    });
     changed.observe(cluster, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-    refit();
-    void document.fonts?.ready.then(refit);
+    document.fonts?.addEventListener("loadingdone", refit);
     return () => {
       resized.disconnect();
       changed.disconnect();
+      document.fonts?.removeEventListener("loadingdone", refit);
+      document.documentElement.style.removeProperty("--bar-height");
     };
   }, []);
   return (
     <header className={styles.header} ref={header}>
       <AccessWarning />
-      <div className={styles.bar}>
+      <div className={styles.bar} ref={bar}>
         <Link to="/" className={styles.brand}>
           <img src="/icon.svg" alt="" width="28" height="28" />
-          <span className={styles.brandName}>embed-dash</span>
+          <span data-shed-label="brand">embed-dash</span>
         </Link>
         <nav aria-label="Main" className={styles.views}>
           <Segmented activeKey={view}>
@@ -127,7 +193,7 @@ export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
             onClick={onShowShortcuts}
             aria-keyshortcuts="?"
           >
-            <span className={styles.shortcutsLabel}>Shortcuts</span>
+            <span data-shed-label="shortcuts">Shortcuts</span>
             <kbd data-k="help" aria-hidden="true">
               ?
             </kbd>
