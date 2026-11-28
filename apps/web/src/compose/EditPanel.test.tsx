@@ -525,3 +525,32 @@ test("a completed save refreshes the header and removes newly deleted copies fro
   expect(screen.getByText(/0 copies to update/)).toBeVisible();
   expect(screen.getByText("Deleted · skipped")).toBeVisible();
 });
+
+test.each([
+  { width: "wide", narrow: false, where: "under Save updates" },
+  { width: "narrow", narrow: true, where: "in the panel" },
+])("on a $width screen, update results show $where", ({ narrow }) => {
+  vi.stubGlobal("fetch", () => new Promise(() => {}));
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(max-width: 68.75em)" ? narrow : false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  showEditor({
+    ...send,
+    edit: {
+      id: "run",
+      status: "done",
+      targets: [updated({ status: "failed" })],
+    },
+  });
+  const results = screen
+    .getByRole("heading", { name: "Update results" })
+    .closest("div")!;
+  const save = screen.getByRole("button", { name: /Save updates/ });
+  const panel = screen
+    .getByRole("heading", { name: "Edit sent message" })
+    .closest("section")!;
+  expect(panel.contains(results)).toBe(narrow);
+  expect(save.parentElement!.contains(results)).toBe(!narrow);
+});

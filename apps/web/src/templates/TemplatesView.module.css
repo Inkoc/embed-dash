@@ -16,11 +16,12 @@
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
 }
-.head .quiet,
-.reason {
+.head .quiet {
   margin-left: auto;
 }
+/* its own line under the heading at every width, so it never floats off to one side */
 .reason {
+  flex-basis: 100%;
   font-size: var(--text-meta);
   color: var(--ink-2);
 }
@@ -31,9 +32,8 @@
 .updated {
   white-space: nowrap;
 }
+/* a date in the body face, like the rest of the line; mono is for identifiers */
 .data {
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -265,9 +265,6 @@
   }
   .head .quiet {
     margin-left: calc(var(--space-3) * -1);
-  }
-  .reason {
-    margin-left: 0;
   }
 }
 

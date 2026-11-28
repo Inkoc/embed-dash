@@ -129,6 +129,23 @@ test("a dropped connection and an unexpected throw get plain words", () => {
   expect(asAppError("send", "boom").detail).toBeNull();
 });
 
+test.each([
+  ["send", "Couldn’t send"],
+  ["retry", "Couldn’t retry"],
+] as const)(
+  "an unexpected %s failure says to look in Discord before trying again",
+  (action, lead) => {
+    const failure = asAppError(action, new TypeError("x is undefined"));
+    expect(failure.message).toBe(
+      `${lead}: something went wrong in the app. Look at the channels in Discord before trying again.`,
+    );
+    expect(failure.reason).toBe(
+      "Something went wrong in the app. Look at the channels in Discord before trying again.",
+    );
+    expect(failure.detail).toBe("TypeError");
+  },
+);
+
 test.each(["edit", "retry-edit"] as const)(
   "%s failures describe updates and keep technical text in Details",
   (action) => {

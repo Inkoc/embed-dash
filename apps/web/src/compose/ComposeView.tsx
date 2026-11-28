@@ -30,11 +30,18 @@ import type { StartedFrom } from "../templates/TemplatesView";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
-import { MessageJson } from "./MessageJson";
+import { MessageJson, type Imported } from "./MessageJson";
 import { SaveUpdatesAction } from "./EditPanel";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
-import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
+import {
+  addEmbed,
+  addedEmbed,
+  exampleDraft,
+  isBlank,
+  useDraft,
+  written,
+} from "./draft";
 import { useEditorState } from "./editorState";
 import { EmbedEditor } from "./EmbedEditor";
 import { TextControl } from "./TextControl";
@@ -53,7 +60,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
     editing,
     dirty,
   } = useDraft();
-  const { pane, setPane, focusAfter, reset, reveal } = useEditorState();
+  const { pane, setPane, focusAfter, reset, reveal, nothingToSend } =
+    useEditorState();
   const bot = useBot();
   const location = useLocation();
   const navigate = useNavigate();
@@ -65,7 +73,9 @@ export function ComposeView({ theme }: { theme: Theme }) {
   // Read once on arrival (each view arrives fresh); the history entry's state is
   // then cleared so a reload doesn't repeat the note.
   const [started] = useState(arrivalState?.started);
-  const [importNotices, setImportNotices] = useState<string[] | null>(null);
+  const [imported, setImported] = useState<Imported | null>(null);
+  // The import note describes the imported draft; once that is edited or cleared it no longer applies.
+  const importNotices = imported?.draft === draft ? imported.notices : null;
   const [confirmClear, setConfirmClear] = useState(false);
   const [savedTemplate, setSavedTemplate] = useState<Template | null>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -121,6 +131,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       className={styles.compose}
       aria-labelledby="compose-title"
       data-pane={pane}
+      data-editing={editing ? "" : undefined}
       style={{ "--preview-w": `${width.requested}px` } as CSSProperties}
     >
       <div className={styles.editor} ref={editor}>
@@ -170,7 +181,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
             </button>
           </div>
           <div className={styles.draftState}>
-            <MessageJson onImported={setImportNotices} />
+            <MessageJson onImported={setImported} />
           </div>
         </div>
 
@@ -235,10 +246,23 @@ export function ComposeView({ theme }: { theme: Theme }) {
           onSubmit={(event) => event.preventDefault()}
         >
           {isBlank(draft) && (
-            <div className={styles.starter}>
-              <p>
-                <b>A new message.</b> Write it below, or start from an example
-                to see every part filled in.
+            <div
+              className={styles.starter}
+              data-nudged={nothingToSend || undefined}
+            >
+              {/* The forward action on a blank draft answers here, read out as it changes. */}
+              <p role="status">
+                {nothingToSend ? (
+                  <>
+                    <b>Nothing to send yet.</b> Write a message below, or start
+                    from an example to see every part filled in.
+                  </>
+                ) : (
+                  <>
+                    <b>A new message.</b> Write it below, or start from an
+                    example to see every part filled in.
+                  </>
+                )}
               </p>
               <button
                 type="button"
@@ -292,7 +316,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
                 id="add-embed"
                 className={styles.add}
                 onClick={() => {
-                  const embed = blankEmbed();
+                  const embed = addedEmbed();
                   focusAfter(`${embed.id}-title`, () =>
                     setDraft((current) => addEmbed(current, embed)),
                   );
@@ -379,7 +403,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
             <span>{theme === "dark" ? "Discord dark" : "Discord light"}</span>
           </p>
           <DiscordPreview
-            draft={draft}
+            draft={written(draft)}
             bot={bot.data}
             botPending={bot.isPending}
             time={time}
@@ -490,8 +514,8 @@ function NextStep() {
 
 /** While the draft has problems the action stays visible but disabled, and pressing it goes to the first one. */
 function ChooseChannels({ describedBy }: { describedBy: string }) {
-  const { issues } = useDraft();
-  const { reveal } = useEditorState();
+  const { draft, issues } = useDraft();
+  const { reveal, nudge } = useEditorState();
   const content = (
     <>
       Choose channels
@@ -499,7 +523,8 @@ function ChooseChannels({ describedBy }: { describedBy: string }) {
       <ForwardKeys />
     </>
   );
-  if (issues.length > 0)
+  const blank = isBlank(draft);
+  if (blank || issues.length > 0)
     return (
       <button
         type="button"
@@ -507,7 +532,7 @@ function ChooseChannels({ describedBy }: { describedBy: string }) {
         aria-disabled="true"
         aria-describedby={describedBy}
         aria-keyshortcuts={forwardShortcut}
-        onClick={() => reveal(issues[0]!.path)}
+        onClick={() => (blank ? nudge() : reveal(issues[0]!.path))}
       >
         {content}
       </button>
@@ -529,7 +554,7 @@ export function ComposeActionBar() {
   const { reveal } = useEditorState();
   if (editing)
     return (
-      <div className={styles.actionBar}>
+      <div className={styles.actionBar} data-editing="">
         <SaveUpdatesAction mobile />
       </div>
     );

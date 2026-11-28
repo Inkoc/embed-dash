@@ -14,7 +14,7 @@ import type {
   SendTarget,
 } from "@embed-dash/shared";
 import { toMessage, useDraft, type Draft } from "../compose/draft";
-import { AppError } from "../errors";
+import { asAppError, type AppError } from "../errors";
 import type { Session } from "../shell/SessionGate";
 import { refreshGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
@@ -215,12 +215,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       const failure =
         error instanceof SendFailure
           ? error
-          : new SendFailure(
-              new AppError(
-                `${retrying ? "Couldn’t retry" : "Couldn’t send"}: something went wrong in the app. Look at the channels in Discord before trying again.`,
-                error instanceof Error ? error.name : null,
-              ),
-            );
+          : new SendFailure(asAppError(retrying ? "retry" : "send", error));
       for (const missing of failure.details.missingFiles ?? [])
         client.setQueryData(["upload", missing], false);
       if (failure.details.unavailable) {

@@ -59,11 +59,31 @@ const withoutId = <T extends { id: string }>(value: T): Omit<T, "id"> => {
   return copy as Omit<T, "id">;
 };
 
-/** The message without the editor's row ids, as the server takes it. */
+/*
+ * Embeds just added and not written in yet. Every edit replaces an embed's
+ * object, so holding the very objects Add embed made is enough to tell; a
+ * reload starts them over as ordinary embeds.
+ */
+const unwritten = new WeakSet<Embed>();
+
+/** A blank embed for Add embed: not a problem, and not part of the message, until something is written in it. */
+export const addedEmbed = (): Embed => {
+  const embed = blankEmbed();
+  unwritten.add(embed);
+  return embed;
+};
+export const isUnwritten = (embed: Embed) => unwritten.has(embed);
+/** The draft as it would be sent: what the preview and summaries show. */
+export const written = (draft: Draft): Draft =>
+  draft.embeds.some(isUnwritten)
+    ? { ...draft, embeds: draft.embeds.filter((embed) => !isUnwritten(embed)) }
+    : draft;
+
+/** The message without the editor's row ids or untouched added embeds, as the server takes it. */
 export const toMessage = (draft: Draft): MessageDraft => ({
   content: draft.content,
   attachments: draft.attachments,
-  embeds: draft.embeds.map((embed) => ({
+  embeds: written(draft).embeds.map((embed) => ({
     ...withoutId(embed),
     fields: embed.fields.map(withoutId),
   })),
@@ -119,8 +139,8 @@ export function exampleDraft(): Draft {
 export const isBlank = (draft: Draft) =>
   !draft.content.trim() &&
   draft.attachments.length === 0 &&
-  draft.embeds.length <= 1 &&
-  draft.embeds.every(
+  written(draft).embeds.length <= 1 &&
+  written(draft).embeds.every(
     (embed) =>
       embed.fields.length === 0 &&
       [
@@ -308,6 +328,13 @@ function inEmbed(
   }
 }
 
+/** An untouched added embed answers for nothing; its parts have only defaults to check. */
+const unwrittenEmbedIssue = (draft: Draft, issue: Issue) => {
+  const match = /^embeds\.(\d+)(\.|$)/.exec(issue.path);
+  const embed = match && draft.embeds[Number(match[1])];
+  return !!embed && isUnwritten(embed);
+};
+
 interface DraftContextValue {
   editing: HistoryDetail | null;
   beginEdit: (send: HistoryDetail) => void;
@@ -369,7 +396,10 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       .map((file) => file.id),
   );
   const issues = useMemo(
-    () => validateMessage(draft, { missingFiles: missing }),
+    () =>
+      validateMessage(draft, { missingFiles: missing }).filter(
+        (issue) => !unwrittenEmbedIssue(draft, issue),
+      ),
     [draft, missing],
   );
 

@@ -278,4 +278,7 @@
   .sheet {
     animation: none;
   }
+  .accessToggle svg {
+    transition: none;
+  }
 }

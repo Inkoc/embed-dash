@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { locate, useDraft } from "./draft";
+import { locate, useDraft, type Draft } from "./draft";
 
 export type Pane = "edit" | "preview";
 
@@ -24,6 +24,10 @@ interface EditorState {
   reveal: (path: string) => void;
   /** Moves focus to an element by id once React has rendered the change that created or moved it. */
   focusAfter: (id: string, change: () => void) => void;
+  /** Whether the forward action was tried on this blank draft; any change hides the answer again. */
+  nothingToSend: boolean;
+  /** Answers the forward action on a blank draft: says so and puts the cursor in the message text. */
+  nudge: () => void;
   reset: () => void;
 }
 
@@ -45,6 +49,7 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
   const [pane, setPane] = useState<Pane>("edit");
   const [open, setOpenKeys] = useState<ReadonlySet<string>>(new Set());
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
+  const [nudged, setNudged] = useState<Draft | null>(null);
 
   const setOpen = useCallback((key: string, value: boolean) => {
     setOpenKeys((keys) => {
@@ -76,6 +81,12 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
     },
     [draft, focusAfter, touch],
   );
+  const nudge = useCallback(() => {
+    focusAfter("in-content", () => {
+      setPane("edit");
+      setNudged(draft);
+    });
+  }, [draft, focusAfter]);
   const reset = useCallback(() => {
     setOpenKeys(new Set());
     setTouched(new Set());
@@ -91,9 +102,23 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       touch,
       reveal,
       focusAfter,
+      nothingToSend: nudged === draft,
+      nudge,
       reset,
     }),
-    [pane, open, touched, setOpen, touch, reveal, focusAfter, reset],
+    [
+      pane,
+      open,
+      touched,
+      setOpen,
+      touch,
+      reveal,
+      focusAfter,
+      nudged,
+      draft,
+      nudge,
+      reset,
+    ],
   );
   return <EditorStateContext value={value}>{children}</EditorStateContext>;
 }

@@ -1,14 +1,17 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
- * Waits two frames after a resize, so the resize observers have refitted the
- * bar (they run once per frame) before anything is measured.
+ * Waits three frames after a resize before anything is measured: the resize
+ * observers report after layout in one frame, the bar refits in the next, and
+ * the third lets anything that refit moved report and settle.
  */
 const settled = (page: Page) =>
   page.evaluate(
     () =>
       new Promise((done) =>
-        requestAnimationFrame(() => requestAnimationFrame(done)),
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => requestAnimationFrame(done)),
+        ),
       ),
   );
 

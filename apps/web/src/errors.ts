@@ -203,14 +203,19 @@ export const connectionFailure = (action: Action) =>
   );
 
 const unexpected = "something went wrong in the app. Try again.";
+// A send may have reached some channels before it went wrong, so trying again blindly could post twice.
+const unexpectedSend =
+  "something went wrong in the app. Look at the channels in Discord before trying again.";
 
 /** Anything thrown that isn't already described gets a plain fallback, never its own message. */
-export const asAppError = (action: Action, error: unknown) =>
-  error instanceof AppError
-    ? error
-    : new AppError(
-        `${lead[action]}: ${unexpected}`,
-        error instanceof Error ? error.name : null,
-        null,
-        sentence(unexpected),
-      );
+export function asAppError(action: Action, error: unknown) {
+  if (error instanceof AppError) return error;
+  const cause =
+    action === "send" || action === "retry" ? unexpectedSend : unexpected;
+  return new AppError(
+    `${lead[action]}: ${cause}`,
+    error instanceof Error ? error.name : null,
+    null,
+    sentence(cause),
+  );
+}

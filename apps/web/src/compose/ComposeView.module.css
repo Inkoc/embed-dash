@@ -1,9 +1,15 @@
-/* Editor sheet, resize handle and preview, side by side; the preview's width is the operator's. */
+/*
+ * Editor sheet, resize handle and preview, side by side; the preview's width
+ * is the operator's. Each minimum also gives way to its share of the row
+ * (49%, and 51% less the handle; both still hold the full minimums at the
+ * narrowest side-by-side width), so a root font size the em breakpoints don't
+ * see squeezes the columns instead of scrolling the page sideways.
+ */
 .compose {
   display: grid;
   grid-template-columns:
-    minmax(var(--editor-min), 1fr) var(--tap)
-    minmax(var(--preview-min), var(--preview-w));
+    minmax(min(var(--editor-min), 49%), 1fr) var(--tap)
+    minmax(min(var(--preview-min), 51% - var(--tap)), var(--preview-w));
   align-items: start;
   max-width: var(--content-max);
   margin: 0 auto;
@@ -250,8 +256,24 @@
   background: transparent;
   color: inherit;
 }
+/*
+ * Pinned to the bottom where the forward action would otherwise scroll out of
+ * reach: on stacked screens, and on tablets while editing a sent message.
+ */
 .actionBar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 15;
   display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5)
+    calc(var(--space-3) + env(safe-area-inset-bottom));
+  border-top: var(--rule-width) solid var(--rule-2);
+  background: var(--sheet);
+  box-shadow: var(--shadow-bar);
 }
 
 /* the draft's own state: where it is kept, and the way to start over */
@@ -399,19 +421,35 @@
 /*
  * Tablet: editor and preview stay side by side with tighter gutters. The
  * preview scrolls with the page here, because at this width it is often
- * taller than the screen.
+ * taller than the screen. Breakpoints here are in em, so a larger browser
+ * text size moves them with the rem-sized columns they protect.
  */
-@media (max-width: 1100px) {
+@media (max-width: 68.75em) {
   .compose {
     padding: 0 var(--space-4) var(--space-7);
   }
   .previewColumn {
     position: static;
   }
+  /* The preview scrolls here, so Save updates would leave with it; it pins to the bottom instead. */
+  .compose[data-editing] {
+    padding-bottom: calc(var(--tap) + var(--space-7) + var(--space-5));
+  }
+  .compose[data-editing] .editNext {
+    display: none;
+  }
+  .actionBar[data-editing] {
+    display: flex;
+  }
 }
 
-/* Stacked: Edit and Preview become a toggle, and the forward action pins to the bottom. */
-@media (max-width: 700px) {
+/*
+ * Stacked: Edit and Preview become a toggle, and the forward action pins to
+ * the bottom. Side by side needs --editor-min, the handle, --preview-min and
+ * the tablet gutters (46.75rem), so the page never scrolls sideways; keep in
+ * step with stackedQuery in usePreviewWidth.ts.
+ */
+@media (max-width: 47em) {
   .compose {
     grid-template-columns: minmax(0, 1fr);
     padding-bottom: calc(var(--tap) + var(--space-7) + var(--space-5));
@@ -449,19 +487,7 @@
     margin-inline: auto;
   }
   .actionBar {
-    position: fixed;
-    inset-inline: 0;
-    bottom: 0;
-    z-index: 15;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-5)
-      calc(var(--space-3) + env(safe-area-inset-bottom));
-    border-top: var(--rule-width) solid var(--rule-2);
-    background: var(--sheet);
-    box-shadow: var(--shadow-bar);
   }
   .actionMeta {
     font-family: var(--font-mono);
@@ -560,6 +586,14 @@
 }
 .starter .add {
   margin-left: 0;
+}
+/* the forward action tried on a blank draft: the line answers in the accent wash */
+.starter[data-nudged] {
+  background: var(--accent-wash);
+  transition: background-color var(--dur-base);
+}
+.starter[data-nudged] p {
+  animation: rise var(--dur-base) var(--ease-out);
 }
 @media (max-width: 640px) {
   .starter {

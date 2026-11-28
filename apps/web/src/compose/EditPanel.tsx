@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useBlocker, useBeforeUnload, useLocation } from "react-router";
@@ -249,6 +250,7 @@ export function ReadOnlyChannels({ send }: { send: HistoryDetail }) {
 export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
   const { editing, issues } = useDraft();
   const { busy, save, saved } = useEditing();
+  const wide = useWide();
   if (!editing) return null;
   const message = saved ?? editing;
   const deleted = new Set(
@@ -283,22 +285,111 @@ export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
           before saving.
         </p>
       )}
+      {!mobile && wide && <UpdateOutcome />}
     </div>
+  );
+}
+
+/*
+ * Side by side, the preview column stays in view, so an update's outcome
+ * shows under Save updates where the eye already is. Narrower, Save updates
+ * is pinned to the bottom of the screen and the outcome stays in the panel.
+ */
+const narrowQuery = "(max-width: 68.75em)";
+const subscribeToWidth = (change: () => void) => {
+  const query = window.matchMedia?.(narrowQuery);
+  query?.addEventListener?.("change", change);
+  return () => query?.removeEventListener?.("change", change);
+};
+const useWide = () =>
+  useSyncExternalStore(
+    subscribeToWidth,
+    () => window.matchMedia?.(narrowQuery).matches === false,
+  );
+
+/** What became of the last update: a failure to start it, or each copy's result. */
+function UpdateOutcome({ farFromSave = false }: { farFromSave?: boolean }) {
+  const { busy, result, retry, loading, queryProblem, refresh, problem } =
+    useEditing();
+  // Saved from the bar pinned to the bottom, a new update's results arrive at
+  // the top of the page, so they are brought into view; ones restored on
+  // opening the editor are left where they are.
+  const results = useRef<HTMLDivElement>(null);
+  const shown = useRef(result?.id);
+  useEffect(() => {
+    if (!result || result.id === shown.current) return;
+    shown.current = result.id;
+    if (farFromSave)
+      results.current?.scrollIntoView?.({
+        block: "nearest",
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")
+          .matches
+          ? "auto"
+          : "smooth",
+      });
+  }, [result, farFromSave]);
+  return (
+    <>
+      {problem && (
+        <div className={styles.problem}>
+          <p role="alert">{problem.message}</p>
+          <FailureDetail error={problem} />
+        </div>
+      )}
+      {loading && (
+        <p className={styles.note} role="status">
+          Loading update results…
+        </p>
+      )}
+      {queryProblem && (
+        <div className={styles.problem}>
+          <p role="alert">{queryProblem.message}</p>
+          <FailureDetail error={queryProblem} />
+          <button onClick={refresh}>Try again</button>
+        </div>
+      )}
+      {result && (
+        <div ref={results} className={styles.results} aria-live="polite">
+          <h3>Update results</h3>
+          <ul>
+            {result.targets.map((t, index) => (
+              <li className={trayStyles.slip} data-result={t.status} key={t.id}>
+                <span className={trayStyles.slipText}>
+                  <b>#{t.channelName}</b>
+                  <small>{t.guildName}</small>
+                </span>
+                {t.error?.code !== "MESSAGE_DELETED" && (
+                  <Verdict
+                    state={t.status}
+                    label={
+                      t.status === "sent"
+                        ? "Updated"
+                        : t.status === "pending" || t.status === "posting"
+                          ? "Updating"
+                          : undefined
+                    }
+                    index={index}
+                  />
+                )}
+                <SlipDetail
+                  target={t}
+                  retrying={false}
+                  disabled={busy}
+                  onRetry={() => void retry(t.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }
 
 export function EditPanel() {
   const { editing, dirty, endEdit } = useDraft();
-  const {
-    busy,
-    result,
-    retry,
-    loading,
-    queryProblem,
-    refresh,
-    problem,
-    saved,
-  } = useEditing();
+  const { busy, saved } = useEditing();
+  const wide = useWide();
   const [confirmClose, setConfirmClose] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -351,58 +442,7 @@ export function EditPanel() {
         Your earlier draft comes back when you close the editor.
       </p>
       <ReadOnlyChannels send={message} />
-      {problem && (
-        <div className={styles.problem}>
-          <p role="alert">{problem.message}</p>
-          <FailureDetail error={problem} />
-        </div>
-      )}
-      {loading && (
-        <p className={styles.note} role="status">
-          Loading update results…
-        </p>
-      )}
-      {queryProblem && (
-        <div className={styles.problem}>
-          <p role="alert">{queryProblem.message}</p>
-          <FailureDetail error={queryProblem} />
-          <button onClick={refresh}>Try again</button>
-        </div>
-      )}
-      {result && (
-        <div className={styles.results} aria-live="polite">
-          <h3>Update results</h3>
-          <ul>
-            {result.targets.map((t, index) => (
-              <li className={trayStyles.slip} data-result={t.status} key={t.id}>
-                <span className={trayStyles.slipText}>
-                  <b>#{t.channelName}</b>
-                  <small>{t.guildName}</small>
-                </span>
-                {t.error?.code !== "MESSAGE_DELETED" && (
-                  <Verdict
-                    state={t.status}
-                    label={
-                      t.status === "sent"
-                        ? "Updated"
-                        : t.status === "pending" || t.status === "posting"
-                          ? "Updating"
-                          : undefined
-                    }
-                    index={index}
-                  />
-                )}
-                <SlipDetail
-                  target={t}
-                  retrying={false}
-                  disabled={busy}
-                  onRetry={() => void retry(t.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {!wide && <UpdateOutcome farFromSave />}
       <ConfirmDialog
         open={confirmClose}
         title="Discard unsaved edits?"

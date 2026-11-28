@@ -343,6 +343,10 @@ test("with several embeds each folds to one line, and problems unfold it", () =>
   // Reordering still works while folded.
   expect(button(/^Move down\s*embed 1$/)).toBeTruthy();
 
+  // Written in and emptied again, the added embed counts as a problem.
+  const added = screen.getAllByRole("textbox", { name: "Title" }).at(-1)!;
+  fireEvent.change(added, { target: { value: "x" } });
+  fireEvent.change(added, { target: { value: "" } });
   fireEvent.click(foldOf(2));
   expect(foldOf(2).textContent).toContain("Nothing written yet");
   expect(foldOf(2).textContent).toContain("Needs a fix");
@@ -358,10 +362,39 @@ test("with several embeds each folds to one line, and problems unfold it", () =>
   ).toMatch(/This embed is empty/);
 });
 
-test("empty embeds can be dropped in one step from their problem", () => {
+/** Adds an embed and writes in it, then empties it again, so it counts as empty. */
+function addEmptiedEmbed() {
+  fireEvent.click(button("Add embed"));
+  const title = screen.getAllByRole("textbox", { name: "Title" }).at(-1)!;
+  fireEvent.change(title, { target: { value: "x" } });
+  fireEvent.change(title, { target: { value: "" } });
+}
+
+test("an added embed isn't a problem, or part of the message, until something is written in it", () => {
   renderApp();
   fireEvent.click(button("Add embed"));
-  fireEvent.click(button("Add embed"));
+  expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(2);
+  expect(screen.queryByText(/to fix before sending/)).toBeNull();
+  expect(screen.getByText("Looks right?")).toBeTruthy();
+  expect(
+    screen.getAllByRole("link", { name: /Choose channels/ }).length,
+  ).toBeGreaterThan(0);
+  // The preview shows only what would be sent.
+  expect(preview().querySelectorAll("[data-embed]").length).toBe(1);
+  fireEvent.change(screen.getAllByRole("textbox", { name: "Title" })[1]!, {
+    target: { value: "Second" },
+  });
+  expect(preview().querySelectorAll("[data-embed]").length).toBe(2);
+  fireEvent.change(screen.getAllByRole("textbox", { name: "Title" })[1]!, {
+    target: { value: "" },
+  });
+  expect(screen.getByText(/1 problem to fix before sending/)).toBeTruthy();
+});
+
+test("empty embeds can be dropped in one step from their problem", () => {
+  renderApp();
+  addEmptiedEmbed();
+  addEmptiedEmbed();
   expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(3);
   // Going forward shows the first problem: an empty embed, with its way out.
   fireEvent.click(
@@ -487,4 +520,60 @@ test("oversized JSON files are rejected before reading and leave the draft uncha
   expect(screen.getByRole("alert").textContent).toContain("1 MB or smaller");
   expect(read).not.toHaveBeenCalled();
   expect(localStorage.getItem("embed-dash:draft")).toBe(original);
+});
+
+test("going forward from a blank draft says there is nothing to send yet", () => {
+  renderApp({ example: false });
+  const starter = () =>
+    screen
+      .getAllByRole("status")
+      .find((region) => region.textContent?.includes("example"))!;
+  expect(starter().textContent).toContain("A new message.");
+  fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+  expect(starter().textContent).toContain("Nothing to send yet.");
+  expect(document.activeElement).toBe(document.getElementById("in-content"));
+  // Any change takes the answer back; the button gives it again.
+  fireEvent.change(field("Title"), { target: { value: "x" } });
+  fireEvent.change(field("Title"), { target: { value: "" } });
+  expect(starter().textContent).toContain("A new message.");
+  fireEvent.click(
+    screen.getAllByRole("button", { name: /Choose channels/ })[0]!,
+  );
+  expect(starter().textContent).toContain("Nothing to send yet.");
+  expect(screen.queryByText(/This embed is empty/)).toBeNull();
+});
+
+test("the import note goes once the imported draft is edited or cleared", () => {
+  renderApp({ example: false });
+  const importMessage = (content: string) => {
+    fireEvent.click(button("Import JSON"));
+    fireEvent.change(screen.getByLabelText("Message JSON"), {
+      target: { value: JSON.stringify({ content }) },
+    });
+    fireEvent.click(button("Replace draft"));
+    const confirm = screen.queryByRole("dialog", {
+      name: "Replace the current draft?",
+    });
+    if (confirm)
+      fireEvent.click(
+        within(confirm).getByRole("button", { name: "Replace draft" }),
+      );
+  };
+  importMessage("Imported announcement");
+  expect(screen.getByText(/Message imported/)).toBeTruthy();
+  fireEvent.change(field(/^Message text/), {
+    target: { value: "Imported announcement, edited" },
+  });
+  expect(screen.queryByText(/Message imported/)).toBeNull();
+
+  importMessage("Imported again");
+  expect(screen.getByText(/Message imported/)).toBeTruthy();
+  fireEvent.click(button("Clear"));
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Clear the draft?" })).getByRole(
+      "button",
+      { name: "Clear draft" },
+    ),
+  );
+  expect(screen.queryByText(/Message imported/)).toBeNull();
 });
