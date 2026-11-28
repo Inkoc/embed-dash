@@ -60,6 +60,7 @@ const app = await createApp(
   },
   { spaRoot, logger: false },
 );
+app.get("/__test/messages", async () => fake.messages);
 await app.listen({ port, host: "127.0.0.1" });
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {

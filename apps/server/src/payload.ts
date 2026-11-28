@@ -58,6 +58,13 @@ export function discordMessage(
   sentAt: Date,
 ): RESTPostAPIChannelMessageJSONBody {
   return {
+    components: payload.components?.map((row) => ({
+      type: row.type,
+      components: row.components.map((button) => ({
+        ...button,
+        label: button.label || undefined,
+      })),
+    })),
     content: present(payload.content) ? payload.content : undefined,
     embeds: payload.embeds.length
       ? payload.embeds.map((embed) => discordEmbed(embed, sentAt))

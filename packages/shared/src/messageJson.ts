@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   emptyEmbed,
+  buttonRowDraftSchema,
+  completeButtonRows,
   messageDraftSchema,
   validateMessage,
   type MessageDraft,
@@ -36,6 +38,7 @@ const externalEmbed = z.object({
   thumbnail: media.nullish(),
 });
 const externalMessage = z.object({
+  components: z.array(z.unknown()).nullish(),
   content: z.string().nullish(),
   embeds: z.array(externalEmbed).nullish(),
 });
@@ -193,8 +196,46 @@ export function importMessageJson(text: string): JsonImportResult {
     notices.push(
       `Imported the first of ${parsed.data.messages.length} messages. Remaining messages were not loaded.`,
     );
+  const componentErrors: string[] = [];
+  const components = (data.components ?? []).flatMap((rawRow, r) => {
+    const row = z
+      .object({ type: z.literal(1), components: z.array(z.unknown()) })
+      .safeParse(rawRow);
+    if (!row.success) {
+      notices.push(`Unsupported component: row ${r + 1}.`);
+      return [];
+    }
+    const buttons = row.data.components.flatMap((rawButton, b) => {
+      const button =
+        buttonRowDraftSchema.shape.components.element.safeParse(rawButton);
+      if (!button.success) {
+        const isLink = z
+          .object({ type: z.literal(2), style: z.literal(5) })
+          .safeParse(rawButton).success;
+        if (isLink)
+          componentErrors.push(
+            `Row ${r + 1}, button ${b + 1}: ${schemaError(button.error.issues[0]!)}`,
+          );
+        else
+          notices.push(`Unsupported component: row ${r + 1}, button ${b + 1}.`);
+        return [];
+      }
+      notices.push(
+        ...unsupported(
+          rawButton,
+          button.data,
+          `components[${r}].components[${b}]`,
+        ),
+      );
+      return [button.data];
+    });
+    return buttons.length ? [{ type: 1 as const, components: buttons }] : [];
+  });
+  if (componentErrors.length)
+    return { ok: false, error: componentErrors.join("\n") };
   const message = messageDraftSchema.parse({
     content: data.content ?? "",
+    ...(components.length ? { components } : {}),
     attachments: [],
     embeds: (data.embeds ?? []).map((embed) => ({
       ...emptyEmbed(),
@@ -314,7 +355,25 @@ export function exportMessageJson(
     };
   });
   return {
-    json: JSON.stringify({ content: message.content, embeds }, null, 2),
+    json: JSON.stringify(
+      {
+        content: message.content,
+        embeds,
+        ...(message.components?.length
+          ? {
+              components: completeButtonRows(message.components).map((row) => ({
+                ...row,
+                components: row.components.map((button) => ({
+                  ...button,
+                  label: button.label || undefined,
+                })),
+              })),
+            }
+          : {}),
+      },
+      null,
+      2,
+    ),
     notices,
   };
 }

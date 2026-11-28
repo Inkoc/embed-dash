@@ -1,0 +1,92 @@
+.section {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-top: var(--rule-width) solid var(--rule);
+  min-width: 0;
+}
+.head,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.head h3 {
+  font-size: var(--text-section);
+  font-weight: var(--weight-section);
+}
+.head h4,
+.head h5 {
+  font-size: var(--text-body);
+  font-weight: var(--weight-strong);
+}
+.head > span,
+.hint {
+  color: var(--ink-2);
+  font-size: var(--text-meta);
+}
+.head > span {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.row,
+.button {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--rule-width) solid var(--rule);
+}
+.button {
+  padding-bottom: var(--space-4);
+}
+.section button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+.section button:hover:enabled {
+  background: var(--sheet-2);
+  color: var(--ink);
+}
+.section button:disabled {
+  color: var(--rule-2);
+  cursor: default;
+}
+.section svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.row[data-moved],
+.button[data-moved] {
+  animation: settle var(--dur-move) var(--ease-out);
+}
+@keyframes settle {
+  from {
+    opacity: 0.4;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row[data-moved],
+  .button[data-moved] {
+    animation: none;
+  }
+}

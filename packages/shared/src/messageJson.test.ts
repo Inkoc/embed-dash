@@ -51,7 +51,7 @@ test("bare and wrapped external objects load supported fields and defaults", () 
     ).toEqual(result);
   }
 });
-test("multiple messages use the first and report ignored metadata and buttons", () => {
+test("multiple messages use the first and load link buttons while reporting ignored metadata", () => {
   const result = importMessageJson(
     JSON.stringify({
       version: 1,
@@ -89,7 +89,8 @@ test("multiple messages use the first and report ignored metadata and buttons", 
   expect(result.ok).toBe(true);
   if (!result.ok) return;
   expect(result.message.content).toBe("First");
-  expect(result.notices.join(" ")).toContain("components");
+  expect(result.message.components?.[0]?.components[0]?.style).toBe(5);
+  expect(result.notices.join(" ")).not.toContain("components");
   expect(result.notices.join(" ")).toContain("embeds[0].image.width");
   expect(result.notices.join(" ")).toContain("provider");
   expect(result.notices.join(" ")).toContain("webhook");

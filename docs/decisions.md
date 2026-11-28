@@ -39,8 +39,12 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Update failures stay visible after closing the editor.** History shows update attention separately from delivery status, and reopening restores only unfinished copies from the last run; retries apply the saved version without changing the delivery record.
 - **History search is case-insensitive in any script.** Searchable text is stored lowercased (Unicode-aware) when a send is recorded, existing rows were backfilled by migration, and the send creation time is indexed; a leading `#` is ignored, as in the channel picker.
 - **History shows local time with the zone named.** The browser turns date filters into exact local-midnight bounds, so a send just after midnight lands on the day the operator expects.
-- **Message JSON follows Discord's message object.** Empty values written by common community builders (`null` content, embeds or colour, empty attachment lists) are treated as absent; anything the composer can't hold, including link buttons for now, is listed instead of dropped; uploaded files are never exported.
+- **Message JSON follows Discord's message object.** Empty values written by common community builders (`null` content, embeds or colour, empty attachment lists) are treated as absent; anything the composer can't hold, is listed instead of dropped; uploaded files are never exported.
 - **Empty embeds never leave the composer.** An embed with no content is left out of every send, edit, template and export, however it was created.
 - **Failures read as sentences.** One client mapping turns server and Discord errors into specific copy, with status and code behind a Details disclosure; a refused sign-in behind an unconfigured HTTPS proxy names the settings to set.
 - **The top bar holds four views.** Below about 640 px the views move to their own row; at larger text sizes the bar sheds the brand name, then the bot name, one step at a time. Layout breakpoints are in em so they follow the browser's text size.
 - **Dependency audit (milestone 2).** Production dependencies have no known advisories; the one remaining moderate advisory is in a build-time tool used only to generate migrations and was accepted again.
+
+## Milestone 3
+
+- **Link buttons use legacy action rows.** The draft stores Discord-shaped rows and URL buttons, with editor keys removed at the boundary. Shared validation enforces the row, button, text, URL and emoji rules. Unfinished buttons stay local to the composer and are omitted from templates and exports; edits always replace the component list, including clearing the last row. Legacy components preserve message text and embeds without the Components V2 flag.

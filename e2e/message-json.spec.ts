@@ -72,9 +72,10 @@ test("message JSON imports into the preview and dialogs fit both themes and widt
   await expect(confirmation).toBeHidden();
   const result = page.locator("#json-result");
   await expect(result).toBeFocused();
-  await expect(result).toContainText(
-    "Unsupported field: messages[0].data.components.",
+  await expect(page.getByLabel("Button label", { exact: true })).toHaveValue(
+    "Visit",
   );
+  await expect(result).not.toContainText("Unsupported");
   await expect(page.getByRole("button", { name: "Replace draft" })).toHaveCount(
     0,
   );

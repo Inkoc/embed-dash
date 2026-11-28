@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  buttonLimits,
+  buttonRowDraftSchema,
+  buttonProblems,
+} from "./buttons.js";
+export * from "./buttons.js";
 export const botIdentitySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -19,6 +25,7 @@ export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 /** Discord's message and embed limits, in characters unless noted. */
 export const discordLimits = {
+  ...buttonLimits,
   content: 2000,
   embedsPerMessage: 10,
   title: 256,
@@ -65,6 +72,7 @@ export const attachmentSchema = z.object({
 });
 export const messageDraftSchema = z.object({
   content: z.string(),
+  components: z.array(buttonRowDraftSchema).optional(),
   embeds: z.array(embedDraftSchema),
   attachments: z.array(attachmentSchema).default([]),
 });
@@ -346,7 +354,11 @@ export function validateMessage(
       );
   };
 
-  if (!message.content.trim() && message.embeds.length === 0)
+  if (
+    !message.content.trim() &&
+    message.embeds.length === 0 &&
+    !message.components?.some((row) => row.components.length)
+  )
     add("content", "Message", "Add message text or an embed.");
   limit(
     "content",
@@ -361,6 +373,33 @@ export function validateMessage(
       "Embeds",
       `A message holds at most ${discordLimits.embedsPerMessage} embeds; remove ${message.embeds.length - discordLimits.embedsPerMessage}.`,
     );
+
+  const rows = message.components ?? [];
+  if (rows.length > discordLimits.buttonRows)
+    add(
+      "components",
+      "Buttons",
+      `Use at most ${discordLimits.buttonRows} rows.`,
+    );
+  rows.forEach((row, r) => {
+    if (
+      !row.components.length ||
+      row.components.length > discordLimits.buttonsPerRow
+    )
+      add(
+        `components.${r}`,
+        `Button row ${r + 1}`,
+        `Add between 1 and ${discordLimits.buttonsPerRow} buttons, or remove the row.`,
+      );
+    row.components.forEach((button, b) => {
+      for (const problem of buttonProblems(button))
+        add(
+          `components.${r}.components.${b}.${problem.field}`,
+          `Row ${r + 1}, button ${b + 1} ${problem.field}`,
+          problem.message,
+        );
+    });
+  });
 
   const files = message.attachments;
   if (files.length > uploadLimits.attachmentsPerMessage)

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { buttonRowsSchema } from "../packages/shared/src/buttons.js";
 
 const botId = "123456789012345678";
 
@@ -327,6 +328,12 @@ export function startFakeDiscord(port: number) {
           filename: part.filename!,
           size: part.data.length,
         }));
+
+      if (
+        payload.components !== undefined &&
+        !buttonRowsSchema.safeParse(payload.components).success
+      )
+        return reply({ message: "Invalid components", code: 50035 }, 400);
 
       const declared = payload.attachments as
         { id: string | number; filename: string }[] | undefined;

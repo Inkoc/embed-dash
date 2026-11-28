@@ -350,3 +350,36 @@ test("a file is released for the sweep once no template or send names it any mor
     database.close();
   }
 });
+
+test("templates retain link button rows and emoji", async () => {
+  const { app, headers } = await fixture();
+  const components = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "Guide",
+          url: "https://example.com/guide",
+          emoji: { name: "📖" },
+        },
+      ],
+    },
+  ];
+  const created = await app.inject({
+    method: "POST",
+    url: "/api/templates",
+    headers,
+    payload: {
+      name: "Resources",
+      message: { ...message("Resources"), components },
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const read = await app.inject({
+    url: `/api/templates/${created.json().id}`,
+    headers,
+  });
+  expect(read.json().message.components).toEqual(components);
+});

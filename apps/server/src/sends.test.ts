@@ -1902,3 +1902,51 @@ test("history identifies a send with only unconfirmed copies", async () => {
   const list = await s.app.inject({ url: "/api/sends", headers: s.headers });
   expect(list.json().entries[0]).toMatchObject({ unconfirmed: true });
 });
+
+test("link components survive sending, retry, editing and removal", async () => {
+  const s = await setup();
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "Read more",
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  s.fake.fail(results, { status: 403, code: 50013 });
+  const initial = await sent(s, [news, results], { components });
+  expect(s.fake.messages[0].payload.components).toEqual(components);
+  await retried(s, initial.id);
+  expect(s.fake.messages[1].payload.components).toEqual(components);
+  const revised = [
+    {
+      ...components[0]!,
+      components: [{ ...components[0]!.components[0]!, label: "Updated" }],
+    },
+  ];
+  expect((await edit(s, initial.id, { components: revised })).statusCode).toBe(
+    202,
+  );
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        JSON.stringify(message.payload.components) === JSON.stringify(revised),
+    ),
+  ).toBe(true);
+  expect((await edit(s, initial.id, { components: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        Array.isArray(message.payload.components) &&
+        message.payload.components.length === 0,
+    ),
+  ).toBe(true);
+});

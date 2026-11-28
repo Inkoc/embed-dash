@@ -255,6 +255,7 @@ export function createDiscord(
           const edit: RESTPatchAPIChannelMessageJSONBody = {
             content: body.content ?? "",
             embeds: body.embeds ?? [],
+            components: body.components ?? [],
             allowed_mentions: body.allowed_mentions,
             attachments: [
               ...retained.map((a) => ({ id: a.id, filename: a.filename })),

@@ -455,7 +455,7 @@ test("JSON import errors leave the draft and stored draft untouched; success lis
     screen.queryByRole("dialog", { name: "Import message JSON" }),
   ).toBeNull();
   expect(screen.queryByRole("button", { name: "Replace draft" })).toBeNull();
-  expect(screen.getByText("Unsupported field: components.")).toBeTruthy();
+  expect(screen.getByText("Unsupported component: row 1.")).toBeTruthy();
   expect(document.activeElement).toBe(document.getElementById("json-result"));
   expect(field(/^Message text/).value).toBe("Imported announcement");
   expect(preview().textContent).toContain("Imported announcement");
@@ -621,4 +621,50 @@ test("after a reload an added embed is still not a problem, and is never exporte
     message: { embeds: unknown[] };
   };
   expect(saved.message.embeds).toHaveLength(1);
+});
+
+test("link buttons add, validate, reorder with the keyboard, remove and persist", async () => {
+  const user = (await import("@testing-library/user-event")).default.setup();
+  const { unmount } = renderApp();
+  await user.click(button("Add button row"));
+  expect(document.activeElement).toBe(field("Button label"));
+  fireEvent.change(field("Button label"), { target: { value: "Docs" } });
+  fireEvent.change(field("Button URL"), {
+    target: { value: "ftp://example.com" },
+  });
+  field("Button URL").focus();
+  await user.tab();
+  expect(field("Button URL").getAttribute("aria-invalid")).toBe("true");
+  fireEvent.change(field("Button URL"), {
+    target: { value: "https://example.com" },
+  });
+  await user.click(button("Add button to row 1"));
+  const labels = screen.getAllByLabelText("Button label");
+  fireEvent.change(labels[1]!, { target: { value: "Status" } });
+  fireEvent.change(screen.getAllByLabelText("Button URL")[1]!, {
+    target: { value: "https://status.example.com" },
+  });
+  button("Move button 2 up in row 1").focus();
+  await user.keyboard("{Enter}");
+  expect(
+    (screen.getAllByLabelText("Button label")[0] as HTMLInputElement).value,
+  ).toBe("Status");
+  expect(document.activeElement).toBe(button("Move button 1 down in row 1"));
+  expect(
+    within(preview())
+      .getByRole("link", { name: /Status/ })
+      .getAttribute("href"),
+  ).toBe("https://status.example.com");
+  await user.click(button("Add button row"));
+  button("Move row 2 up").focus();
+  await user.keyboard("{Enter}");
+  expect(
+    (screen.getAllByLabelText("Button label")[0] as HTMLInputElement).value,
+  ).toBe("");
+  await user.click(button("Remove row 1"));
+  await user.click(button("Remove button 2 from row 1"));
+  expect(screen.getAllByLabelText("Button label")).toHaveLength(1);
+  unmount();
+  renderApp();
+  expect(field("Button label").value).toBe("Status");
 });

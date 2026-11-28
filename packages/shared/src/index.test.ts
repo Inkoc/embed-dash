@@ -43,6 +43,10 @@ test("validates the public bot identity", () => {
 
 test("matches Discord's documented embed limits", () => {
   expect(discordLimits).toEqual({
+    buttonRows: 5,
+    buttonsPerRow: 5,
+    buttonLabel: 80,
+    buttonUrl: 512,
     content: 2000,
     embedsPerMessage: 10,
     title: 256,

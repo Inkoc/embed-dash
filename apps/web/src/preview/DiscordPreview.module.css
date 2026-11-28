@@ -226,3 +226,36 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--dc-button);
+  color: var(--dc-head);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.linkButton:hover {
+  background: var(--dc-button-hover);
+}
+.linkButton svg,
+.buttonEmoji {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
