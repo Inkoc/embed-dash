@@ -103,8 +103,10 @@ test("a failed listing explains itself and retries with a fresh list", async () 
   ]);
   renderSend();
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Couldn’t load servers: Discord is having problems on its side.",
+    "Discord is having problems on its side.",
   );
+  // The heading names what failed, so the alert doesn't repeat it.
+  expect(screen.getByRole("alert")).not.toHaveTextContent("Couldn’t load");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(
     await screen.findByRole("checkbox", { name: "general" }),

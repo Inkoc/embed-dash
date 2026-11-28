@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert } from "lucide-react";
+import {
+  Check,
+  CircleAlert,
+  FileInput,
+  FileOutput,
+  Upload,
+} from "lucide-react";
 import {
   exportMessageJson,
   importMessageJson,
@@ -9,8 +15,13 @@ import { isBlank, toMessage, useDraft, withIds } from "./draft";
 import { useEditorState } from "./editorState";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import dialogStyles from "../ui/ConfirmDialog.module.css";
+import { keepTabInside } from "../ui/dialogTab";
 import composeStyles from "./ComposeView.module.css";
+import fileStyles from "./Attachments.module.css";
 import styles from "./MessageJson.module.css";
+
+/** The one status line that is progress rather than an outcome, so it carries no tick. */
+const reading = "Reading file…";
 
 export function MessageJson({
   onImported,
@@ -28,7 +39,9 @@ export function MessageJson({
   const [error, setError] = useState("");
   const [notices, setNotices] = useState<string[]>([]);
   const [status, setStatus] = useState("");
+  const [fileName, setFileName] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const fileRead = useRef(0);
   useEffect(() => {
@@ -46,6 +59,7 @@ export function MessageJson({
     setStatus("");
     setNotices([]);
     setText("");
+    setFileName("");
     if (next === "export") {
       const exported = exportMessageJson(toMessage(draft), new Date());
       setText(exported.json);
@@ -70,6 +84,7 @@ export function MessageJson({
         className={composeStyles.quiet}
         onClick={() => open("import")}
       >
+        <FileInput aria-hidden="true" />
         Import JSON
       </button>
       <button
@@ -77,6 +92,7 @@ export function MessageJson({
         className={composeStyles.quiet}
         onClick={() => open("export")}
       >
+        <FileOutput aria-hidden="true" />
         Export JSON
       </button>
       <dialog
@@ -84,6 +100,7 @@ export function MessageJson({
         className={`${dialogStyles.dialog} ${styles.dialog}`}
         aria-labelledby="json-title"
         aria-describedby="json-help"
+        onKeyDown={keepTabInside}
         onCancel={close}
         onClose={close}
       >
@@ -97,15 +114,32 @@ export function MessageJson({
               : "Paste a message object or choose a JSON file. Import replaces the current draft and its files after validation."}
           </p>
           {mode === "import" && (
-            <div className={styles.file}>
-              <label htmlFor="json-file">JSON file</label>
+            <div className={fileStyles.zone}>
+              <button
+                type="button"
+                className={fileStyles.choose}
+                aria-describedby="json-file-name"
+                onClick={() => fileInput.current?.click()}
+              >
+                <Upload aria-hidden="true" />
+                Choose a file
+              </button>
+              <span id="json-file-name" className={fileStyles.drop}>
+                {fileName || "or paste the JSON below"}
+              </span>
               <input
-                id="json-file"
+                ref={fileInput}
                 type="file"
+                hidden
+                tabIndex={-1}
+                aria-label="JSON file"
                 accept=".json,application/json"
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
+                  // Cleared, so choosing the same file again reads it again.
+                  event.target.value = "";
                   if (!file) return;
+                  setFileName(file.name);
                   const read = ++fileRead.current;
                   setError("");
                   setText("");
@@ -117,7 +151,7 @@ export function MessageJson({
                     );
                     return;
                   }
-                  setStatus("Reading file…");
+                  setStatus(reading);
                   try {
                     const value = await file.text();
                     if (read === fileRead.current) {
@@ -171,9 +205,14 @@ export function MessageJson({
             </div>
           )}
           <div role="status" className={status ? undefined : "visually-hidden"}>
-            {status && <p>{status}</p>}
+            {status && (
+              <p className={styles.success}>
+                {status !== reading && <Check aria-hidden="true" />}
+                {status}
+              </p>
+            )}
           </div>
-          <div className={dialogStyles.actions}>
+          <div className={`${dialogStyles.actions} ${styles.actions}`}>
             <button
               type="button"
               className={dialogStyles.cancel}

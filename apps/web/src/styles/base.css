@@ -58,7 +58,16 @@ svg {
   flex: none;
 }
 
-.visually-hidden {
+/*
+ * Hidden from sight, still read out. The top bar also sheds words into it
+ * when it is short of room (see TopBar.tsx).
+ */
+.visually-hidden,
+[data-shed-theme] [data-shed-label="theme"],
+[data-shed-shortcuts] [data-shed-label="shortcuts"],
+[data-shed-sign-out] [data-shed-label="sign-out"],
+[data-shed-brand] [data-shed-label="brand"],
+[data-shed-bot] [data-shed-label="bot"] {
   position: absolute !important;
   width: 1px;
   height: 1px;

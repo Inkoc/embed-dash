@@ -21,6 +21,16 @@
   min-width: 0;
   padding: var(--space-2) 0;
 }
+.lead,
+.body {
+  display: flex;
+  align-items: center;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+.body {
+  flex-wrap: wrap;
+}
 .label {
   font-size: var(--text-meta);
   color: var(--ink-2);
@@ -74,4 +84,34 @@
 .edit svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
+}
+
+/*
+ * Phones: Edit in Compose joins the "Sending" line and the title takes the
+ * full width beneath, so the slip stays two lines and the first channel
+ * stays above the fold.
+ */
+@media (max-width: 640px) {
+  .slip:not([data-blank]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 var(--space-2);
+    padding-block: 0 var(--space-2);
+  }
+  .slip:not([data-blank]) .what {
+    display: contents;
+  }
+  .lead {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .slip:not([data-blank]) .edit {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .body {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    padding-right: var(--space-3);
+  }
 }

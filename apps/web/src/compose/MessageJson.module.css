@@ -13,40 +13,29 @@
   font: inherit;
   resize: vertical;
 }
-.file {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.file input {
-  min-height: var(--tap);
-  max-width: 100%;
-}
-.file input::file-selector-button {
-  min-height: var(--tap);
-  padding: 0 var(--space-3);
-  border: var(--rule-width) solid var(--field-line);
-  border-radius: var(--radius-sm);
-  background: var(--sheet-2);
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-}
 .dialog label {
   font-weight: var(--weight-label);
 }
-.error {
+.error,
+.success {
   display: flex;
   align-items: start;
   gap: var(--space-2);
-  color: var(--danger);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.error svg {
+.error {
+  color: var(--danger);
+}
+.error svg,
+.success svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
   flex: none;
+}
+/* An outcome, like the error row, but in the accent: the tick and words say it worked. */
+.success svg {
+  color: var(--accent);
 }
 .notice {
   border-top: var(--rule-width) solid var(--rule);
@@ -56,4 +45,20 @@
 .notice ul {
   list-style: disc;
   padding-left: var(--space-5);
+}
+/*
+ * Phones: the actions share an even grid, and an odd last one (Download) takes
+ * the whole row instead of wrapping on its own at the end.
+ */
+@media (max-width: 640px) {
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .actions > * {
+    padding-inline: var(--space-2);
+  }
+  .actions > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }

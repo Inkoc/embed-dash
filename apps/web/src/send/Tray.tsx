@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Guild, GuildChannel, SendTarget } from "@embed-dash/shared";
 import { ChevronDown, CopyCheck, X } from "lucide-react";
 import { isBlank, useDraft } from "../compose/draft";
@@ -135,9 +129,10 @@ export function Tray({
           : null;
 
   // The summary takes focus when results arrive, so they are read out and the
-  // Retry button that vanished doesn't leave focus nowhere.
+  // Retry button that vanished doesn't leave focus nowhere. A layout effect, so
+  // focus moves in the same commit that draws the summary, never a frame later.
   const finished = !!result && !busy;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (finished) summary.current?.focus({ preventScroll: true });
   }, [finished]);
 
@@ -369,7 +364,12 @@ export function Tray({
         }}
       />
       {busy ? (
-        <p id="tray-note" className={styles.rising} aria-live="polite">
+        <p
+          id="tray-note"
+          className={styles.rising}
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <b>
             {reconnecting
               ? "Lost contact with the server; still checking."
@@ -387,7 +387,10 @@ export function Tray({
           id="tray-note"
           className={styles.rising}
           tabIndex={-1}
+          // The same live region as the progress line above, so the outcome is
+          // read out as one sentence when it replaces the progress.
           aria-live="polite"
+          aria-atomic="true"
         >
           <b>{outcome.sentence}</b>{" "}
           {outcome.stoppedByToken

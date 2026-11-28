@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronDown,
   CircleAlert,
   Copy,
@@ -31,6 +32,8 @@ import { useEditorState } from "./editorState";
 import { localInputValue } from "./FormatEditor";
 import { Problem, TextControl, useProblem } from "./TextControl";
 import styles from "./EmbedEditor.module.css";
+import choice from "../ui/Choice.module.css";
+import { emptyEmbedIds, withoutEmbeds } from "./emptyEmbeds";
 
 const displayUrl = (url: string) => url.trim().replace(/^https?:\/\//, "");
 const hexColor = /^#[0-9a-f]{6}$/i;
@@ -110,6 +113,17 @@ export function EmbedEditor({ embed, index, count }: Props) {
     ? issues.find((issue) => issue.path === at)?.message
     : undefined;
 
+  // An empty embed can go in one step from its problem; with several, all of them.
+  const empties = embedProblem ? emptyEmbedIds(draft, issues) : [];
+  const removeEmpty = () => {
+    const rest = draft.embeds.filter((other) => !empties.includes(other.id));
+    const first = draft.embeds.findIndex((other) => empties.includes(other.id));
+    const neighbour = rest[Math.min(first, rest.length - 1)];
+    focusAfter(neighbour ? `${neighbour.id}-head` : "add-embed", () =>
+      setDraft((current) => withoutEmbeds(current, empties)),
+    );
+  };
+
   const remove = () => {
     const rest = draft.embeds.filter((other) => other.id !== e);
     const neighbour = rest[Math.min(index, rest.length - 1)];
@@ -173,7 +187,28 @@ export function EmbedEditor({ embed, index, count }: Props) {
         )}
       </div>
       <div id={`${e}-body`} className={styles.body} hidden={folded}>
-        <Problem id={`${e}-problem`} message={embedProblem} />
+        {embedProblem && (
+          <div className={styles.emptyProblem}>
+            <Problem id={`${e}-problem`} message={embedProblem} />
+            {empties.includes(e) && (
+              <button
+                type="button"
+                className={styles.quiet}
+                onClick={removeEmpty}
+              >
+                <Trash2 aria-hidden="true" />
+                {empties.length > 1 ? (
+                  `Remove all ${empties.length} empty embeds`
+                ) : (
+                  <>
+                    Remove this embed
+                    <span className="visually-hidden"> (embed {n})</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className={styles.stack}>
           <div>
@@ -275,6 +310,7 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 label="Author icon link"
                 optional
                 link
+                image
                 placeholder="https://…"
                 value={embed.author.iconUrl}
                 onChange={(iconUrl) =>
@@ -307,6 +343,7 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 label="Large image link"
                 optional
                 link
+                image
                 placeholder="https://…"
                 focusHint="Shown full width under the text."
                 value={embed.image}
@@ -326,6 +363,7 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 label="Thumbnail link"
                 optional
                 link
+                image
                 placeholder="https://…"
                 focusHint="A small image at the top right."
                 value={embed.thumbnail}
@@ -363,6 +401,7 @@ export function EmbedEditor({ embed, index, count }: Props) {
                 label="Footer icon link"
                 optional
                 link
+                image
                 placeholder="https://…"
                 value={embed.footer.iconUrl}
                 onChange={(iconUrl) =>
@@ -580,8 +619,9 @@ function TimeControl({
       <legend>Time in the footer</legend>
       <div className={styles.choices}>
         {options.map(([key, label]) => (
-          <label key={key} className={styles.choice}>
+          <label key={key} className={choice.row}>
             <input
+              className={choice.input}
               type="radio"
               name={id}
               id={key === mode ? id : undefined}
@@ -596,6 +636,7 @@ function TimeControl({
                 )
               }
             />
+            <span className={choice.mark} aria-hidden="true" />
             {label}
           </label>
         ))}
@@ -747,8 +788,9 @@ function FieldList({ embed, index }: { embed: Embed; index: number }) {
                       }
                     />
                     <div className={styles.fieldActions}>
-                      <label className={styles.check}>
+                      <label className={`${choice.row} ${styles.check}`}>
                         <input
+                          className={choice.input}
                           type="checkbox"
                           checked={field.inline}
                           onChange={(event) =>
@@ -759,6 +801,9 @@ function FieldList({ embed, index }: { embed: Embed; index: number }) {
                             )
                           }
                         />
+                        <span className={choice.mark} aria-hidden="true">
+                          <Check />
+                        </span>
                         Inline: sits beside other inline fields
                       </label>
                       <span className={styles.order}>

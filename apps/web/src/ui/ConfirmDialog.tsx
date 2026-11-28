@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import styles from "./ConfirmDialog.module.css";
+import { keepTabInside } from "./dialogTab";
 
 interface Props {
   open: boolean;
@@ -44,6 +45,7 @@ export function ConfirmDialog({
       aria-labelledby={titleId}
       aria-describedby={bodyId}
       onClose={onCancel}
+      onKeyDown={keepTabInside}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}

@@ -138,7 +138,17 @@
 .main {
   min-width: 0;
 }
-
+/*
+ * Keyboard focus stops clear of what covers the catalogue: the bar and the
+ * sticky search above, and on narrow screens the tray sheet below (both
+ * measured in SendView).
+ */
+:global(html):has(.layout) {
+  scroll-padding-top: calc(
+    var(--bar-height) + var(--lookup-height) + var(--space-2)
+  );
+  scroll-padding-bottom: calc(var(--sheet-height) + var(--space-2));
+}
 /* search and quick picks stay under the bar while the catalogue scrolls */
 .lookup {
   position: sticky;

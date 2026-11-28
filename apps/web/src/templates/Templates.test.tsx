@@ -238,10 +238,17 @@ test("lists templates with a summary, the date and a flag for lost files", async
   expect(row("Weekly digest")).toHaveTextContent(
     "1 file is no longer on the server: map.png.",
   );
-  // A blank composer has nothing to overwrite a template with.
-  expect(
-    screen.queryByRole("button", { name: "Overwrite with Compose" }),
-  ).toBeNull();
+  // A blank composer has nothing to overwrite a template with; the button
+  // stays in place, unavailable and explained.
+  const overwrite = within(row("Rules")).getByRole("button", {
+    name: "Overwrite with Compose",
+  });
+  expect(overwrite).toHaveAttribute("aria-disabled", "true");
+  expect(overwrite).toHaveAccessibleDescription(
+    /Compose is empty, so there’s nothing to overwrite a template with\./,
+  );
+  fireEvent.click(overwrite);
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 test("starting from a template with a blank composer loads it straight away", async () => {
