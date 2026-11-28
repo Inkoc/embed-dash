@@ -499,9 +499,7 @@ export function HistoryList() {
                           label={
                             entry.unconfirmed
                               ? "Unconfirmed"
-                              : entry.publishFailureCount
-                                ? "Sent · publish failed"
-                                : statusLabel[entry.status]
+                              : statusLabel[entry.status]
                           }
                           index={0}
                         />
@@ -777,16 +775,19 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                     (target) => target.status === "unknown",
                   )
                     ? "Unconfirmed"
-                    : query.data.targets.some(
-                          (t) =>
-                            t.status === "sent" && t.publishStatus === "failed",
-                        )
-                      ? "Sent · publish failed"
-                      : statusLabel[query.data.status]}{" "}
+                    : statusLabel[query.data.status]}{" "}
                   · {query.data.targets.length}{" "}
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
               </div>
+              {query.data.targets.some(
+                (t) => t.status === "sent" && t.publishStatus === "failed",
+              ) && (
+                <p className={styles.updateNotice}>
+                  Some announcements were not published. Use Retry publish on
+                  those copies.
+                </p>
+              )}
               {retryProblem && (
                 <div className={styles.state}>
                   <p role="alert">{retryProblem.message}</p>

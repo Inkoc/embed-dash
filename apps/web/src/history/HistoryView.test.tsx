@@ -498,3 +498,73 @@ test("cancelling a schedule confirms its due time, defaults to Keep it and resto
     fetcher.mock.calls.filter(([, options]) => options?.method === "DELETE"),
   ).toHaveLength(1);
 });
+
+test.each([
+  { postFailed: true, publishFailed: true, label: "Partial" },
+  { postFailed: true, publishFailed: false, label: "Partial" },
+  { postFailed: false, publishFailed: true, label: "All sent" },
+])(
+  "History keeps delivery primary for $postFailed / $publishFailed",
+  async ({ postFailed, publishFailed, label }) => {
+    const detail: HistoryDetail = {
+      ...historyDetail,
+      edit: null,
+      lastEditedAt: null,
+      status: postFailed ? "partial" : "done",
+      targets: [
+        {
+          ...delivery("one", "announcements"),
+          publishStatus: publishFailed ? "failed" : "published",
+          publishError: publishFailed ? "Publication refused." : null,
+        },
+        {
+          ...delivery("two", "general"),
+          status: postFailed ? "failed" : "sent",
+          messageId: postFailed ? null : "message-two",
+          error: postFailed
+            ? { code: "MISSING_PERMISSION", message: "Posting refused." }
+            : null,
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url === "/api/bot")
+        return Response.json({ id: "bot", name: "Test bot", avatarUrl: null });
+      if (url.startsWith("/api/sends/entry")) return Response.json(detail);
+      return Response.json({
+        entries: [
+          {
+            id: "entry",
+            title: "Mixed outcomes",
+            color: "",
+            createdAt: 1,
+            channelCount: 2,
+            status: detail.status,
+            publishFailureCount: publishFailed ? 1 : 0,
+          },
+        ],
+        hasMore: false,
+        destinations: [],
+      });
+    });
+    show();
+    const entry = await screen.findByRole("link", { name: /Mixed outcomes/ });
+    expect(entry).toHaveTextContent(label);
+    expect(entry).not.toHaveTextContent("Sent · publish failed");
+    expect(entry.textContent?.includes("1 not published")).toBe(publishFailed);
+    cleanup();
+    showDetail();
+    const heading = await screen.findByRole("heading", {
+      name: "Channel results",
+    });
+    expect(heading.parentElement).toHaveTextContent(`${label} · 2 channels`);
+    const results = heading.closest("section")!;
+    expect(
+      within(results).queryByText(/Some announcements were not published/) !==
+        null,
+    ).toBe(publishFailed);
+    expect(within(results).queryByText("Posting refused.") !== null).toBe(
+      postFailed,
+    );
+  },
+);

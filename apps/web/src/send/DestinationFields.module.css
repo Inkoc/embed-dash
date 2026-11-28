@@ -119,3 +119,10 @@
 .check input:disabled + .box {
   border-style: dashed;
 }
+
+.options:has(+ .options) {
+  padding-bottom: 0;
+}
+.options + .options {
+  padding-top: 0;
+}

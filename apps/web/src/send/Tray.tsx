@@ -421,13 +421,20 @@ export function Tray({
           <b>{outcome.sentence}</b>{" "}
           {outcome.stoppedByToken
             ? "Discord rejected the bot token, so the send stopped."
-            : outcome.publishFailed
-              ? "Some announcements were not published. Use Retry publish on those copies."
-              : outcome.failed
-                ? "Retry sends only to the failed channels."
-                : outcome.unknown
-                  ? "Look at the unconfirmed channels in Discord before sending again."
+            : outcome.failed
+              ? "Retry sends only to the failed channels."
+              : outcome.unknown
+                ? "Look at the unconfirmed channels in Discord before sending again."
+                : outcome.publishFailed
+                  ? null
                   : "Every copy arrived."}
+          {!!outcome.publishFailed && (
+            <>
+              {" "}
+              Some announcements were not published. Use Retry publish on those
+              copies.
+            </>
+          )}
         </p>
       ) : (
         <p

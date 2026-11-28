@@ -694,7 +694,7 @@ export const deliveryErrors = {
   FORUM_TITLE_REQUIRED: "Enter a post title for forum destinations.",
   FORUM_TAG_REQUIRED: "Choose at least one tag for this forum.",
   FORUM_TAG_UNAVAILABLE:
-    "A selected forum tag is no longer available. Choose current tags before retrying.",
+    "A selected forum tag is no longer available. Compose a new send with current tags.",
   FORUM_TAG_PERMISSION:
     "A selected tag requires Manage Threads. Choose another tag or grant that permission.",
   FORUM_NO_TAG_ACCESS:
@@ -1002,5 +1002,5 @@ export function destinationProblem(
   channel: GuildChannel,
 ): string | null {
   const code = destinationFailure(payload, channel);
-  return code ? deliveryErrors[code] : null;
+  return code ? `#${channel.name}: ${deliveryErrors[code]}` : null;
 }

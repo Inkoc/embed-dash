@@ -734,7 +734,7 @@ export function PublishOutcome({ target }: { target: SendTarget }) {
 export function ForumReceipt({ target }: { target: SendTarget }) {
   if (target.channelKind !== "forum" || !target.forumTitle) return null;
   return (
-    <div>
+    <div className={styles.receipt}>
       <p>
         Post title: <strong>{target.forumTitle}</strong>
       </p>

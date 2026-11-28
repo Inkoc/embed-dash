@@ -358,7 +358,7 @@ export async function registerSends(
         error: target.error
           ? {
               code: target.error as DeliveryErrorCode,
-              message: deliveryErrors[target.error as DeliveryErrorCode],
+              message: `${target.error.startsWith("FORUM_") ? `#${target.channelName}: ` : ""}${deliveryErrors[target.error as DeliveryErrorCode]}`,
             }
           : null,
       })),

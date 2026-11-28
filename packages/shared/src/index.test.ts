@@ -777,7 +777,7 @@ test.each([
   });
   expect(destinationFailure(message, channel as GuildChannel)).toBe(code);
   expect(destinationProblem(message, channel as GuildChannel)).toBe(
-    code ? deliveryErrors[code] : null,
+    code ? `#${channel.name}: ${deliveryErrors[code]}` : null,
   );
 });
 test("forum tags reject duplicate ids", () => {
@@ -791,4 +791,17 @@ test("forum tags reject duplicate ids", () => {
       },
     }).success,
   ).toBe(false);
+});
+
+test("forum validation identifies the destination and removed tags offer a usable recovery", () => {
+  const message = messagePayloadSchema.parse({
+    content: "Message",
+    embeds: [],
+    forumTitle: "Report",
+    forumTags: { [forumChannel.id]: ["123456789012345680"] },
+  });
+  expect(destinationProblem(message, forumChannel)).toContain("#reports:");
+  expect(destinationProblem(message, forumChannel)).toContain(
+    "Compose a new send with current tags",
+  );
 });
