@@ -490,11 +490,11 @@ function NextStep() {
 
 /** While the draft has problems the action stays visible but disabled, and pressing it goes to the first one. */
 function ChooseChannels({ describedBy }: { describedBy: string }) {
-  const { issues, editing } = useDraft();
+  const { issues } = useDraft();
   const { reveal } = useEditorState();
   const content = (
     <>
-      {editing ? "Review updates" : "Choose channels"}
+      Choose channels
       <ArrowRight aria-hidden="true" />
       <ForwardKeys />
     </>

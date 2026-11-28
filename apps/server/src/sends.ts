@@ -189,6 +189,7 @@ export async function registerSends(
     reply: FastifyReply,
     payload: MessagePayload,
     missing: ReadonlySet<string>,
+    editing = false,
   ) {
     const issues: Issue[] = validateMessage(payload, { missingFiles: missing });
     if (issues.length === 0) return null;
@@ -197,9 +198,10 @@ export async function registerSends(
       .send(
         sendError(
           missing.size > 0 ? "UPLOAD_MISSING" : "INVALID_MESSAGE",
-          missing.size > 0
-            ? "A file in this message is no longer on the server. Nothing was sent."
-            : "The message breaks a Discord limit. Nothing was sent.",
+          (missing.size > 0
+            ? "A file in this message is no longer on the server. "
+            : "The message breaks a Discord limit. ") +
+            (editing ? "Nothing was changed." : "Nothing was sent."),
           { issues, missingFiles: [...missing] },
         ),
       );
@@ -645,7 +647,7 @@ export async function registerSends(
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
@@ -653,6 +655,7 @@ export async function registerSends(
       created_at: number;
       status: string;
       channel_count: number;
+      update_failure_count: number;
     }[];
     const destinations = sqlite
       .prepare(
@@ -676,6 +679,7 @@ export async function registerSends(
           color: payload.embeds[0]?.color ?? "",
           createdAt: row.created_at,
           channelCount: row.channel_count,
+          updateFailureCount: row.update_failure_count,
           status: row.status,
         };
       }),
@@ -834,7 +838,12 @@ export async function registerSends(
         );
     if (claim !== "duplicate") {
       if (claim.invalid)
-        return refusal(reply, claim.invalid.payload, claim.invalid.missing);
+        return refusal(
+          reply,
+          claim.invalid.payload,
+          claim.invalid.missing,
+          true,
+        );
       deliverInBackground(
         id,
         claim.copies,
@@ -954,6 +963,7 @@ export async function registerSends(
             reply,
             claimed.invalid.payload,
             claimed.invalid.missing,
+            editing,
           );
         deliverInBackground(
           id,

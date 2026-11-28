@@ -206,6 +206,7 @@ export function startFakeDiscord(port: number) {
   const messageReads: string[] = [];
   let lastAttachment = 91000000000000000n;
   const forced = new Map<string, Forced>();
+  const forcedEdits = new Map<string, Forced>();
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
   let postDelayMs = 0;
@@ -280,9 +281,13 @@ export function startFakeDiscord(port: number) {
     ) {
       // Here `guildId` is the channel: the path is /channels/{id}/messages.
       const channel = guildId;
-      const answer = forced.get(channel);
+      const failures =
+        request.method === "PATCH" && forcedEdits.has(channel)
+          ? forcedEdits
+          : forced;
+      const answer = failures.get(channel);
       if (answer) {
-        if (--answer.times <= 0) forced.delete(channel);
+        if (--answer.times <= 0) failures.delete(channel);
         // Status 0: the connection drops without an answer, so the post's fate is unknown.
         if (answer.status === 0) return request.socket.destroy();
         if (answer.retryAfter !== undefined)
@@ -423,6 +428,11 @@ export function startFakeDiscord(port: number) {
       channelId: string,
       failure: Omit<Forced, "times"> & { times?: number },
     ) => void forced.set(channelId, { times: 1, ...failure }),
+    /** Refuses updates independently of initial delivery. */
+    failEdit: (
+      channelId: string,
+      failure: Omit<Forced, "times"> & { times?: number },
+    ) => void forcedEdits.set(channelId, { times: 1, ...failure }),
     /** Every accepted post takes this long to answer. */
     slow: (ms: number) => void (postDelayMs = ms),
     /** Every guild listing takes this long to answer. */

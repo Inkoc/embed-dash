@@ -62,6 +62,7 @@ export function EditGuard() {
 
 interface Editing {
   busy: boolean;
+  saved: HistoryDetail | null;
   problem: AppError | null;
   result: HistoryDetail["edit"] | null;
   loading: boolean;
@@ -83,12 +84,23 @@ export function EditProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const [problem, setProblem] = useState<AppError | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(
+    editing?.edit?.id ?? null,
+  );
+  const [visibleIds, setVisibleIds] = useState<ReadonlySet<string> | null>(
+    () =>
+      new Set(
+        editing?.edit?.targets
+          .filter((t) => t.status !== "sent")
+          .map((t) => t.id),
+      ),
+  );
   const attempt = useRef<{ id: string; payload: MessagePayload } | null>(null);
   const running = useRef(false);
   const query = useQuery({
     queryKey: ["edit-result", editing?.id, activeId],
     enabled: !!editing && !!activeId,
+    initialData: activeId === editing?.edit?.id ? editing : undefined,
     retry: false,
     queryFn: () => fetchEdit(editing!.id),
     refetchInterval: (q) =>
@@ -118,6 +130,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
     )
       attempt.current = { id: newSendId(), payload };
     const body = attempt.current;
+    setVisibleIds(null);
     setActiveId(body.id);
     try {
       await startSend("edit", `/api/sends/${editing.id}`, body, csrf(), "PUT");
@@ -152,6 +165,10 @@ export function EditProvider({ children }: { children: ReactNode }) {
         csrf(),
       );
       await query.refetch();
+      void client.invalidateQueries({ queryKey: ["history"] });
+      void client.invalidateQueries({
+        queryKey: ["history-detail", editing.id],
+      });
     } catch (error) {
       setProblem(asAppError("retry-edit", error));
     } finally {
@@ -163,8 +180,20 @@ export function EditProvider({ children }: { children: ReactNode }) {
     <EditContext
       value={{
         busy: !!busy,
+        saved: query.data?.edit?.id === activeId ? query.data : editing,
         problem,
-        result: query.data?.edit?.id === activeId ? query.data.edit : null,
+        result:
+          query.data?.edit?.id === activeId &&
+          query.data.edit.targets.some(
+            (t) => visibleIds === null || visibleIds.has(t.id),
+          )
+            ? {
+                ...query.data.edit,
+                targets: query.data.edit.targets.filter(
+                  (t) => visibleIds === null || visibleIds.has(t.id),
+                ),
+              }
+            : null,
         loading: !!activeId && query.isPending,
         queryProblem: query.isError
           ? asAppError("follow-edit", query.error)
@@ -196,9 +225,11 @@ export function ReadOnlyChannels({ send }: { send: HistoryDetail }) {
       <ul aria-label="Original channels">
         {send.targets.map((t) => (
           <li key={t.id}>
-            <Hash aria-hidden="true" />
             <div>
-              <strong>#{t.channelName || t.channelId}</strong>
+              <span className={styles.channelName}>
+                <Hash aria-hidden="true" />
+                <strong>#{t.channelName || t.channelId}</strong>
+              </span>
               <span>{t.guildName || t.guildId}</span>
             </div>
             <span className={styles.callNumber}>
@@ -217,14 +248,15 @@ export function ReadOnlyChannels({ send }: { send: HistoryDetail }) {
 
 export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
   const { editing, issues } = useDraft();
-  const { busy, save } = useEditing();
+  const { busy, save, saved } = useEditing();
   if (!editing) return null;
+  const message = saved ?? editing;
   const deleted = new Set(
-    editing.edit?.targets
+    message.edit?.targets
       .filter((t) => t.error?.code === "MESSAGE_DELETED")
       .map((t) => t.id),
   );
-  const count = editing.targets.filter(
+  const count = message.targets.filter(
     (t) => t.messageId && !deleted.has(t.id),
   ).length;
   return (
@@ -257,8 +289,16 @@ export function SaveUpdatesAction({ mobile = false }: { mobile?: boolean }) {
 
 export function EditPanel() {
   const { editing, dirty, endEdit } = useDraft();
-  const { busy, result, retry, loading, queryProblem, refresh, problem } =
-    useEditing();
+  const {
+    busy,
+    result,
+    retry,
+    loading,
+    queryProblem,
+    refresh,
+    problem,
+    saved,
+  } = useEditing();
   const [confirmClose, setConfirmClose] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -266,13 +306,14 @@ export function EditPanel() {
     heading.current?.focus();
   }, []);
   if (!editing) return null;
-  const title = messageSummary(withIds(editing.payload)).headline;
+  const message = saved ?? editing;
+  const title = messageSummary(withIds(message.payload)).headline;
   const deleted = new Set(
-    editing.edit?.targets
+    message.edit?.targets
       .filter((t) => t.error?.code === "MESSAGE_DELETED")
       .map((t) => t.id),
   );
-  const copies = editing.targets.filter(
+  const copies = message.targets.filter(
     (t) => t.messageId && !deleted.has(t.id),
   ).length;
   const close = () => {
@@ -309,7 +350,7 @@ export function EditPanel() {
       <p className={styles.note}>
         Your earlier draft comes back when you close the editor.
       </p>
-      <ReadOnlyChannels send={editing} />
+      <ReadOnlyChannels send={message} />
       {problem && (
         <div className={styles.problem}>
           <p role="alert">{problem.message}</p>

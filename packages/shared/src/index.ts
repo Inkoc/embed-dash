@@ -754,6 +754,7 @@ export const historyEntrySchema = z.object({
   color: z.string(),
   createdAt: z.number(),
   channelCount: z.number(),
+  updateFailureCount: z.number().int().nonnegative().default(0),
   status: sendResultSchema.shape.status,
 });
 export const historyResponseSchema = z.object({

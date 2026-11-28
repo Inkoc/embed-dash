@@ -46,7 +46,7 @@
   font-size: var(--text-label);
 }
 .destinations h3 svg,
-.destinations li > svg {
+.channelName svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
   flex: none;
@@ -64,6 +64,8 @@
   overflow-wrap: anywhere;
 }
 .destinations li > div {
+  min-width: 0;
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
@@ -143,4 +145,17 @@
     flex-basis: 100%;
     margin-left: var(--space-5);
   }
+}
+
+.channelName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.channelName strong {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

@@ -419,3 +419,109 @@ test("update result loading errors offer a refresh and the save action follows v
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("Updated", { exact: true })).toBeVisible();
 });
+
+test("reopening restores unfinished updates and retry never reveals unrelated earlier successes", async () => {
+  const failed = updated({
+    id: "failed",
+    channelName: "schedule",
+    status: "failed",
+    error: {
+      code: "EDIT_UNCONFIRMED",
+      message: "Retry the latest version safely.",
+    },
+  });
+  const deleted = updated({
+    id: "deleted",
+    channelName: "archive",
+    status: "failed",
+    error: { code: "MESSAGE_DELETED", message: "Deleted in Discord" },
+  });
+  let detail: HistoryDetail = {
+    ...send,
+    targets: [
+      send.targets[0]!,
+      { ...failed, status: "sent", error: null },
+      { ...deleted, status: "sent", error: null },
+    ],
+    edit: {
+      id: "earlier-run",
+      status: "done",
+      targets: [updated(), failed, deleted],
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === "POST" && url.endsWith("/edits/retry")) {
+        detail = {
+          ...detail,
+          edit: {
+            ...detail.edit!,
+            targets: [
+              updated(),
+              { ...failed, status: "sent", error: null },
+              deleted,
+            ],
+          },
+        };
+        return Response.json({ id: detail.id }, { status: 202 });
+      }
+      return Response.json(detail);
+    }),
+  );
+  showEditor(detail);
+  expect(
+    await screen.findByText("Retry the latest version safely."),
+  ).toBeVisible();
+  expect(screen.getByText("Deleted in Discord")).toBeVisible();
+  expect(screen.queryByText("Updated", { exact: true })).toBeNull();
+  expect(screen.getAllByRole("button", { name: /Retry/ })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: /Retry #schedule/ }));
+  expect(await screen.findByText("Updated", { exact: true })).toBeVisible();
+  expect(screen.getAllByText("Updated", { exact: true })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /Retry #schedule/ })).toBeNull();
+});
+
+test("a completed save refreshes the header and removes newly deleted copies from the count", async () => {
+  let detail: HistoryDetail = { ...send, edit: null };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === "PUT") {
+        const body = JSON.parse(options.body as string) as {
+          id: string;
+          payload: HistoryDetail["payload"];
+        };
+        detail = {
+          ...send,
+          payload: body.payload,
+          edit: {
+            id: body.id,
+            status: "done",
+            targets: [
+              updated({
+                status: "failed",
+                error: {
+                  code: "MESSAGE_DELETED",
+                  message: "Deleted in Discord",
+                },
+              }),
+            ],
+          },
+        };
+        return Response.json({ id: send.id }, { status: 202 });
+      }
+      return Response.json(detail);
+    }),
+  );
+  showEditor();
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Saved new headline" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
+  expect(
+    await screen.findByText("Saved new headline", { selector: "p" }),
+  ).toBeVisible();
+  expect(screen.getByText(/0 copies to update/)).toBeVisible();
+  expect(screen.getByText("Deleted · skipped")).toBeVisible();
+});

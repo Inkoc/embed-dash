@@ -6,11 +6,14 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
-import { HistoryList } from "./HistoryView";
+import { DraftProvider } from "../compose/draft";
+import type { HistoryDetail } from "@embed-dash/shared";
+import HistoryView, { HistoryList } from "./HistoryView";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -167,3 +170,153 @@ test.each([1, 2])(
     else expect(pagination).toBeInTheDocument();
   },
 );
+
+test("history list flags update failures independently of successful delivery", async () => {
+  vi.stubGlobal("fetch", async () =>
+    Response.json({
+      entries: [
+        {
+          id: "entry",
+          title: "Evening bulletin",
+          color: "",
+          createdAt: 1,
+          channelCount: 2,
+          status: "done",
+          updateFailureCount: 1,
+        },
+      ],
+      hasMore: false,
+      destinations: [],
+    }),
+  );
+  show();
+  const entry = await screen.findByRole("link", { name: /Evening bulletin/ });
+  expect(entry).toHaveTextContent("All sent");
+  expect(entry).toHaveTextContent("1 copy not updated");
+});
+
+const delivery = (id: string, channelName: string) => ({
+  id,
+  guildId: "guild",
+  guildName: "Observatory",
+  channelId: id,
+  channelName,
+  status: "sent" as const,
+  messageId: id + "-message",
+  error: null,
+});
+const historyDetail: HistoryDetail = {
+  id: "entry",
+  status: "done",
+  createdAt: 1,
+  lastEditedAt: 2,
+  payload: {
+    content: "Latest saved edition",
+    embeds: [],
+    attachments: [],
+    pings: [],
+    silent: false,
+  },
+  targets: [
+    delivery("one", "news"),
+    delivery("two", "schedule"),
+    delivery("three", "archive"),
+    delivery("four", "general"),
+  ],
+  edit: {
+    id: "run",
+    status: "done",
+    targets: [
+      {
+        ...delivery("one", "news"),
+        status: "failed",
+        error: {
+          code: "MISSING_PERMISSION",
+          message: "Check the bot’s access, then retry.",
+        },
+      },
+      {
+        ...delivery("two", "schedule"),
+        status: "failed",
+        error: {
+          code: "EDIT_UNCONFIRMED",
+          message: "The update was not confirmed. Retry safely.",
+        },
+      },
+      {
+        ...delivery("three", "archive"),
+        status: "failed",
+        error: { code: "MESSAGE_DELETED", message: "This copy was deleted." },
+      },
+      delivery("four", "general"),
+    ],
+  },
+};
+function showDetail() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(["session"], { csrfToken: "history-csrf" });
+  render(
+    <QueryClientProvider client={client}>
+      <DraftProvider>
+        <MemoryRouter initialEntries={["/history/entry"]}>
+          <Routes>
+            <Route
+              path="/history/:id"
+              element={<HistoryView theme="light" />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </DraftProvider>
+    </QueryClientProvider>,
+  );
+}
+test("history preserves delivery outcomes, shows failed/unconfirmed/deleted updates, and retries only an eligible copy", async () => {
+  const detail = structuredClone(historyDetail);
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === "/api/bot")
+      return Response.json({
+        id: "123456789012345678",
+        name: "Observatory Bot",
+        avatarUrl: null,
+      });
+    if (options?.method === "POST") {
+      detail.edit!.targets[0] = delivery("one", "news");
+      return Response.json({ id: detail.id }, { status: 202 });
+    }
+    return Response.json(detail);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  showDetail();
+  const news = (await screen.findByText("#news")).closest("li")!;
+  expect(within(news).getByText("Sent", { exact: true })).toBeVisible();
+  expect(
+    within(news).getByText("Not updated to the latest version"),
+  ).toBeVisible();
+  expect(screen.getByText("Unconfirmed", { exact: true })).toBeVisible();
+  const deleted = screen.getByText("#archive").closest("li")!;
+  expect(within(deleted).getByText("Deleted in Discord")).toBeVisible();
+  expect(
+    within(deleted).queryByRole("button", { name: /Retry update/ }),
+  ).toBeNull();
+  expect(screen.getAllByRole("button", { name: /Retry update/ })).toHaveLength(
+    2,
+  );
+  expect(screen.getByText(/This is the latest saved version/)).toBeVisible();
+  fireEvent.click(within(news).getByRole("button", { name: /Retry update/ }));
+  expect(
+    await within(news).findByText("Updated", { exact: true }),
+  ).toBeVisible();
+  expect(within(news).getByText("Sent", { exact: true })).toBeVisible();
+  expect(
+    within(news).queryByRole("button", { name: /Retry update/ }),
+  ).toBeNull();
+  const retry = fetcher.mock.calls.find(([, init]) => init?.method === "POST")!;
+  expect(retry[0]).toBe("/api/sends/entry/edits/retry");
+  expect(JSON.parse(retry[1]!.body as string)).toEqual({ targetIds: ["one"] });
+  expect(retry[1]!.headers).toEqual({
+    "content-type": "application/json",
+    "x-csrf-token": "history-csrf",
+  });
+});

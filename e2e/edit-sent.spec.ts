@@ -56,13 +56,42 @@ test("edit a history message across two channels", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Save updates", exact: true }).click();
-  await expect(page.getByText("Updated", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Updated", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await page
     .getByRole("searchbox", { name: "Search history" })
     .fill(`${title} revised`);
-  await page.getByRole("link", { name: new RegExp(title) }).click();
+  const entry = page.getByRole("link", { name: new RegExp(title) });
+  await expect(entry).toContainText("1 copy not updated");
+  await expect(entry).toContainText("All sent");
+  await entry.click();
   await expect(page.getByText(/Last edited/)).toBeVisible();
+  const failedCopy = page
+    .getByRole("listitem")
+    .filter({ has: page.getByText("#news", { exact: true }) });
+  await expect(failedCopy).toContainText("Delivery: Sent");
+  await expect(failedCopy).toContainText("Not updated to the latest version");
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Updated", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Search history" }).fill(title);
+  await page.getByRole("link", { name: new RegExp(title) }).click();
+  await failedCopy
+    .getByRole("button", { name: "Retry update to #news" })
+    .click();
+  await expect(failedCopy).toContainText("Latest update: Updated");
+  await expect(
+    failedCopy.getByRole("button", { name: /Retry update/ }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: /Back to history/ }).click();
+  await expect(
+    page.getByRole("link", { name: new RegExp(title) }),
+  ).not.toContainText("copy not updated");
+  await page.getByRole("link", { name: new RegExp(title) }).click();
   await expect(
     page.getByRole("article", { name: "Message preview" }),
   ).toContainText(`${title} revised`);

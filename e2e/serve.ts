@@ -11,6 +11,11 @@ const fake = startFakeDiscord(0);
 await once(fake, "listening");
 // #results in Lanternfall Cup EU refuses its first post, so specs can see a failure and then retry it.
 fake.fail(fakeGuilds[2].channels[2].id, { status: 403, code: 50013 });
+// The update flow must recover a refused copy through History.
+fake.failEdit(fakeGuilds[2].channels.find((c) => c.name === "news")!.id, {
+  status: 403,
+  code: 50013,
+});
 // Posts take a moment, so specs can see a send in progress before its results.
 fake.slow(300);
 const address = fake.address();

@@ -1647,9 +1647,10 @@ test("legacy copies without stored attachment IDs re-upload safely or refuse mis
   db2.prepare("UPDATE send_targets SET attachments_json = NULL").run();
   db2.close();
   unlinkSync(join(s.dir, "uploads", file.id));
-  expect((await edit(s, initial.id, { attachments: [file] })).statusCode).toBe(
-    422,
-  );
+  const refused = await edit(s, initial.id, { attachments: [file] });
+  expect(refused.statusCode).toBe(422);
+  expect(refused.json().error).toContain("Nothing was changed.");
+  expect(refused.json().error).not.toContain("Nothing was sent.");
   expect(s.fake.messages[0].attachments).toHaveLength(1);
 });
 
@@ -1757,4 +1758,64 @@ test("edit retry routes require authentication and CSRF", async () => {
       })
     ).statusCode,
   ).toBe(403);
+});
+
+test("stored update failures remain visible after reopening History and clear after retry", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  s.fake.fail(results, { status: 403, code: 50013 });
+  expect(
+    (await edit(s, initial.id, { content: "Latest saved edition" })).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  await s.app.close();
+  const app = await createApp(s.config, { logger: false });
+  cleanups.push(() => app.close());
+  const resumed = { ...s, app };
+  const detail = (await read(resumed, initial.id)).json();
+  expect(detail.payload.content).toBe("Latest saved edition");
+  expect(detail.lastEditedAt).toBeTypeOf("number");
+  expect(
+    detail.targets.every((t: { status: string }) => t.status === "sent"),
+  ).toBe(true);
+  expect(detail.edit.targets[1].status).toBe("failed");
+  expect(
+    s.fake.messages.find((m) => m.channelId === results)!.payload.content,
+  ).toBe(payload().content);
+  const list = () =>
+    app.inject({ url: "/api/sends?status=done", headers: s.headers });
+  expect((await list()).json().entries[0].updateFailureCount).toBe(1);
+  expect((await retryEdit(resumed, initial.id)).statusCode).toBe(202);
+  await settle(resumed, initial.id);
+  expect((await list()).json().entries[0].updateFailureCount).toBe(0);
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Latest saved edition"),
+  ).toBe(true);
+});
+
+test("History flags an entirely failed update without changing its delivery filter", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  for (const id of [news, results]) s.fake.fail(id, { status: 504 });
+  expect(
+    (await edit(s, initial.id, { content: "New saved edition" })).statusCode,
+  ).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(done.lastEditedAt).toBeNull();
+  expect(
+    done.edit.targets.every(
+      (t: { error: { code: string } }) => t.error.code === "EDIT_UNCONFIRMED",
+    ),
+  ).toBe(true);
+  const history = await s.app.inject({
+    url: "/api/sends?status=done",
+    headers: s.headers,
+  });
+  expect(history.json().entries[0]).toMatchObject({
+    status: "done",
+    updateFailureCount: 2,
+  });
+  expect(
+    s.fake.messages.every((m) => m.payload.content === payload().content),
+  ).toBe(true);
 });

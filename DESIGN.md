@@ -413,3 +413,5 @@ The login uses a wider index sheet, hairline rules, and the instance address as 
 An edit opens an accent-wash sheet above the composer. Its heading receives focus and names the message, original send time and confirmed copy count. Read-only destinations use the catalogue’s hash marks and mono call numbers; rows without a confirmed message explain that they are skipped. The sheet uses `--edit-wash` (the accent wash) and `--edit-rule` (the stronger rule) in both themes.
 
 Save updates replaces the ordinary Send path in the preview’s sticky action area and the phone’s fixed action bar. Clear and Save as template are hidden while editing. Closing a dirty editor uses the shared confirmation, Cancel returns focus to Close editor, and leaving restores the earlier local draft and focuses the composer heading. Results use Send’s deep-ink slips and status components.
+
+History marks entries with copies that have not reached the saved version. In the detail view, delivery and latest-update outcomes have separate labels; eligible failures offer Retry update. Reopening an editor restores unfinished update slips while earlier successes stay hidden.
