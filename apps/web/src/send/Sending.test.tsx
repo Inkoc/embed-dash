@@ -311,13 +311,14 @@ test("confirms with the message summary and channel count, then shows a result p
   expect(dialog).toHaveTextContent("Patch 0.9.4");
   expect(dialog).toHaveTextContent("text · 1 embed");
   expect(dialog).toHaveTextContent("This posts to 3 channels in 2 servers.");
-  expect(
-    within(dialog).getByRole("list", { name: "Destinations" }),
-  ).toHaveTextContent("Lanternfall#general, #news");
   // A long list scrolls in its box, so the box takes focus for the keyboard.
-  expect(
-    within(dialog).getByRole("region", { name: "Destinations, 3 channels" }),
-  ).toHaveAttribute("tabindex", "0");
+  const destinations = within(dialog).getByRole("region", {
+    name: "Destinations, 3 channels",
+  });
+  expect(destinations).toHaveAttribute("tabindex", "0");
+  expect(within(destinations).getByRole("list")).toHaveTextContent(
+    "Lanternfall#general, #news",
+  );
   expect(dialog).toHaveTextContent("Mentions won’t notify anyone.");
   // Nothing goes out before the answer.
   expect(sendRequests()).toEqual([]);

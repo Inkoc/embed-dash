@@ -59,6 +59,32 @@ test("edit a history message across two channels", async ({ page }) => {
   await page.getByRole("button", { name: "Save updates", exact: true }).click();
   await expect(page.getByText("Updated", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close editor", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await page
+    .getByRole("searchbox", { name: "Search history" })
+    .fill(`${title} revised`);
+  const entry = page.getByRole("link", { name: new RegExp(title) });
+  await expect(entry).toContainText("1 copy not updated");
+  await expect(entry).toContainText("All sent");
+  await entry.click();
+  // Other specs' entries in the shared history can say "Last edited" too.
+  await expect(
+    page
+      .locator("header")
+      .filter({
+        has: page.getByRole("heading", { level: 2, name: `${title} revised` }),
+      })
+      .getByText(/Last edited/),
+  ).toBeVisible();
+  const failedCopy = page
+    .getByRole("listitem")
+    .filter({ has: page.getByText("#news", { exact: true }) });
+  await expect(failedCopy).toContainText("Delivery: Sent");
+  await expect(failedCopy).toContainText("Not updated to the latest version");
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Updated", { exact: true })).toHaveCount(0);
   // The failed copy's reason and Retry sit on the results' deep ink in both themes.
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
@@ -71,24 +97,6 @@ test("edit a history message across two channels", async ({ page }) => {
       .analyze();
     expect(results.violations.map((v) => v.id)).toEqual([]);
   }
-  await page.getByRole("button", { name: "Close editor", exact: true }).click();
-  await page.getByRole("link", { name: "History", exact: true }).click();
-  await page
-    .getByRole("searchbox", { name: "Search history" })
-    .fill(`${title} revised`);
-  const entry = page.getByRole("link", { name: new RegExp(title) });
-  await expect(entry).toContainText("1 copy not updated");
-  await expect(entry).toContainText("All sent");
-  await entry.click();
-  await expect(page.getByText(/Last edited/)).toBeVisible();
-  const failedCopy = page
-    .getByRole("listitem")
-    .filter({ has: page.getByText("#news", { exact: true }) });
-  await expect(failedCopy).toContainText("Delivery: Sent");
-  await expect(failedCopy).toContainText("Not updated to the latest version");
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await expect(page.getByText("Failed", { exact: true })).toBeVisible();
-  await expect(page.getByText("Updated", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Close editor", exact: true }).click();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await page.getByRole("searchbox", { name: "Search history" }).fill(title);

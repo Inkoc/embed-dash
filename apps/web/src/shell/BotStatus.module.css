@@ -126,7 +126,17 @@
 [data-shed-failure] ~ * .notice {
   display: flex;
 }
-@media (640px < width <= 1100px) {
+/* Out of the bar, the notice lines up with the view's content edges below it. */
+@media (width > 640px) {
+  [data-shed-failure] ~ * .notice {
+    max-width: none;
+    margin-inline: max(
+      var(--space-6),
+      (100% - var(--content-max)) / 2 + var(--space-6)
+    );
+  }
+}
+@media (640px < width <= 68.75em) {
   [data-shed-failure] ~ * .notice {
     margin-inline: var(--space-4);
   }

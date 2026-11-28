@@ -64,11 +64,12 @@ test("find a sent title and inspect every channel result", async ({ page }) => {
   await page.getByRole("switch", { name: "Dark theme" }).click();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.setViewportSize({ width: 360, height: 800 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  // The top bar refits in the frame after a resize, so wait for the layout to settle.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("searchbox")).toHaveValue(title);
   await expect(entry).toBeFocused();

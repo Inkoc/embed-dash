@@ -152,10 +152,11 @@ test("a send to many channels keeps its destinations and slips reachable from th
     .getByRole("button", { name: /^Main channel of each server/ })
     .click();
   await expect(tray(page)).toContainText("12 channels in 12 servers");
-  const slips = tray(page).getByRole("region", { name: "Ticked channels" });
-  await expect(slips).toHaveAttribute("tabindex", "0");
+  // Before a send the slips' own buttons are the stops, so their list isn't one.
+  await expect(page.locator("#tray-slips")).not.toHaveAttribute("tabindex");
 
-  await tray(page).getByRole("button", { name: "Send to 12 channels" }).click();
+  await tray(page).getByRole("button", { name: "Send to 12 channels" }).focus();
+  await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Send to 12 channels?" });
   const destinations = dialog.getByRole("region", {
     name: "Destinations, 12 channels",
@@ -166,7 +167,38 @@ test("a send to many channels keeps its destinations and slips reachable from th
       (list) => list.scrollHeight > list.clientHeight,
     ),
   ).toBe(true);
-  await destinations.focus();
+  // From Cancel, the keyboard goes back to the list, and its ring stands out on the sheet.
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(destinations).toBeFocused();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    expect(
+      await destinations.evaluate((list) => {
+        const canvas = document.createElement("canvas").getContext("2d")!;
+        const luminance = (colour: string) => {
+          canvas.fillStyle = colour;
+          canvas.fillRect(0, 0, 1, 1);
+          const [r, g, b] = [...canvas.getImageData(0, 0, 1, 1).data].map(
+            (v) => v / 255,
+          );
+          const lin = (c: number) =>
+            c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          return 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
+        };
+        const ring = luminance(getComputedStyle(list).outlineColor);
+        const sheet = luminance(
+          getComputedStyle(list.closest("dialog")!).backgroundColor,
+        );
+        return (Math.max(ring, sheet) + 0.05) / (Math.min(ring, sheet) + 0.05);
+      }),
+      colorScheme,
+    ).toBeGreaterThanOrEqual(3);
+  }
   await page.keyboard.press("End");
   await expect
     .poll(() => destinations.evaluate((list) => list.scrollTop))

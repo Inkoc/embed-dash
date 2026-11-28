@@ -314,15 +314,14 @@ export function Tray({
           <ChevronDown aria-hidden="true" />
         </button>
       </div>
-      {/* The slips scroll on their own, and while a send runs nothing in them
-          takes focus, so the list itself does, for keyboard scrolling. */}
+      {/* Mid-send nothing in the slips takes focus, so their list does, for keyboard scrolling. */}
       <div
         id="tray-slips"
         ref={list}
         className={styles.slips}
-        role="region"
-        aria-label={busy ? "Sending" : result ? "Results" : "Ticked channels"}
-        tabIndex={0}
+        role={busy ? "region" : undefined}
+        aria-label={busy ? "Sending" : undefined}
+        tabIndex={busy ? 0 : undefined}
       >
         {total === 0 ? (
           <p className={styles.empty}>

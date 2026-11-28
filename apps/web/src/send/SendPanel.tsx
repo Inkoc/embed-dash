@@ -410,14 +410,14 @@ export function SendControls({
             This posts to <b>{count}</b> in{" "}
             <b>{plural(servers.size, "server", "servers")}</b>.
           </p>
-          {/* A long list scrolls, so it takes focus for keyboard scrolling. */}
+          {/* A long list scrolls and holds nothing focusable, so it takes focus for keyboard scrolling. */}
           <div
             className={styles.destinations}
             role="region"
             aria-label={`Destinations, ${count}`}
             tabIndex={0}
           >
-            <ul aria-label="Destinations">
+            <ul>
               {byServer.map(({ guild, channels }) => (
                 <li key={guild.id}>
                   <b>{guild.name}</b>
