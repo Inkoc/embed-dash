@@ -8,14 +8,17 @@ import styles from "./ClosedDrawer.module.css";
 export function ClosedDrawer({
   label,
   title,
+  fill,
   children,
 }: {
   label: string;
   title: string;
+  /** Takes the full width of its view, to line up with the list it stands in for. */
+  fill?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className={styles.closed}>
+    <div className={styles.closed} data-fill={fill || undefined}>
       <div className={styles.drawer} aria-hidden="true">
         <span className={styles.holder}>{label}</span>
         <span className={styles.pull} />

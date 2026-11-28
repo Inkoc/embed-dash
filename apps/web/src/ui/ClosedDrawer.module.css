@@ -11,6 +11,9 @@
   background: var(--sheet);
   box-shadow: var(--shadow-2);
 }
+.closed[data-fill] {
+  max-width: none;
+}
 .drawer {
   display: grid;
   justify-items: center;
