@@ -40,19 +40,43 @@ test.each([
   expect(fromFile(encode(` \t${secret}\r\n`))).toBe(secret);
 });
 
-test("decodes non-ASCII text in UTF-8 and UTF-16 with a BOM", () => {
-  const text = "pässwörd-☃";
-  expect(decodeSecret(Buffer.from(text))).toBe(text);
-  expect(
-    decodeSecret(
-      Buffer.concat([Buffer.from(bom.le), Buffer.from(text, "utf16le")]),
-    ),
-  ).toBe(text);
+const encodings: [string, (text: string) => Buffer][] = [
+  ["UTF-8", (text) => Buffer.from(text)],
+  ["UTF-8 with BOM", (text) => Buffer.from(`\ufeff${text}`)],
+  ["UTF-16 LE with BOM", (text) => Buffer.from(`\ufeff${text}`, "utf16le")],
+  ["UTF-16 BE with BOM", (text) => utf16be(`\ufeff${text}`)],
+  ["UTF-16 LE without BOM", (text) => Buffer.from(text, "utf16le")],
+  ["UTF-16 BE without BOM", utf16be],
+];
+
+test.each(
+  [
+    "пароль-42",
+    "Пароль",
+    "pass雪",
+    "密码🔐x",
+    "zażółć-gęślą",
+    "🔐 safe ❤\ufe0f 👨\u200d👩\u200d👧",
+  ].flatMap((text) =>
+    encodings.map(([name, encode]) => [text, name, encode] as const),
+  ),
+)("reads the password %s from %s", (text, _name, encode) => {
+  for (const ending of ["", "\n", "\r\n"])
+    expect(fromFile(encode(`${text}${ending}`), { spaces: true })).toBe(text);
+});
+
+test("without a BOM or any ASCII, little-endian UTF-16 wins a tie", () => {
+  // Pure Cyrillic still tells its byte order by its high bytes.
+  expect(decodeSecret(utf16be("пароль"))).toBe("пароль");
+  expect(decodeSecret(Buffer.from("🔐🔐", "utf16le"))).toBe("🔐🔐");
 });
 
 test("doesn't take an even-length UTF-8 text for UTF-16", () => {
   expect(decodeSecret(Buffer.from("abcd"))).toBe("abcd");
   expect(decodeSecret(Buffer.from("ab"))).toBe("ab");
+  // Damaged UTF-8 stays UTF-8, to be refused for what it holds.
+  expect(decodeSecret(Buffer.from("abc\0"))).toBe("abc\0");
+  expect(decodeSecret(Buffer.from("secret\0\n"))).toBe("secret\0\n");
 });
 
 test.each([
@@ -65,6 +89,18 @@ test.each([
   ["escape", Buffer.from(`${secret}\x1b`), "invisible or control"],
   ["zero-width space", Buffer.from(`${secret}\u200b1`), "invisible or control"],
   ["inner BOM", Buffer.from(`a\ufeff${secret}`), "invisible or control"],
+  ["trailing NUL", Buffer.from(`${secret}x\0`), "invisible or control"],
+  ["NUL padding", Buffer.from(`${secret}\0\0\0`), "invisible or control"],
+  ["grapheme joiner", Buffer.from(`${secret}\u034f`), "invisible or control"],
+  ["Hangul filler", Buffer.from(`\u3164${secret}`), "invisible or control"],
+  ["soft hyphen", Buffer.from(`a\u00ad${secret}`), "invisible or control"],
+  ["word joiner", Buffer.from(`${secret}\u2060`), "invisible or control"],
+  [
+    "lone variation selector",
+    Buffer.from(`${secret}\ufe0f`),
+    "invisible or control",
+  ],
+  ["bidi override", Buffer.from(`\u202e${secret}`), "invisible or control"],
   ["invalid UTF-8", Buffer.from([0x66, 0xc3, 0x28]), "not readable text"],
   [
     "odd-length UTF-16",
@@ -110,7 +146,28 @@ test("variables are checked the same way, and the file wins", () => {
   expect(() => read({ TOKEN: `${secret}\u200b` })).toThrow(
     "TOKEN contains invisible or control characters",
   );
-  expect(() => read({ TOKEN_FILE: join(dir, "missing") })).toThrow(
-    "TOKEN_FILE must point to a readable secret file",
+});
+
+test("visible combining accents are kept", () => {
+  expect(fromFile(Buffer.from("cafe\u0301-ñ\u0303"))).toBe(
+    "cafe\u0301-ñ\u0303",
   );
+});
+
+test("a missing or unreadable file is named with what to do, never its contents", () => {
+  const read = (path: string) => () =>
+    readSecret({ TOKEN_FILE: path }, "TOKEN", (file) => file);
+  const missing = join(dir, "missing");
+  expect(read(missing)).toThrow(`TOKEN_FILE (${missing}) doesn't exist.`);
+  expect(read(missing)).toThrow("plain text on one line");
+  expect(read(dir)).toThrow(`TOKEN_FILE (${dir}) can't be read.`);
+  const locked = join(dir, "locked");
+  writeFileSync(locked, secret, { mode: 0o000 });
+  // Root reads any file, so the permission case only shows for other users.
+  if (process.getuid?.() !== 0) {
+    expect(read(locked)).toThrow(
+      `TOKEN_FILE (${locked}) can't be read by the user the server runs as (uid ${process.getuid?.()}).`,
+    );
+    expect(read(locked)).not.toThrow(secret);
+  }
 });

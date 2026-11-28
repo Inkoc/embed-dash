@@ -27,23 +27,16 @@ const refused = (code: string) => () =>
 test.each([
   [
     "DISCORD_INVALID_TOKEN",
-    "Not connected: token refused",
+    "Bot token refused",
     "copy the token from the Bot page",
   ],
-  [
-    "DISCORD_UNREACHABLE",
-    "Not connected: Discord unreachable",
-    "network connection and DNS",
-  ],
-  [
-    "DISCORD_UNAVAILABLE",
-    "Not connected: Discord unavailable",
-    "Discord is having problems",
-  ],
+  ["DISCORD_UNREACHABLE", "Discord unreachable", "network connection and DNS"],
+  ["DISCORD_UNAVAILABLE", "Discord unavailable", "Discord is having problems"],
 ])("the bar names the cause of %s", async (code, label, hint) => {
   show("bar", refused(code));
   const alert = await screen.findByRole("alert");
-  expect(alert.textContent).toContain(label);
+  expect(alert.querySelector("p")?.firstChild?.textContent).toBe(label);
+  expect(alert.textContent).toContain("Not connected");
   expect(alert.textContent?.toLowerCase()).toContain(hint.toLowerCase());
   expect(alert.querySelector("p")?.title.toLowerCase()).toContain(
     hint.toLowerCase(),

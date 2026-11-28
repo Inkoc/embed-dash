@@ -123,24 +123,45 @@ test("when the bot can't connect after the page loads, the bar refits around the
       json: { code: "DISCORD_INVALID_TOKEN", error: "Token refused." },
     });
   });
-  await page.setViewportSize({ width: 1600, height: 800 });
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   const banner = page.getByRole("banner");
   await expect(banner.getByText("Connecting to Discord…")).toBeVisible();
-  await expect(banner.getByText("Not connected: token refused")).toBeVisible();
-  await expectHeaderFits(page);
-  // Short of room, the failure moves to the notice above the view, Retry and all.
+  // The bar names the cause in place of "Not connected", with the fix on hover.
+  for (const width of [1280, 1600]) {
+    await page.setViewportSize({ width, height: 800 });
+    const status = banner.getByText("Bot token refused");
+    await expect(status).toBeVisible();
+    await expect(status).toHaveAttribute(
+      "title",
+      /Copy the token from the Bot page/,
+    );
+    await expectHeaderFits(page);
+  }
+  // On a tablet the bar keeps the failure or hands it to the notice, whichever
+  // fits; either way the whole reason is there and nothing overlaps.
   await page.setViewportSize({ width: 768, height: 800 });
-  await expect(banner.getByText("Not connected")).toBeHidden();
+  await expectHeaderFits(page);
+  await expect(
+    page.getByRole("alert").filter({ visible: true }).first(),
+  ).toContainText("Discord rejected the bot token.");
+  // Short of room, the failure moves to the notice above the view, Retry and all.
+  await page.setViewportSize({ width: 640, height: 800 });
+  await expect(banner.getByText("Bot token refused")).toBeHidden();
   const notice = page.getByRole("main").getByRole("alert");
   await expect(notice).toContainText(
-    "Not connected: Discord rejected the bot token. Copy the token from the Bot page",
+    "Not connected: Discord rejected the bot token. Copy the token from the Bot page of your application in the Discord developer portal (not the client secret or application ID), save it as the token secret and restart the app.",
   );
-  const retry = await notice
-    .getByRole("button", { name: "Retry connection" })
-    .boundingBox();
-  expect(retry!.width).toBeGreaterThanOrEqual(44);
-  expect(retry!.height).toBeGreaterThanOrEqual(44);
+  const retry = notice.getByRole("button", { name: "Retry connection" });
+  const box = (await retry.boundingBox())!;
+  const area = (await notice.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  // The whole notice sits inside the window, with Retry inside the notice.
+  expect(area.x).toBeGreaterThanOrEqual(0);
+  expect(area.x + area.width).toBeLessThanOrEqual(640);
+  expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width);
+  await expectPhoneHeaderFits(page);
 });
 
 test("on phones the views take their own row, with or without Sign out, and hold four views", async ({

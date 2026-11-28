@@ -96,9 +96,8 @@ test("provides a working retry after a failed connection", async () => {
   );
   renderApp();
   const alerts = await screen.findAllByRole("alert");
-  expect(alerts[0]!.textContent).toContain(
-    "Not connected: Discord unreachable",
-  );
+  expect(alerts[0]!.textContent).toContain("Discord unreachable");
+  expect(alerts[0]!.textContent).toContain("Not connected");
   expect(alerts[0]!.textContent).toContain("app can’t reach Discord");
   fireEvent.click(banner().getByRole("button", { name: "Retry connection" }));
   expect(await banner().findByText("Test bot")).toBeTruthy();

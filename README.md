@@ -30,13 +30,20 @@ On Windows, in PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force secrets | Out-Null
-Set-Content -Encoding ascii secrets\bot_token.txt 'paste-the-bot-token-here'
-Set-Content -Encoding ascii secrets\admin_password.txt 'choose-a-strong-password'
+Set-Content -Encoding utf8 secrets\bot_token.txt 'paste-the-bot-token-here'
+Set-Content -Encoding utf8 secrets\admin_password.txt 'choose-a-strong-password'
 ```
 
-These commands leave the values in your shell history; clear it afterwards, or write the files with an editor instead. Files saved another way work too: UTF-8 with or without a byte-order mark, and UTF-16 (what `echo … > file` in Windows PowerShell 5 and Notepad's "Unicode" option write), with any line ending. Spaces and line breaks around the value are ignored, so a password can't start or end with a space; spaces inside a password are kept. A file that is empty, holds more than one line, or contains invisible or control characters stops startup with an error naming the file (never its contents); recreate it with the commands above.
+`-Encoding utf8` keeps accented, Cyrillic, Chinese or emoji characters in a password intact. PowerShell 7 writes plain UTF-8; Windows PowerShell 5 adds a byte-order mark, which is fine.
 
-Compose file secrets keep their host permissions, and the container runs as uid 1000, so give the files to that user and keep them private: `sudo chown 1000:1000 secrets/*.txt && chmod 600 secrets/*.txt` (if `id -u` already prints 1000, `chmod 600 secrets/*.txt` is enough). Avoid world-readable permissions such as 644: any account on the host could read the token.
+These commands leave the values in your shell history; clear it afterwards, or write the files with an editor instead. Files saved another way work too: UTF-8 with or without a byte-order mark, and UTF-16 (what `echo … > file` in Windows PowerShell 5 and Notepad's "Unicode" option write), with any line ending. UTF-16 without a byte-order mark is recognised from its pattern of bytes, which can't be told apart from UTF-8 for some short values with no ASCII characters (for example a password of only Chinese characters or only emoji); save those as UTF-8 or with a byte-order mark. Spaces and line breaks around the value are ignored, so a password can't start or end with a space; spaces inside a password are kept. A file that is empty, holds more than one line, or contains invisible or control characters stops startup with an error naming the file (never its contents); recreate it with the commands above.
+
+The server in the container runs as uid 1000 and must be able to read the files.
+
+- **Linux:** Compose secret files keep their host owner and permissions, so give them to uid 1000 and make them private: `sudo chown 1000:1000 secrets/*.txt && sudo chmod 600 secrets/*.txt`. Both need `sudo` because after the `chown` the files belong to uid 1000, not to you (if `id -u` already prints 1000, `chmod 600 secrets/*.txt` alone is enough). To change a file later, write it with `sudo`, for example `printf '%s\n' 'new-value' | sudo tee secrets/bot_token.txt > /dev/null`. Avoid world-readable permissions such as 644: any account on the host could read the token.
+- **Docker Desktop (macOS, Windows):** no `chown` is needed. Docker Desktop shares your files with its virtual machine and lets the container read them as they are. Keep them private to your account: `chmod 600 secrets/*.txt` on macOS; on Windows, keep the project in your user folder, which other accounts can't read.
+
+If the server can't read a file, it stops with an error naming the file and the uid it runs as.
 
 Secrets are read once, at startup. After changing a secret file, recreate the container: `docker compose up -d --force-recreate`.
 

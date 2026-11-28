@@ -2,16 +2,19 @@ import { useQuery } from "@tanstack/react-query";
 import { botIdentitySchema, type BotIdentity } from "@embed-dash/shared";
 import { connectionFailure, failureFrom, type AppError } from "./errors";
 
-/** A few words for the top bar, which has no room for the whole reason. */
-const shortReasons: Record<string, string> = {
-  DISCORD_INVALID_TOKEN: "token refused",
+/**
+ * What the top bar says instead of "Not connected" when the cause is known:
+ * about as long, so the bar still fits the failure at common desktop widths.
+ */
+const barReasons: Record<string, string> = {
+  DISCORD_INVALID_TOKEN: "Bot token refused",
   DISCORD_UNREACHABLE: "Discord unreachable",
   DISCORD_UNAVAILABLE: "Discord unavailable",
-  DISCORD_RATE_LIMITED: "rate limited",
+  DISCORD_RATE_LIMITED: "Bot rate limited",
 };
 
-export const botShortReason = (error: AppError) =>
-  (error.code && shortReasons[error.code]) || null;
+export const botBarLabel = (error: AppError) =>
+  (error.code && barReasons[error.code]) || "Not connected";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 

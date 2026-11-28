@@ -14,23 +14,72 @@ export function decodeSecret(bytes: Uint8Array): string {
     return strict("utf-16le", bytes.subarray(2));
   if (first === 0xfe && second === 0xff)
     return strict("utf-16be", bytes.subarray(2));
-  return strict(bomlessUtf16(bytes) ?? "utf-8", bytes);
+  const utf8 = attempt("utf-8", bytes);
+  // Valid UTF-8 that reads as clean text is always taken as it is.
+  if (utf8 !== null && plain(utf8)) return utf8;
+  // Otherwise UTF-16 is considered only when most code units look like it:
+  // a high byte below 0x20, as in ASCII (0x00), Latin, Greek or Cyrillic.
+  // Damaged UTF-8 (a stray NUL, a second line) stays UTF-8 and is refused
+  // for what it holds; so does text that is only whitespace.
+  if (
+    utf8 !== null &&
+    (!utf8.trim() || lowHighUnits(bytes) * 4 <= bytes.length)
+  )
+    return utf8;
+  const utf16 = bomlessUtf16(bytes);
+  if (utf16 !== null) return utf16;
+  if (utf8 === null) throw new Error("Not readable text");
+  return utf8;
+}
+
+/** UTF-16 code units with a high byte below 0x20, in the likelier byte order. */
+function lowHighUnits(bytes: Uint8Array) {
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i + 1 < bytes.length; i += 2) {
+    if (bytes[i]! < 0x20) even++;
+    if (bytes[i + 1]! < 0x20) odd++;
+  }
+  return Math.max(even, odd);
 }
 
 /**
- * Without a BOM, UTF-16 is recognised only for ASCII-range text: an even
- * length, a zero high byte in every character and a non-zero low byte. Tokens
- * and passwords typed on a keyboard fit that; UTF-8 never has a NUL in text,
- * so a UTF-8 file can't be mistaken for it.
+ * Without a BOM, UTF-16 is recognised by its zero bytes: every ASCII
+ * character, a line ending included, has a zero high byte, which sits at odd
+ * offsets in little-endian and even ones in big-endian. The side with more
+ * zeros is tried first, and a reading counts only if it decodes strictly to
+ * clean text. Some files are ambiguous in principle: text with few ASCII
+ * characters whose other characters' bytes also read as valid UTF-8 (many
+ * CJK characters do), or text with no ASCII at all in either byte order.
+ * Those need UTF-8 or a BOM, as the README says.
  */
-function bomlessUtf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | null {
+function bomlessUtf16(bytes: Uint8Array): string | null {
   if (!bytes.length || bytes.length % 2) return null;
-  const ascii = (high: number) => {
-    for (let i = 0; i < bytes.length; i += 2)
-      if (bytes[i + high] !== 0 || !bytes[i + 1 - high]) return false;
-    return true;
-  };
-  return ascii(1) ? "utf-16le" : ascii(0) ? "utf-16be" : null;
+  let even = 0;
+  let odd = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== 0) continue;
+    if (i % 2) odd++;
+    else even++;
+  }
+  // With no zeros to go by, the high bytes are the side that varies less:
+  // one script keeps them nearly constant.
+  const bigEndian =
+    even === odd ? distinct(bytes, 0) < distinct(bytes, 1) : even > odd;
+  const order = bigEndian
+    ? (["utf-16be", "utf-16le"] as const)
+    : (["utf-16le", "utf-16be"] as const);
+  for (const encoding of order) {
+    const text = attempt(encoding, bytes);
+    if (text !== null && plain(text)) return text;
+  }
+  return null;
+}
+
+function distinct(bytes: Uint8Array, offset: number) {
+  const seen = new Set<number>();
+  for (let i = offset; i < bytes.length; i += 2) seen.add(bytes[i]!);
+  return seen.size;
 }
 
 function strict(encoding: string, bytes: Uint8Array) {
@@ -39,11 +88,46 @@ function strict(encoding: string, bytes: Uint8Array) {
   );
 }
 
-/** Control characters (NUL, line breaks inside the value) and characters that print as nothing. */
-const hidden = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
+function attempt(encoding: string, bytes: Uint8Array) {
+  try {
+    return strict(encoding, bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** Emoji sequences legitimately hold joiners and variation selectors, so they are set aside before the check. */
+const emoji = /\p{RGI_Emoji}/gv;
+/**
+ * Control characters (NUL, line breaks inside the value), format characters
+ * and everything Unicode says renders as nothing when unsupported
+ * (Default_Ignorable_Code_Point: joiners, fillers, variation selectors).
+ * Visible combining accents are not in these sets.
+ */
+const hidden =
+  /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
+
+const invisible = (value: string) => hidden.test(value.replace(emoji, ""));
+
+/** A reading that is a single clean value once trimmed, with no unassigned or private-use code points. */
+const plain = (text: string) => {
+  const value = text.trim();
+  return !!value && !invisible(value) && !/[\p{Cn}\p{Co}]/u.test(value);
+};
 
 const recreate =
   'Recreate it as plain text on one line (see "Secret files" in the README).';
+
+function unreadable(source: string, error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === "ENOENT" || code === "ENOTDIR")
+    return `${source} doesn't exist. Create it, or fix the path. ${recreate}`;
+  if (code === "EACCES" || code === "EPERM") {
+    const uid = process.getuid?.();
+    return `${source} can't be read by the user the server runs as${uid === undefined ? "" : ` (uid ${uid})`}. Give that user read access to the file (see "Secret files" in the README).`;
+  }
+  return `${source} can't be read. Check that it is a readable file. ${recreate}`;
+}
 
 /**
  * A secret from `${name}_FILE` (which wins) or `${name}`, without surrounding
@@ -65,8 +149,8 @@ export function readSecret(
     let bytes: Buffer;
     try {
       bytes = readFileSync(path);
-    } catch {
-      throw new Error(`${name}_FILE must point to a readable secret file`);
+    } catch (error) {
+      throw new Error(unreadable(source, error), { cause: error });
     }
     try {
       raw = decodeSecret(bytes);
@@ -78,7 +162,7 @@ export function readSecret(
   const value = raw.trim();
   const fix = file ? ` ${recreate}` : "";
   if (!value) throw new Error(`${source} is empty.${fix}`);
-  if (hidden.test(value))
+  if (invisible(value))
     throw new Error(
       `${source} contains invisible or control characters, such as a NUL or a line break inside the value.${fix}`,
     );

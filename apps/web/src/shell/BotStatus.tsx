@@ -1,5 +1,5 @@
 import { RotateCw, X } from "lucide-react";
-import { botInitial, botShortReason, useBot } from "../bot";
+import { botInitial, botBarLabel, useBot } from "../bot";
 import styles from "./BotStatus.module.css";
 
 /**
@@ -19,15 +19,18 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
       </p>
     ) : null;
   if (bot.isError) {
-    const short = botShortReason(bot.error);
+    const label = botBarLabel(bot.error);
     return (
       <div className={styles[variant]} data-state="error" role="alert">
         <X className={styles.icon} aria-hidden="true" />
         {variant === "bar" ? (
           // The full reason and its fix show on hover here, and in the notice when the bar sheds the failure.
           <p title={bot.error.reason}>
-            Not connected{short && `: ${short}`}
-            <span className="visually-hidden">. {bot.error.reason}</span>
+            {label}
+            <span className="visually-hidden">
+              {label === "Not connected" ? "" : ". Not connected"}.{" "}
+              {bot.error.reason}
+            </span>
           </p>
         ) : (
           <p>{bot.error.message}</p>
