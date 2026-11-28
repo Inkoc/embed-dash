@@ -420,31 +420,34 @@ test("an embed is built with fields, and a limit breach blocks sending", async (
   expect(errors).toEqual([]);
 });
 
-test("on a short phone, going forward from a blank draft shows that there is nothing to send", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 360, height: 640 });
-  await page.goto("/");
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
-  await page.keyboard.press("Control+Enter");
-  const line = page.getByText("Nothing to send yet.", { exact: true }).first();
-  await expect(line).toBeVisible();
-  await expect(page.locator("#in-content")).toBeFocused();
-  const layout = await page.evaluate(() => {
-    const box = (selector: string) =>
-      document.querySelector(selector)!.getBoundingClientRect();
-    return {
-      line: box("#starter"),
-      stickyBottom: box("[aria-label='Show']").bottom,
-      barTop: box("#action-meta").top,
-    };
+for (const height of [640, 740])
+  test(`on a 360×${height} phone, going forward from a blank draft shows that there is nothing to send`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height });
+    await page.goto("/");
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+    await page.keyboard.press("Control+Enter");
+    const line = page
+      .getByText("Nothing to send yet.", { exact: true })
+      .first();
+    await expect(line).toBeVisible();
+    await expect(page.locator("#in-content")).toBeFocused();
+    const layout = await page.evaluate(() => {
+      const box = (selector: string) =>
+        document.querySelector(selector)!.getBoundingClientRect();
+      return {
+        line: box("#starter"),
+        stickyBottom: box("[aria-label='Show']").bottom,
+        barTop: box("#action-meta").top,
+      };
+    });
+    // The whole answer sits between the sticky bars, not under them.
+    expect(layout.line.top).toBeGreaterThanOrEqual(layout.stickyBottom);
+    expect(layout.line.bottom).toBeLessThanOrEqual(layout.barTop);
   });
-  // The whole answer sits between the sticky bars, not under them.
-  expect(layout.line.top).toBeGreaterThanOrEqual(layout.stickyBottom);
-  expect(layout.line.bottom).toBeLessThanOrEqual(layout.barTop);
-});
 
 test("an embed added and left empty is not sent, even after a reload", async ({
   page,

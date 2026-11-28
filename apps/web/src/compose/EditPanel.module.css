@@ -159,3 +159,15 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/*
+ * An update's outcome is scrolled into view (EditPanel.tsx). On tablets only
+ * the top bar is sticky and the page has no scroll padding for it, so the
+ * outcome keeps clear of it itself; phones pad the page for their sticky bars.
+ */
+@media (47em < width <= 68.75em) {
+  .problem,
+  .results {
+    scroll-margin-top: calc(var(--bar-height) + var(--space-4));
+  }
+}
