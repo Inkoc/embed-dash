@@ -22,7 +22,7 @@ export function ThemeSwitch({
         <Sun className={styles.sun} />
         <Moon className={styles.moon} />
       </span>
-      <span className={styles.themeLabel}>Dark theme</span>
+      <span data-shed-label="theme">Dark theme</span>
     </button>
   );
 }

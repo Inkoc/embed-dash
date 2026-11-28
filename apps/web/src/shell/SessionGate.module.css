@@ -208,7 +208,11 @@
   color: var(--access-warning);
 }
 .access p {
+  flex: 1;
   margin: 0;
+}
+.accessToggle {
+  display: none;
 }
 /* Hangs below the top bar, whose one-line rules it mustn't inherit: it wraps within the viewport. */
 .logoutError {
@@ -223,35 +227,51 @@
   padding: var(--space-4);
   border: var(--rule-width) solid var(--danger);
 }
-/* Shed by the top bar when its cluster is short of room; Sign out names the person in its label and title, so the badge can go. */
+/* Shed by the top bar on tablets or when its cluster is short of room; Sign out names the person in its label and title, so the badge can go. */
 [data-shed-badge] .user {
   display: none;
-}
-[data-shed-sign-out] .signOutLabel {
-  position: absolute;
-  width: var(--rule-width);
-  height: var(--rule-width);
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-@media (max-width: 860px) {
-  .user {
-    display: none;
-  }
-  .signOutLabel {
-    position: absolute;
-    width: var(--rule-width);
-    height: var(--rule-width);
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
 }
 @media (max-width: 640px) {
   .sheet {
     padding: var(--space-4);
   }
   .access {
-    padding-inline: var(--space-3);
+    align-items: center;
+    padding-block: 0;
+    padding-inline: var(--space-3) var(--space-1);
+  }
+  .access p {
+    padding-block: var(--space-2);
+  }
+  .accessDetail:not([data-open]) {
+    display: none;
+  }
+  .accessToggle {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-self: flex-start;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--tap);
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font-size: var(--text-label);
+    font-weight: var(--weight-label);
+    cursor: pointer;
+  }
+  .accessToggle:hover {
+    background: var(--sheet);
+  }
+  .accessToggle svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  .accessToggle[aria-expanded="true"] svg {
+    transform: rotate(180deg);
   }
 }
 @media (prefers-reduced-motion: reduce) {

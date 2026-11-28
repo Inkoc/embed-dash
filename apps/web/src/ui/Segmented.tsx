@@ -33,15 +33,20 @@ export function Segmented({ activeKey, children, className, ...aria }: Props) {
     place();
     requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));
     if (typeof ResizeObserver === "undefined") return;
-    // A resize (the bar reflowing onto two rows) moves the thumb with its item
-    // at once; only choosing another item slides it. The observer also reports
-    // once on observe, which must not cut short a slide that has just started.
-    let first = true;
+    // A resize (the bar reflowing onto two rows, even before first paint)
+    // moves the thumb with its item at once; only choosing another item slides
+    // it. The observer also reports once on observe, which must not cut short
+    // a slide that has just started, so a thumb already under its item stays.
     const observer = new ResizeObserver(() => {
-      if (first) {
-        first = false;
+      const active = trackEl.querySelector<HTMLElement>("[data-active]");
+      if (
+        active &&
+        thumbEl.style.getPropertyValue("--thumb-x") ===
+          `${active.offsetLeft}px` &&
+        thumbEl.style.getPropertyValue("--thumb-w") ===
+          `${active.offsetWidth}px`
+      )
         return;
-      }
       delete thumbEl.dataset.ready;
       place();
       requestAnimationFrame(() => (thumbEl.dataset.ready = "true"));

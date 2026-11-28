@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation } from "react-router";
-import { TriangleAlert, X, LogOut } from "lucide-react";
+import { ChevronDown, TriangleAlert, X, LogOut } from "lucide-react";
 import type { SessionUser } from "@embed-dash/shared";
 import { DiscordEntry, NotAllowed, UserBadge } from "./DiscordSignIn";
 import { ThemeSwitch } from "./ThemeSwitch";
@@ -37,15 +37,37 @@ const AccessContext = createContext<{
   logout: () => void;
 } | null>(null);
 
+/**
+ * The warning for an open instance. On phones it folds to its first line, so
+ * it doesn't squeeze the editing area, and Details opens the rest.
+ */
 export function AccessWarning() {
   const access = useContext(AccessContext);
+  const [open, setOpen] = useState(false);
   return access?.insecure ? (
     <div className={styles.access} role="note">
       <TriangleAlert aria-hidden="true" />
       <p>
-        <strong>No login required.</strong> This instance is open to anyone who
-        can reach it. Keep it on 127.0.0.1.
+        <strong>No login required.</strong>{" "}
+        <span
+          id="access-detail"
+          className={styles.accessDetail}
+          data-open={open || undefined}
+        >
+          This instance is open to anyone who can reach it. Keep it on
+          127.0.0.1.
+        </span>
       </p>
+      <button
+        type="button"
+        className={styles.accessToggle}
+        aria-expanded={open}
+        aria-controls="access-detail"
+        onClick={() => setOpen(!open)}
+      >
+        Details
+        <ChevronDown aria-hidden="true" />
+      </button>
     </div>
   ) : null;
 }
@@ -71,7 +93,7 @@ export function SessionControls() {
         title={access.user ? `Signed in as ${access.user.name}` : undefined}
       >
         <LogOut aria-hidden="true" className={styles.icon} />
-        <span className={styles.signOutLabel}>
+        <span data-shed-label="sign-out">
           {access.busy ? "Signing out…" : "Sign out"}
         </span>
       </button>
