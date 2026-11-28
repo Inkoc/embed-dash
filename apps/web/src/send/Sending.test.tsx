@@ -117,6 +117,8 @@ beforeEach(() => {
       }
       if (url.startsWith("/api/guilds"))
         return Promise.resolve(Response.json(guilds));
+      if (url === "/api/channel-groups")
+        return Promise.resolve(Response.json([]));
       return Promise.resolve(Response.json({}, { status: 404 }));
     }),
   );

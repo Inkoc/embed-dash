@@ -38,6 +38,8 @@ const listing = (guilds: Guild[]): GuildsResponse => ({
 function stub(guilds: Response[]) {
   const fetcher = vi.fn((url: string) => {
     if (url === "/api/bot") return Promise.resolve(Response.json(bot));
+    if (url === "/api/channel-groups")
+      return Promise.resolve(Response.json([]));
     const next = guilds.shift();
     return next ? Promise.resolve(next) : new Promise<Response>(() => {});
   });
@@ -313,7 +315,8 @@ test("a refresh drops ticked channels the bot can no longer post in and says so"
   const tray = screen.getByRole("complementary", { name: "Tray" });
   expect(tray).toHaveTextContent("3 channels in 1 server");
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  expect(await screen.findByRole("status")).toHaveTextContent(
+  const dropped = await screen.findByText(/ticked channels are no longer/);
+  expect(dropped.closest("[role=status]")).toHaveTextContent(
     "2 ticked channels are no longer available to the bot and were taken out of the tray.",
   );
   expect(tray).toHaveTextContent("1 channel in 1 server");

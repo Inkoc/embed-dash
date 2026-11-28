@@ -1,0 +1,256 @@
+.groups {
+  display: grid;
+  gap: var(--space-2);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* user-chosen names need their row's label even where the quick picks drop theirs */
+.label {
+  margin-right: var(--space-1);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+
+/* a group is one bordered piece: the pick, a hairline, and the button that opens it */
+.group {
+  display: inline-flex;
+  max-width: 100%;
+  border: var(--rule-width) solid var(--rule-2);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  transition: border-color var(--dur-fast);
+}
+.group:hover {
+  border-color: var(--accent);
+}
+.apply {
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: none;
+}
+.name {
+  overflow: hidden;
+  max-width: var(--group-name-max);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock {
+  color: var(--ink-2);
+}
+.more {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  border-left: var(--rule-width) solid var(--rule);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+.more:hover {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.more svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.skel {
+  display: block;
+  width: calc(var(--group-name-max) / 2);
+  height: var(--tap);
+  border-radius: var(--radius-md);
+  background: var(--rule);
+}
+
+.failed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--danger);
+}
+.failed > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.hint {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.statusRegion:empty {
+  display: none;
+}
+.note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.note > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--accent);
+}
+.undo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.undo:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.undo:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+.undo svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* the group's own dialog is wider: it lists channels by name and server */
+.dialog {
+  width: min(var(--dialog-wide), calc(100vw - var(--space-6)));
+}
+.list {
+  overflow-y: auto;
+  max-height: 40vh;
+  margin: 0 calc(var(--space-5) * -1);
+  border-block: var(--rule-width) solid var(--rule);
+  list-style: none;
+}
+.list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-5);
+}
+.list li + li {
+  border-top: var(--rule-width) solid var(--rule);
+}
+.list li[data-unavailable] {
+  background: var(--sheet-2);
+}
+.channel {
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-label);
+}
+.list li[data-unavailable] .channel {
+  color: var(--ink-2);
+}
+.server {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+  text-align: right;
+}
+.why {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.why svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: calc(var(--space-3) * -1);
+}
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.quiet:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+.quiet:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+.delete {
+  color: var(--danger);
+}
+.delete:hover:not(:disabled) {
+  background: var(--danger-wash);
+}
+.meta {
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+.failure p {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--danger);
+}
+.failure svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  margin-top: var(--space-1);
+}
+
+@media (max-width: 640px) {
+  .name {
+    max-width: calc(var(--group-name-max) * 0.625);
+  }
+  .list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .server {
+    text-align: left;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .group,
+  .more,
+  .undo,
+  .quiet {
+    transition: none;
+  }
+}

@@ -64,6 +64,13 @@
       "when": 1795836230432,
       "tag": "0008_eminent_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795874968042,
+      "tag": "0009_channel_groups",
+      "breakpoints": true
     }
   ]
 }

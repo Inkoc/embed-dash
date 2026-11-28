@@ -6,12 +6,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from "react";
-import {
-  canSendTo,
-  channelPermissions,
-  type Guild,
-  type GuildChannel,
-} from "@embed-dash/shared";
+import { canSendTo, type Guild, type GuildChannel } from "@embed-dash/shared";
 import {
   Check,
   ChevronDown,
@@ -22,6 +17,7 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import {
+  blockedReason,
   callNumberStrongFrom,
   kindLabel,
   type ChannelHit,
@@ -47,22 +43,6 @@ const receivedLabel: Record<Received, string> = {
 };
 
 export const drawerId = (guildId: string) => `drawer-${guildId}`;
-
-function blockedReason(channel: GuildChannel): string | null {
-  if (canSendTo(channel)) return null;
-  // Forum posts are new threads, which sending doesn't do yet.
-  if (
-    channel.kind === "forum" &&
-    !channelPermissions.some(
-      (p) => p.required && channel.missing.includes(p.key),
-    )
-  )
-    return "Forum posting isn’t available yet";
-  const labels = channelPermissions
-    .filter((p) => p.required && channel.missing.includes(p.key))
-    .map((p) => p.label);
-  return `Bot is missing ${labels.join(" and ")} here`;
-}
 
 interface Props {
   drawers: DrawerHit[];

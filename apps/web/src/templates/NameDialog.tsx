@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CircleAlert } from "lucide-react";
-import { templateNameMax } from "@embed-dash/shared";
+import { channelGroupNameMax, templateNameMax } from "@embed-dash/shared";
 import { countLevel } from "../compose/TextControl";
 import type { AppError } from "../errors";
 import { FailureDetail } from "../ui/FailureDetail";
@@ -9,8 +9,24 @@ import { keepTabInside } from "../ui/dialogTab";
 import fieldStyles from "../compose/TextControl.module.css";
 import styles from "./NameDialog.module.css";
 
+/** What is being named: the label, example and limit follow from it. */
+const subjects = {
+  template: {
+    label: "Template name",
+    example: "Weekly digest",
+    max: templateNameMax,
+  },
+  group: {
+    label: "Group name",
+    example: "Tournament news",
+    max: channelGroupNameMax,
+  },
+} as const;
+type Subject = keyof typeof subjects;
+
 interface Props {
   open: boolean;
+  subject?: Subject;
   title: string;
   children?: ReactNode;
   initialName: string;
@@ -23,17 +39,19 @@ interface Props {
   onCancel: () => void;
 }
 
-const problemFor = (name: string) => {
+const problemFor = (subject: Subject, name: string) => {
   const length = name.trim().length;
-  if (length === 0) return "Give the template a name.";
-  if (length > templateNameMax)
-    return `Use at most ${templateNameMax} characters; this name has ${length}.`;
+  const { max } = subjects[subject];
+  if (length === 0) return `Give the ${subject} a name.`;
+  if (length > max)
+    return `Use at most ${max} characters; this name has ${length}.`;
   return undefined;
 };
 
-/** Asks for a template's name, for saving a new one and for renaming. */
+/** Asks for a template's or group's name, for saving a new one and for renaming. */
 export function NameDialog({
   open,
+  subject = "template",
   title,
   children,
   initialName,
@@ -62,7 +80,8 @@ export function NameDialog({
     if (!open && element.open) element.close();
   }, [open, initialName]);
 
-  const problem = left ? problemFor(name) : undefined;
+  const { label, example, max } = subjects[subject];
+  const problem = left ? problemFor(subject, name) : undefined;
   const length = name.trim().length;
   const describedBy = [
     `${id}-name-count`,
@@ -88,7 +107,7 @@ export function NameDialog({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (problemFor(name)) {
+          if (problemFor(subject, name)) {
             setLeft(true);
             input.current?.focus();
             return;
@@ -100,16 +119,16 @@ export function NameDialog({
         {children && <div className={dialogStyles.body}>{children}</div>}
         <div className={`${fieldStyles.control} ${styles.control}`}>
           <div className={fieldStyles.top}>
-            <label htmlFor={`${id}-name`}>Template name</label>
+            <label htmlFor={`${id}-name`}>{label}</label>
             <span
               id={`${id}-name-count`}
               className={fieldStyles.count}
-              data-level={countLevel(length, templateNameMax)}
+              data-level={countLevel(length, max)}
             >
               {length}
               <span aria-hidden="true"> / </span>
               <span className="visually-hidden"> of </span>
-              {templateNameMax}
+              {max}
               <span className="visually-hidden"> characters</span>
             </span>
           </div>
@@ -119,7 +138,7 @@ export function NameDialog({
             className={fieldStyles.field}
             type="text"
             autoComplete="off"
-            placeholder="Weekly digest"
+            placeholder={example}
             value={name}
             aria-invalid={problem ? true : undefined}
             aria-describedby={describedBy}

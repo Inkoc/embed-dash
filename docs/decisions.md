@@ -44,3 +44,7 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Failures read as sentences.** One client mapping turns server and Discord errors into specific copy, with status and code behind a Details disclosure; a refused sign-in behind an unconfigured HTTPS proxy names the settings to set.
 - **The top bar holds four views.** Below about 640 px the views move to their own row; at larger text sizes the bar sheds the brand name, then the bot name, one step at a time. Layout breakpoints are in em so they follow the browser's text size.
 - **Dependency audit (milestone 2).** Production dependencies have no known advisories; the one remaining moderate advisory is in a build-time tool used only to generate migrations and was accepted again.
+
+## Milestone 3
+
+- **Channel groups add to the selection.** Selecting a group ticks its available channels on top of the ticked ones, like the other quick picks, with Undo; replacing would silently drop channels the operator just ticked. Groups store each channel with its server and name as saved, so a channel that has gone can still be named; availability is worked out in the browser against the listing it shows, so it follows Refresh without another request, and the server refuses to save a channel the bot can’t post to.

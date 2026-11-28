@@ -45,7 +45,7 @@ compose.yml, Dockerfile, scripts/ci.sh
 | `send_targets` | id, send_id → sends, guild_id, guild_name, channel_id, channel_name, message_id, status (`pending` `posting` `sent` `failed` `unknown`), error, attempted_at |
 | `uploads` | id, filename, content_type, size, created_at |
 | `templates` | id, name, payload_json, updated_at |
-| `channel_groups` | id, name, channel_ids_json |
+| `channel_groups` | id, name, channels_json (id, name, guild id and guild name per channel, as when saved), updated_at |
 | `sessions` | id (SHA-256 of the cookie value), subject (`password` / `discord:<user id>`), user_name and user_avatar_url (Discord only), csrf_token, expires_at |
 
 `payload_json` is the shared `MessagePayload` (content, embeds, link buttons, attachment references by upload id, flags, mention settings). Guild and channel names are copied onto targets so history stays readable after channels change.
@@ -73,7 +73,8 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | `DELETE /api/sends/:id` | Cancel a scheduled send |
 | `GET /api/templates`, `GET /api/templates/:id` | Templates, most recently updated first: `{id, name, updatedAt, message, missingFiles}`; `missingFiles` lists the ids of files the server no longer has |
 | `POST /api/templates`, `PATCH /api/templates/:id`, `DELETE /api/templates/:id` | Save `{name, message}`; rename and/or overwrite `{name?, message?}`; delete. The message is a draft (it may still break a Discord limit); only files the server still has are kept |
-| `/api/channel-groups` | CRUD |
+| `GET /api/channel-groups` | Groups by name: `{id, name, updatedAt, channels: [{id, name, guildId, guildName}]}`. The browser checks each channel against the listing it shows, so availability follows Refresh |
+| `POST /api/channel-groups`, `PATCH /api/channel-groups/:id`, `DELETE /api/channel-groups/:id` | Save `{name, channelIds}`; rename and/or replace the channels `{name?, channelIds?}`; delete. Channels are saved only if the bot can post to them in the current listing, otherwise `409 GROUP_CHANNELS_UNAVAILABLE` names them and nothing changes |
 
 JSON import/export runs in the browser; nothing about it needs the server.
 

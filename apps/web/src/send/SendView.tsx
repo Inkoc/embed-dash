@@ -12,8 +12,8 @@ import { Link } from "react-router";
 import {
   canSendTo,
   inviteUrl,
-  type Guild,
   type GuildChannel,
+  type GuildsResponse,
 } from "@embed-dash/shared";
 import {
   ArrowLeft,
@@ -31,6 +31,7 @@ import { FailureDetail } from "../ui/FailureDetail";
 import { useDraft } from "../compose/draft";
 import { searchCatalogue } from "./catalogue";
 import { Catalogue, drawerId } from "./Catalogue";
+import { ChannelGroups } from "./ChannelGroups";
 import { useGuilds } from "./guilds";
 import { useSelection, withIds } from "./selection";
 import { ServerRail, ServerStrip } from "./ServerRail";
@@ -111,9 +112,7 @@ export function SendView() {
   else if (data.guilds.length === 0)
     body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
   else
-    body = (
-      <Picker guilds={data.guilds} locked={!!busy} received={received(draft)} />
-    );
+    body = <Picker listing={data} locked={!!busy} received={received(draft)} />;
 
   return (
     <section className={styles.send} aria-labelledby="send-title">
@@ -199,14 +198,15 @@ export function SendView() {
 }
 
 function Picker({
-  guilds,
+  listing,
   locked,
   received,
 }: {
-  guilds: Guild[];
+  listing: GuildsResponse;
   locked: boolean;
   received: ReadonlyMap<string, Received>;
 }) {
+  const { guilds } = listing;
   const [selected, setSelected] = useSelection();
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
@@ -398,6 +398,17 @@ function Picker({
               : ""}
           </p>
           <ServerStrip guilds={guilds} selected={selected} onJump={onJump} />
+          <ChannelGroups
+            listing={listing}
+            ticked={entries.map(({ guild, channel }) => ({
+              id: channel.id,
+              guildId: guild.id,
+              guildName: guild.name,
+            }))}
+            selected={selected}
+            locked={locked}
+            setSelected={setSelected}
+          />
           <div className={styles.picks} role="group" aria-labelledby="picks">
             <span id="picks">Quick picks</span>
             <button
