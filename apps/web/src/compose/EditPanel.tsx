@@ -162,7 +162,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
       await startSend(
         "retry-edit",
         `/api/sends/${editing.id}/edits/retry`,
-        { id: newSendId(), targetIds: [targetId] },
+        { targetIds: [targetId] },
         csrf(),
       );
       await query.refetch();

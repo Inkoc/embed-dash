@@ -330,9 +330,13 @@ test("failed edits retry through the edit route; deleted copies have no retry ac
   expect(retries).toHaveLength(1);
   fireEvent.click(retries[0]!);
   expect(await screen.findByText("Updated", { exact: true })).toBeVisible();
-  expect(
-    fetcher.mock.calls.some(([url]) => url === "/api/sends/send/edits/retry"),
-  ).toBe(true);
+  const retried = fetcher.mock.calls.find(
+    ([url]) => url === "/api/sends/send/edits/retry",
+  );
+  // Retrying is idempotent on the server, so the request names only the copy.
+  expect(JSON.parse(retried![1]!.body as string)).toEqual({
+    targetIds: ["copy"],
+  });
 });
 
 test("a lost save answer keeps an unchanged request id but changed content gets a new id", async () => {
