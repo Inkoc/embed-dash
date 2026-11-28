@@ -37,6 +37,9 @@ const discordApp = await createApp(
     uploadRetentionDays: 14,
     discordApiBase,
     publicUrl: `http://127.0.0.1:${discordPort}`,
+    // Each sign-in spec names its own client address, so repeated runs don't
+    // share the sign-in rate limit; the limit itself is unchanged.
+    trustProxy: ["127.0.0.1"],
     discordLogin: {
       clientId: fakeOAuth.clientId,
       clientSecret: fakeOAuth.secret,

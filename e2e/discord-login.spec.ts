@@ -4,6 +4,15 @@ import { expectHeaderFits } from "./header.js";
 
 const baseURL = `http://127.0.0.1:${Number(process.env.E2E_PORT ?? 28742) + 1}`;
 test.use({ baseURL, storageState: { cookies: [], origins: [] } });
+// One client address per test and repetition: the sign-in routes are rate
+// limited per address, and repeated runs would otherwise share one budget.
+let client = 0;
+test.beforeEach(async ({ page }, testInfo) => {
+  client += 1;
+  await page.setExtraHTTPHeaders({
+    "x-forwarded-for": `198.18.${testInfo.workerIndex % 256}.${(client % 254) + 1}`,
+  });
+});
 
 test("an approved Discord account signs in, shows in the bar and signs out", async ({
   page,

@@ -60,15 +60,24 @@ test.each(
   ].flatMap((text) =>
     encodings.map(([name, encode]) => [text, name, encode] as const),
   ),
-)("reads the password %s from %s", (text, _name, encode) => {
-  for (const ending of ["", "\n", "\r\n"])
+)("reads the password %s from %s", (text, name, encode) => {
+  // BOM-less UTF-16 with no ASCII character at all is covered below.
+  const endings =
+    name.endsWith("without BOM") && !/[ -~]/.test(text)
+      ? ["\n", "\r\n"]
+      : ["", "\n", "\r\n"];
+  for (const ending of endings)
     expect(fromFile(encode(`${text}${ending}`), { spaces: true })).toBe(text);
 });
 
-test("without a BOM or any ASCII, little-endian UTF-16 wins a tie", () => {
-  // Pure Cyrillic still tells its byte order by its high bytes.
-  expect(decodeSecret(utf16be("пароль"))).toBe("пароль");
+test("BOM-less UTF-16 with no ASCII at all is read only if it isn't valid UTF-8", () => {
+  // Emoji surrogates are never valid UTF-8, in either byte order's favour.
   expect(decodeSecret(Buffer.from("🔐🔐", "utf16le"))).toBe("🔐🔐");
+  // Cyrillic code units are also valid UTF-8 bytes, so without a line ending
+  // or a BOM the file reads as UTF-8 and is refused for its control bytes.
+  expect(() => fromFile(Buffer.from("пароль", "utf16le"))).toThrow(
+    "invisible or control",
+  );
 });
 
 test("doesn't take an even-length UTF-8 text for UTF-16", () => {
@@ -77,6 +86,21 @@ test("doesn't take an even-length UTF-8 text for UTF-16", () => {
   // Damaged UTF-8 stays UTF-8, to be refused for what it holds.
   expect(decodeSecret(Buffer.from("abc\0"))).toBe("abc\0");
   expect(decodeSecret(Buffer.from("secret\0\n"))).toBe("secret\0\n");
+});
+
+test.each([
+  ["a\nb\n"],
+  ["a\r\nb"],
+  ["a\nb"],
+  ["a\u0001b\u0002"],
+  ["\u0001a\u0002b\u0003c"],
+  ["ab\ncd\nef\n"],
+  ["Fixture\tSecret"],
+])("valid UTF-8 %j stays UTF-8 and is refused, never re-read", (text) => {
+  expect(decodeSecret(Buffer.from(text))).toBe(text);
+  expect(() => fromFile(Buffer.from(text))).toThrow(
+    /invisible or control|must not contain spaces/,
+  );
 });
 
 test.each([

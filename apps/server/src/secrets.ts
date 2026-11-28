@@ -15,17 +15,13 @@ export function decodeSecret(bytes: Uint8Array): string {
   if (first === 0xfe && second === 0xff)
     return strict("utf-16be", bytes.subarray(2));
   const utf8 = attempt("utf-8", bytes);
-  // Valid UTF-8 that reads as clean text is always taken as it is.
-  if (utf8 !== null && plain(utf8)) return utf8;
-  // Otherwise UTF-16 is considered only when most code units look like it:
-  // a high byte below 0x20, as in ASCII (0x00), Latin, Greek or Cyrillic.
-  // Damaged UTF-8 (a stray NUL, a second line) stays UTF-8 and is refused
-  // for what it holds; so does text that is only whitespace.
-  if (
-    utf8 !== null &&
-    (!utf8.trim() || lowHighUnits(bytes) * 4 <= bytes.length)
-  )
-    return utf8;
+  // Valid UTF-8 without a NUL is UTF-8, whatever it holds: a second line or a
+  // control character is then refused, never re-read as another clean value.
+  if (utf8 !== null && !bytes.includes(0)) return utf8;
+  // Valid UTF-8 with NULs is UTF-16 only when most code units have a high
+  // byte below 0x20, as ASCII (0x00), Latin, Greek and Cyrillic do; a stray
+  // NUL in UTF-8 text stays UTF-8 and is refused.
+  if (utf8 !== null && lowHighUnits(bytes) * 4 <= bytes.length) return utf8;
   const utf16 = bomlessUtf16(bytes);
   if (utf16 !== null) return utf16;
   if (utf8 === null) throw new Error("Not readable text");
@@ -48,10 +44,10 @@ function lowHighUnits(bytes: Uint8Array) {
  * character, a line ending included, has a zero high byte, which sits at odd
  * offsets in little-endian and even ones in big-endian. The side with more
  * zeros is tried first, and a reading counts only if it decodes strictly to
- * clean text. Some files are ambiguous in principle: text with few ASCII
- * characters whose other characters' bytes also read as valid UTF-8 (many
- * CJK characters do), or text with no ASCII at all in either byte order.
- * Those need UTF-8 or a BOM, as the README says.
+ * clean text. It is only tried for bytes that hold a NUL or aren't valid
+ * UTF-8, so text with no ASCII character at all, not even a line ending, may
+ * not be recognised (Cyrillic and many CJK characters also read as valid
+ * UTF-8); such values need UTF-8 or a BOM, as the README says.
  */
 function bomlessUtf16(bytes: Uint8Array): string | null {
   if (!bytes.length || bytes.length % 2) return null;
