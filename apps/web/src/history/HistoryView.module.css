@@ -352,7 +352,7 @@
 .entry .updateNotice {
   display: block;
   font-size: var(--text-meta);
-  color: var(--ink-2);
+  color: var(--warn);
   font-weight: var(--weight-label);
   margin-top: var(--space-1);
 }

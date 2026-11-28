@@ -22,6 +22,7 @@ import {
   type Issue,
   type MessagePayload,
   type SendResult,
+  type HistoryDestination,
 } from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import type {
@@ -139,7 +140,7 @@ export async function registerSends(
   // flight finish, but starts no more: the rest are recorded as not sent.
   const running = new Set<Promise<void>>();
   const channelTurns = new Map<string, Promise<void>>();
-  let destinations: unknown[] | undefined;
+  let destinations: HistoryDestination[] | undefined;
   let closing = false;
   const inBackground = (task: Promise<void>) => {
     running.add(task);
@@ -416,20 +417,17 @@ export async function registerSends(
       });
       channelTurns.set(target.channelId, turn);
       await previous;
-      if (closing) {
-        record(target, {
-          status: "failed",
-          error: editing ? "EDIT_NOT_ATTEMPTED" : "NOT_ATTEMPTED",
-        });
-        release();
-        if (channelTurns.get(target.channelId) === turn)
-          channelTurns.delete(target.channelId);
-        continue;
-      }
-      // Marked before the request goes out, so a crash can tell this copy,
-      // which may have arrived, from the ones never tried.
-      record(target, { status: "posting" });
       try {
+        if (closing) {
+          record(target, {
+            status: "failed",
+            error: editing ? "EDIT_NOT_ATTEMPTED" : "NOT_ATTEMPTED",
+          });
+          continue;
+        }
+        // Marked before the request goes out, so a crash can tell this copy,
+        // which may have arrived, from the ones never tried.
+        record(target, { status: "posting" });
         const retained = storedAttachments(target).filter((a) =>
           payload.attachments.some((file) => file.id === a.uploadId),
         );
@@ -644,7 +642,7 @@ export async function registerSends(
     }
     if (query.to) {
       conditions.push("s.created_at < ?");
-      params.push(Date.parse(query.to) + 86400000);
+      params.push(Date.parse(query.to));
     }
     if (query.guildId || query.channelId) {
       const targetConditions = ["t.send_id = s.id"];
@@ -671,7 +669,7 @@ export async function registerSends(
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.status = 'unknown') AS unknown_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed' AND t.edit_error != 'MESSAGE_DELETED') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
@@ -680,13 +678,14 @@ export async function registerSends(
       last_edited_at: number | null;
       status: string;
       channel_count: number;
+      unknown_count: number;
       update_failure_count: number;
     }[];
     destinations ??= sqlite
       .prepare(
         "SELECT DISTINCT t.guild_id AS guildId, t.guild_name AS guildName, t.channel_id AS channelId, t.channel_name AS channelName FROM send_targets t JOIN sends s ON s.id = t.send_id WHERE s.status IN ('sending', 'done', 'partial', 'failed') ORDER BY t.guild_name, t.channel_name",
       )
-      .all();
+      .all() as HistoryDestination[];
     return {
       entries: rows.slice(0, query.limit).map((row) => {
         const payload = messagePayloadSchema.parse(
@@ -707,6 +706,7 @@ export async function registerSends(
             }),
           ),
           channelCount: row.channel_count,
+          unconfirmed: row.unknown_count === row.channel_count,
           updateFailureCount: row.update_failure_count,
           status: row.status,
         };

@@ -72,31 +72,4 @@ export function discordMessage(
   };
 }
 
-/** What a later search will look in: every text a reader sees. */
-export function searchText(payload: MessagePayload): string {
-  return [
-    payload.content,
-    ...payload.embeds.flatMap((embed) => [
-      embed.title,
-      embed.description,
-      embed.author.name,
-      embed.footer.text,
-      ...embed.fields.flatMap((field) => [field.name, field.value]),
-    ]),
-  ]
-    .map((text) => text.trim())
-    .filter(Boolean)
-    .join("\n")
-    .toLowerCase();
-}
-
-/** Prefer an embed heading, then the first visible message or description line. */
-export function messageTitle(payload: MessagePayload): string {
-  const line = (text: string) => text.split("\n").find((part) => part.trim());
-  return (
-    payload.embeds.find((embed) => embed.title.trim())?.title ||
-    line(payload.content) ||
-    payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
-    "Untitled message"
-  );
-}
+export { messageTitle, searchText } from "@embed-dash/shared";

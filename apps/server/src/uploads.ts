@@ -131,6 +131,7 @@ export function sweepUploads(
   sqlite: Database.Database,
   retentionDays: number,
   now = Date.now(),
+  warn: (details: { id?: string }, message: string) => void = () => {},
 ) {
   const db = drizzle(sqlite);
   const cutoff = now - retentionDays * dayMs;
@@ -144,14 +145,20 @@ export function sweepUploads(
     try {
       rmSync(join(directory, id), { force: true });
     } catch {
-      /* Leave inaccessible files for the next sweep. */
+      warn({ id }, "Upload cleanup skipped an entry");
     }
   }
   let names: string[] = [];
   try {
     names = readdirSync(directory);
-  } catch {
-    // No upload has been stored yet.
+  } catch (error) {
+    if (!(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ))
+      warn({}, "Upload cleanup could not read entries");
   }
   for (const name of names) {
     const path = join(directory, name);
@@ -159,7 +166,7 @@ export function sweepUploads(
       if (!find(name) && statSync(path).mtimeMs < cutoff)
         rmSync(path, { force: true });
     } catch {
-      /* One inaccessible entry must not hold up the rest. */
+      warn({ id: name }, "Upload cleanup skipped an entry");
     }
   }
 }
@@ -183,7 +190,13 @@ export async function registerUploads(
   // A failed sweep only leaves files for the next one; it must never stop the server.
   const sweep = () => {
     try {
-      sweepUploads(config.dataDir, sqlite, config.uploadRetentionDays);
+      sweepUploads(
+        config.dataDir,
+        sqlite,
+        config.uploadRetentionDays,
+        Date.now(),
+        (details, message) => app.log.warn(details, message),
+      );
     } catch (error) {
       app.log.warn(safeErrorDetails(error), "Upload cleanup failed");
     }

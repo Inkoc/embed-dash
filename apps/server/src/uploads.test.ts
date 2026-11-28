@@ -339,6 +339,7 @@ test("an inaccessible entry does not stop cleanup of later files", async () => {
   const removable = join(dir, "uploads", "z-removable");
   writeFileSync(removable, "old file");
   utimesSync(removable, long, long);
+  let logs = "";
   const app = await createApp(
     {
       authMode: "none",
@@ -350,9 +351,12 @@ test("an inaccessible entry does not stop cleanup of later files", async () => {
       uploadRetentionDays: 14,
       discordApiBase: "http://127.0.0.1:1/api",
     },
-    { logger: false },
+    { logger: { stream: { write: (chunk: string) => void (logs += chunk) } } },
   );
   try {
+    expect(logs).toContain("Upload cleanup skipped an entry");
+    expect(logs).toContain('"id":"stray-dir"');
+    expect(logs).not.toContain(dir);
     expect(existsSync(stray)).toBe(true);
     expect(existsSync(removable)).toBe(false);
     expect((await app.inject("/health")).statusCode).toBe(200);

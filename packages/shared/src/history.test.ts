@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { emptyEmbed, type MessagePayload } from "@embed-dash/shared";
-import { messageTitle, searchText } from "./payload.js";
+import { emptyEmbed, type MessagePayload } from "./index.js";
+import { messageTitle, searchText } from "./index.js";
 const payload = (
   content = "",
   embeds: MessagePayload["embeds"] = [],

@@ -1119,7 +1119,7 @@ test("history searches stored text and destinations, filters and paginates behin
     `guildId=${target.guild_id}`,
     `channelId=${news}`,
     "status=done",
-    "from=2026-11-20&to=2026-11-20",
+    "from=2026-11-20T00:00:00Z&to=2026-11-21T00:00:00Z",
   ]) {
     expect(
       (await list(`?${filter}`)).entries.map(
@@ -1129,7 +1129,7 @@ test("history searches stored text and destinations, filters and paginates behin
   }
   expect((await list("?status=failed")).entries).toEqual([]);
   expect(
-    (await list("?from=2026-11-21")).entries.map(
+    (await list("?from=2026-11-21T00:00:00Z")).entries.map(
       (entry: { id: string }) => entry.id,
     ),
   ).toEqual([second]);
@@ -1142,7 +1142,7 @@ test("history searches stored text and destinations, filters and paginates behin
     "limit=101",
     "status=draft",
     "from=bad",
-    "from=2026-11-22&to=2026-11-20",
+    "from=2026-11-22T00:00:00Z&to=2026-11-20T00:00:00Z",
     "q=a&q=b",
   ]) {
     expect(
@@ -1862,4 +1862,43 @@ test("deleted copies do not contribute to the history update-failure count", asy
     updateFailureCount: 0,
     lastEditedAt: expect.any(Number),
   });
+});
+
+test("a failed posting-state write releases the channel for the next send", async () => {
+  const s = await setup();
+  const id = randomUUID();
+  const db = openDatabase(s.dir);
+  db.exec(
+    `CREATE TRIGGER refuse_posting BEFORE UPDATE OF status ON send_targets WHEN NEW.status = 'posting' AND NEW.send_id = '${id}' BEGIN SELECT RAISE(FAIL, 'write refused'); END`,
+  );
+  expect((await post(s, [news], {}, id)).statusCode).toBe(202);
+  await settle(s, id);
+  expect((await sent(s, [news])).status).toBe("done");
+  db.close();
+});
+
+test("destination options include new servers and channels after the cache is populated", async () => {
+  const s = await setup();
+  await sent(s, [news]);
+  const list = async () =>
+    (await s.app.inject({ url: "/api/sends", headers: s.headers })).json();
+  expect(
+    (await list()).destinations.map(
+      (target: { channelId: string }) => target.channelId,
+    ),
+  ).toEqual([news]);
+  await sent(s, [general, schedule]);
+  expect(
+    (await list()).destinations
+      .map((target: { channelId: string }) => target.channelId)
+      .sort(),
+  ).toEqual([news, general, schedule].sort());
+});
+
+test("history identifies a send with only unconfirmed copies", async () => {
+  const s = await setup();
+  s.fake.fail(news, { status: 500 });
+  await sent(s, [news]);
+  const list = await s.app.inject({ url: "/api/sends", headers: s.headers });
+  expect(list.json().entries[0]).toMatchObject({ unconfirmed: true });
 });

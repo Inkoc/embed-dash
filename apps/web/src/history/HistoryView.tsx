@@ -7,7 +7,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  historyQuerySchema,
+  historyFiltersSchema,
+  messageTitle,
   historyDetailSchema,
   historyResponseSchema,
   messageLink,
@@ -24,15 +25,20 @@ import {
 import { Verdict } from "../send/SendPanel";
 import trayStyles from "../send/Tray.module.css";
 import catalogueStyles from "../send/Catalogue.module.css";
-import { messageSummary } from "../send/summary";
+import {
+  date,
+  localZone,
+  historyRequest,
+  destinationSummary,
+} from "./presentation";
 import { startSend } from "../send/sendApi";
 import type { Session } from "../shell/SessionGate";
 import type { Theme } from "../theme";
 import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./HistoryView.module.css";
 
-const date = (value: number) =>
-  new Date(value).toLocaleString(undefined, { timeZone: "UTC" }) + " UTC";
+// Remember the opened row across route remounts, including the global Escape shortcut.
+const returnRows = new Map<string, string>();
 
 const statusLabel = {
   done: "All sent",
@@ -83,6 +89,7 @@ export function HistoryList() {
   const search = useRef<HTMLInputElement>(null);
   const results = useRef<HTMLUListElement>(null);
   const cursor = useRef<HTMLSpanElement>(null);
+  const pendingFocus = useRef<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState(params.get("q") ?? "");
   const urlQuery = params.get("q") ?? "";
@@ -102,7 +109,7 @@ export function HistoryList() {
     }, 250);
     return () => clearTimeout(timer);
   }, [searchValue, params, setParams]);
-  const validation = historyQuerySchema.safeParse(Object.fromEntries(params));
+  const validation = historyFiltersSchema.safeParse(Object.fromEntries(params));
   const [filtersOpen, setFiltersOpen] = useState(!validation.success);
   const dateError = validation.success
     ? undefined
@@ -117,17 +124,38 @@ export function HistoryList() {
     queryFn: async () => {
       if (!validation.success)
         throw new Error("Correct the history filters before searching.");
-      return historyResponseSchema.parse(await load(`/api/sends?${params}`));
+      return historyResponseSchema.parse(
+        await load(`/api/sends?${historyRequest(params)}`),
+      );
     },
     retry: false,
   });
+  const entries = query.data?.entries;
+  const tabbable = entries?.some((entry) => entry.id === active)
+    ? active
+    : entries?.[0]?.id;
+  useEffect(() => {
+    if (query.isPlaceholderData || query.isFetching || !entries) return;
+    const returning = returnRows.get(params.toString());
+    if (pendingFocus.current === params.toString() || returning) {
+      const row = returning
+        ? [
+            ...(results.current?.querySelectorAll<HTMLAnchorElement>("a") ??
+              []),
+          ].find((link) => link.dataset.id === returning)
+        : results.current?.querySelector<HTMLAnchorElement>("a");
+      if (document.activeElement === search.current || returning) row?.focus();
+      pendingFocus.current = null;
+      returnRows.delete(params.toString());
+    }
+  }, [entries, params, query.isPlaceholderData, query.isFetching]);
   const change = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
     if (key !== "page") next.delete("page");
     if (key === "guildId") next.delete("channelId");
-    if (!historyQuerySchema.safeParse(Object.fromEntries(next)).success)
+    if (!historyFiltersSchema.safeParse(Object.fromEntries(next)).success)
       setFiltersOpen(true);
     setParams(next, { replace: true });
   };
@@ -183,14 +211,28 @@ export function HistoryList() {
               type="search"
               ref={search}
               value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
+              onChange={(event) => {
+                pendingFocus.current = null;
+                setSearchValue(event.target.value);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "ArrowDown") {
                   event.preventDefault();
-                  if (searchValue !== urlQuery) change("q", searchValue);
-                  results.current
-                    ?.querySelector<HTMLAnchorElement>("a")
-                    ?.focus();
+                  if (
+                    searchValue !== urlQuery ||
+                    query.isPlaceholderData ||
+                    query.isFetching
+                  ) {
+                    const next = new URLSearchParams(params);
+                    if (searchValue) next.set("q", searchValue);
+                    else next.delete("q");
+                    next.delete("page");
+                    pendingFocus.current = next.toString();
+                    if (searchValue !== urlQuery) change("q", searchValue);
+                  } else
+                    results.current
+                      ?.querySelector<HTMLAnchorElement>("a")
+                      ?.focus();
                 }
               }}
               placeholder="Message text, server or channel"
@@ -243,7 +285,7 @@ export function HistoryList() {
               </select>
             </label>
             <label>
-              From (UTC)
+              From ({localZone()})
               <input
                 type="date"
                 max={params.get("to") || undefined}
@@ -253,7 +295,7 @@ export function HistoryList() {
             </label>
             <div className={styles.dateFilter}>
               <label>
-                To (UTC)
+                Through ({localZone()})
                 <input
                   type="date"
                   min={params.get("from") || undefined}
@@ -370,10 +412,9 @@ export function HistoryList() {
                     <Link
                       className={styles.entry}
                       data-id={entry.id}
-                      tabIndex={
-                        entry.id === (active ?? query.data.entries[0]?.id)
-                          ? 0
-                          : -1
+                      tabIndex={entry.id === tabbable ? 0 : -1}
+                      onClick={() =>
+                        returnRows.set(params.toString(), entry.id)
                       }
                       to={`/history/${entry.id}?${params}`}
                     >
@@ -389,12 +430,7 @@ export function HistoryList() {
                       <strong>
                         {entry.title}
                         <span className={styles.names}>
-                          {entry.destinations
-                            .map(
-                              (target) =>
-                                `${target.guildName || target.guildId} / #${target.channelName || target.channelId}`,
-                            )
-                            .join(" · ")}
+                          {destinationSummary(entry.destinations, urlQuery)}
                         </span>
                         {entry.lastEditedAt && (
                           <span className={styles.names}>
@@ -419,16 +455,23 @@ export function HistoryList() {
                       </span>
                       <span data-status={entry.status}>
                         <Verdict
+                          reveal={false}
                           state={
-                            entry.status === "done"
-                              ? "sent"
-                              : entry.status === "sending"
-                                ? "posting"
-                                : entry.status === "partial"
-                                  ? "unknown"
-                                  : "failed"
+                            entry.unconfirmed
+                              ? "unknown"
+                              : entry.status === "done"
+                                ? "sent"
+                                : entry.status === "sending"
+                                  ? "posting"
+                                  : entry.status === "partial"
+                                    ? "partial"
+                                    : "failed"
                           }
-                          label={statusLabel[entry.status]}
+                          label={
+                            entry.unconfirmed
+                              ? "Unconfirmed"
+                              : statusLabel[entry.status]
+                          }
                           index={0}
                         />
                       </span>
@@ -467,6 +510,8 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
   const { beginEdit } = useDraft();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const arrived = useRef(false);
   const retryFocus = useRef<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [retryProblem, setRetryProblem] = useState<AppError | null>(null);
@@ -483,6 +528,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
         ? 1000
         : false,
   });
+  useEffect(() => {
+    if (query.data && !arrived.current) {
+      heading.current?.focus();
+      arrived.current = true;
+    }
+  }, [query.data]);
   useEffect(() => {
     if (retryFocus.current && query.data?.edit?.status === "done") {
       document.getElementById(`update-${retryFocus.current}`)?.focus();
@@ -516,10 +567,8 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
     <>
       <header className={styles.head}>
         <div>
-          <h2 tabIndex={-1}>
-            {query.data
-              ? messageSummary(withIds(query.data.payload)).headline
-              : "Send details"}
+          <h2 ref={heading} tabIndex={-1}>
+            {query.data ? messageTitle(query.data.payload) : "Send details"}
           </h2>
           {query.data?.lastEditedAt && (
             <p>Last edited {date(query.data.lastEditedAt)}</p>
@@ -611,7 +660,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
               <div className={styles.sectionHead}>
                 <h3>Channel results</h3>
                 <p>
-                  {statusLabel[query.data.status]} · {query.data.targets.length}{" "}
+                  {query.data.targets.every(
+                    (target) => target.status === "unknown",
+                  )
+                    ? "Unconfirmed"
+                    : statusLabel[query.data.status]}{" "}
+                  · {query.data.targets.length}{" "}
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
               </div>
@@ -634,7 +688,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                       <strong>#{target.channelName || target.channelId}</strong>
                       <span>{target.guildName || target.guildId}</span>
                       <p>
-                        Delivery: <Verdict state={target.status} index={0} />
+                        Delivery:{" "}
+                        <Verdict
+                          reveal={false}
+                          state={target.status}
+                          index={0}
+                        />
                       </p>
                       {target.error && <p>{target.error.message}</p>}
                       {target.status === "failed" && !target.messageId && (
@@ -662,12 +721,14 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                           <p>
                             Latest update:{" "}
                             <Verdict
+                              reveal={false}
                               index={0}
                               state={
-                                update.error?.code === "MESSAGE_DELETED" ||
-                                update.error?.code === "EDIT_UNCONFIRMED"
-                                  ? "unknown"
-                                  : update.status
+                                update.error?.code === "MESSAGE_DELETED"
+                                  ? "deleted"
+                                  : update.error?.code === "EDIT_UNCONFIRMED"
+                                    ? "unknown"
+                                    : update.status
                               }
                               label={
                                 update.error?.code === "MESSAGE_DELETED"
