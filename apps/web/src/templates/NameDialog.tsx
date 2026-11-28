@@ -5,6 +5,7 @@ import { countLevel } from "../compose/TextControl";
 import type { AppError } from "../errors";
 import { FailureDetail } from "../ui/FailureDetail";
 import dialogStyles from "../ui/ConfirmDialog.module.css";
+import { keepTabInside } from "../ui/dialogTab";
 import fieldStyles from "../compose/TextControl.module.css";
 import styles from "./NameDialog.module.css";
 
@@ -77,6 +78,7 @@ export function NameDialog({
       className={dialogStyles.dialog}
       aria-labelledby={`${id}-title`}
       onClose={onCancel}
+      onKeyDown={keepTabInside}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}

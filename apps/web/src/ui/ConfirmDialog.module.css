@@ -10,6 +10,12 @@
 .dialog[open] {
   animation: arrive var(--dur-base) var(--ease-out);
 }
+/* The global 1ms fallback would still flash the first frame's offset; arrive in place. */
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] {
+    animation: none;
+  }
+}
 .dialog::backdrop {
   background: var(--scrim);
 }
