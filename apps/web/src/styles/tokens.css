@@ -222,6 +222,8 @@
   --tray-edge: inset 0 1px 0 oklch(100% 0 0 / 0.06);
 
   /* Discord's light chat; the link is darkened slightly so it passes AA on the embed */
+  --dc-button: #e3e5e8;
+  --dc-button-hover: #d7d9dc;
   --dc-bg: #ffffff;
   --dc-embed: #f2f3f5;
   --dc-text-color: #313338;
@@ -284,6 +286,8 @@
     inset 0 1px 0 oklch(100% 0 0 / 0.07), 0 0 0 1px oklch(40% 0.035 246);
 
   /* Discord's dark chat */
+  --dc-button: #4e5058;
+  --dc-button-hover: #5c5e66;
   --dc-bg: #313338;
   --dc-embed: #2b2d31;
   --dc-text-color: #dbdee1;

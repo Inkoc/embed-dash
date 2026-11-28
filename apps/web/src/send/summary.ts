@@ -1,4 +1,8 @@
-import type { SendResult, SendTarget } from "@embed-dash/shared";
+import {
+  completeButtonRows,
+  type SendResult,
+  type SendTarget,
+} from "@embed-dash/shared";
 import { written, type Draft } from "../compose/draft";
 
 export const plural = (n: number, one: string, many: string) =>
@@ -18,8 +22,13 @@ export function messageSummary(composed: Draft): {
   text: boolean;
   embeds: number;
   files: number;
+  buttons: number;
 } {
   const draft = written(composed);
+  const completeButtons = completeButtonRows(draft.components).flatMap(
+    (row) => row.components,
+  );
+  const buttons = completeButtons.length;
   const first = draft.embeds.find((embed) => embed.title.trim());
   const headline =
     (first && excerpt(first.title)) ||
@@ -27,10 +36,14 @@ export function messageSummary(composed: Draft): {
     excerpt(
       draft.embeds.find((e) => e.description.trim())?.description ?? "",
     ) ||
-    "Untitled message";
+    excerpt(
+      completeButtons.find((button) => button.label.trim())?.label ?? "",
+    ) ||
+    (buttons ? "Linked resources" : "Untitled message");
   const parts = [
     draft.content.trim() ? "text" : null,
     draft.embeds.length ? plural(draft.embeds.length, "embed", "embeds") : null,
+    buttons ? plural(buttons, "button", "buttons") : null,
     draft.attachments.length
       ? plural(draft.attachments.length, "file", "files")
       : null,
@@ -42,6 +55,7 @@ export function messageSummary(composed: Draft): {
     text: !!draft.content.trim(),
     embeds: draft.embeds.length,
     files: draft.attachments.length,
+    buttons,
   };
 }
 

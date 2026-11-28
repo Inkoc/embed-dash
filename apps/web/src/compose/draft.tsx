@@ -11,6 +11,8 @@ import {
 } from "react";
 import {
   embedHasContent,
+  completeButtonRows,
+  type ButtonRowDraft,
   emptyEmbed,
   messageDraftSchema,
   validateMessage,
@@ -33,7 +35,12 @@ export interface Embed extends Omit<EmbedDraft, "fields"> {
   id: string;
   fields: EmbedField[];
 }
+export interface ButtonRow extends ButtonRowDraft {
+  key: string;
+  components: (ButtonRowDraft["components"][number] & { key: string })[];
+}
 export interface Draft {
+  components?: ButtonRow[];
   content: string;
   embeds: Embed[];
   /** Files already on the server; the draft holds only their ids and names. */
@@ -46,6 +53,18 @@ export const newId = () => `k${++lastId}`;
 
 export const withIds = (message: MessageDraft): Draft => ({
   content: message.content,
+  ...(message.components?.length
+    ? {
+        components: message.components.map((row) => ({
+          ...row,
+          key: newId(),
+          components: row.components.map((button) => ({
+            ...button,
+            key: newId(),
+          })),
+        })),
+      }
+    : {}),
   attachments: message.attachments,
   embeds: message.embeds.map((embed) => ({
     ...embed,
@@ -87,6 +106,9 @@ export const written = (draft: Draft): Draft =>
  */
 export const toMessage = (draft: Draft): MessageDraft => ({
   content: draft.content,
+  ...(draft.components?.length
+    ? { components: completeButtonRows(draft.components) }
+    : {}),
   attachments: draft.attachments,
   embeds: draft.embeds.filter(embedHasContent).map((embed) => ({
     ...withoutId(embed),
@@ -142,6 +164,7 @@ export function exampleDraft(): Draft {
 
 /** Nothing typed yet: the composer offers the example instead of listing problems. */
 export const isBlank = (draft: Draft) =>
+  !draft.components?.length &&
   !draft.content.trim() &&
   draft.attachments.length === 0 &&
   written(draft).embeds.length <= 1 &&
@@ -311,6 +334,19 @@ export function locate(
   if (parts[0] === "content") return { id: "in-content", open: [], unfold: [] };
   if (parts[0] === "attachments")
     return { id: "files-add", open: [], unfold: [] };
+  if (parts[0] === "components") {
+    const row = draft.components?.[Number(parts[1])];
+    const button = row?.components[Number(parts[3])];
+    return {
+      id: button
+        ? `${button.key}-${parts[4] ?? "label"}`
+        : row
+          ? `${row.key}-add`
+          : "buttons-add-row",
+      open: [],
+      unfold: [],
+    };
+  }
   const embed = draft.embeds[Number(parts[1])];
   if (!embed) return { id: "compose-budget", open: [], unfold: [] };
   return { ...inEmbed(embed, parts), unfold: [`${embed.id}:folded`] };

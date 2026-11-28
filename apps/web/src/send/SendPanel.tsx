@@ -116,7 +116,11 @@ export function BlockedList({ issues }: { issues: Issue[] }) {
         {issues.slice(0, listed).map((issue) => (
           <li key={`${issue.path}:${issue.message}`}>
             <span>
-              <b>{issue.label}:</b> {issue.message}
+              <b>
+                {issue.label}
+                {issue.label.includes(":") ? "" : ":"}
+              </b>{" "}
+              {issue.message}
             </span>
             <Link to="/" state={{ reveal: issue.path }}>
               Go to the field

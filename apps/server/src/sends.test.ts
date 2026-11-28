@@ -1903,6 +1903,151 @@ test("history identifies a send with only unconfirmed copies", async () => {
   expect(list.json().entries[0]).toMatchObject({ unconfirmed: true });
 });
 
+test("link components survive sending, retry, editing and removal", async () => {
+  const s = await setup();
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "Read more",
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  s.fake.fail(results, { status: 403, code: 50013 });
+  const initial = await sent(s, [news, results], { components });
+  expect(s.fake.messages[0].payload.components).toEqual(components);
+  await retried(s, initial.id);
+  expect(s.fake.messages[1].payload.components).toEqual(components);
+  const revised = [
+    {
+      ...components[0]!,
+      components: [{ ...components[0]!.components[0]!, label: "Updated" }],
+    },
+  ];
+  expect((await edit(s, initial.id, { components: revised })).statusCode).toBe(
+    202,
+  );
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        JSON.stringify(message.payload.components) === JSON.stringify(revised),
+    ),
+  ).toBe(true);
+  expect((await edit(s, initial.id, { components: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        Array.isArray(message.payload.components) &&
+        message.payload.components.length === 0,
+    ),
+  ).toBe(true);
+});
+
+test("Discord payload trims button text and URLs and omits blank labels", () => {
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "  Guide  ",
+          url: "  https://example.com/guide \n",
+        },
+        {
+          type: 2,
+          style: 5,
+          label: " \t ",
+          url: " https://example.com ",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  expect(
+    JSON.parse(
+      JSON.stringify(discordMessage(payload({ components }), new Date())),
+    ).components,
+  ).toEqual([
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Guide", url: "https://example.com/guide" },
+        {
+          type: 2,
+          style: 5,
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ]);
+});
+
+test("the fake Discord rejects malformed raw components independently", async () => {
+  const s = await setup();
+  const address = s.fake.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  const button = {
+    type: 2 as const,
+    style: 5 as const,
+    label: "Guide",
+    url: "https://example.com",
+  };
+  const row = (change: object) => [
+    { type: 1, components: [{ ...button, ...change }] },
+  ];
+  for (const components of [
+    row({ url: " https://example.com " }),
+    row({ url: "https://example.com/a b" }),
+    row({ url: "ftp://example.com" }),
+    row({ label: " " }),
+    row({ label: " Guide " }),
+    row({ label: "x".repeat(81) }),
+    row({ url: "https://example.com/".padEnd(513, "a") }),
+    row({ style: 1 }),
+    row({ emoji: { name: "" } }),
+    [{ type: 1, components: [] }],
+    Array.from({ length: 6 }, () => ({ type: 1, components: [button] })),
+    [{ type: 1, components: Array.from({ length: 6 }, () => button) }],
+  ]) {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v10/channels/${news}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bot e2e-test-token",
+        },
+        body: JSON.stringify({ content: "Resources", components }),
+      },
+    );
+    expect(response.status, JSON.stringify(components)).toBe(400);
+  }
+  const sentMessage = await sent(s, [news], {
+    components: [
+      {
+        type: 1,
+        components: [
+          { ...button, label: " Guide ", url: " https://example.com " },
+        ],
+      },
+    ],
+  });
+  expect(sentMessage.status).toBe("done");
+  expect(s.fake.messages[0].payload.components).toEqual([
+    { type: 1, components: [button] },
+  ]);
+});
+
 test("scheduled sends survive restart, claim once, allow edits and cancellation, and release files", async () => {
   const env = await setup();
   const due = Date.now() + 60000;
@@ -2384,3 +2529,72 @@ test("an hour-overdue schedule survives a transient startup failure and delivers
   expect((await settle(resumed, nextId)).status).toBe("done");
   expect(s.fake.messages).toHaveLength(2);
 });
+
+test.each([false, true])(
+  "scheduled components reach Discord after editing is %s",
+  async (edited) => {
+    const s = await schedulerHarness();
+    const components: NonNullable<MessagePayload["components"]> = [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 5,
+            label: "Guide",
+            url: "https://example.com/guide",
+            emoji: { name: "📖" },
+          },
+        ],
+      },
+    ];
+    const due = s.now() + 60000;
+    const created = await s.create({ components }, due, [news]);
+    expect(created.response.statusCode).toBe(202);
+    let expected = components;
+    if (edited) {
+      expected = [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 5,
+              label: "Updated guide",
+              url: "https://example.com/updated",
+              emoji: { name: "wave", id: "123456789012345678", animated: true },
+            },
+            {
+              type: 2,
+              style: 5,
+              label: "Status",
+              url: "https://example.com/status",
+            },
+          ],
+        },
+      ];
+      const response = await s.app.inject({
+        method: "PUT",
+        url: `/api/sends/${created.id}/schedule`,
+        payload: {
+          payload: payload({
+            content: "Updated resources",
+            components: expected,
+          }),
+          channelIds: [news],
+          scheduledAt: new Date(due + 10000).toISOString(),
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect((await read(s, created.id)).json().payload.components).toEqual(
+      expected,
+    );
+    expect(s.fake.messages).toHaveLength(0);
+    s.advance(edited ? 70000 : 60000);
+    await s.scheduler.tick();
+    expect((await settle(s, created.id)).status).toBe("done");
+    expect(s.fake.messages).toHaveLength(1);
+    expect(s.fake.messages[0].payload.components).toEqual(expected);
+  },
+);

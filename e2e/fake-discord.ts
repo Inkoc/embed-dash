@@ -1,4 +1,64 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { buttonLimits } from "../packages/shared/src/buttons.js";
+
+function validComponents(value: unknown): boolean {
+  const object = (item: unknown): item is Record<string, unknown> =>
+    !!item && typeof item === "object" && !Array.isArray(item);
+  if (!Array.isArray(value) || value.length > buttonLimits.buttonRows)
+    return false;
+  return value.every(
+    (row) =>
+      object(row) &&
+      row.type === 1 &&
+      Array.isArray(row.components) &&
+      row.components.length >= 1 &&
+      row.components.length <= buttonLimits.buttonsPerRow &&
+      row.components.every((button) => {
+        if (
+          !object(button) ||
+          button.type !== 2 ||
+          button.style !== 5 ||
+          typeof button.url !== "string"
+        )
+          return false;
+        if (
+          button.url !== button.url.trim() ||
+          /\s/u.test(button.url) ||
+          [...button.url].length > buttonLimits.buttonUrl
+        )
+          return false;
+        try {
+          if (!["http:", "https:"].includes(new URL(button.url).protocol))
+            return false;
+        } catch {
+          return false;
+        }
+        if (
+          button.label !== undefined &&
+          (typeof button.label !== "string" ||
+            button.label !== button.label.trim() ||
+            [...button.label].length > buttonLimits.buttonLabel)
+        )
+          return false;
+        if (
+          button.emoji !== undefined &&
+          (!object(button.emoji) ||
+            typeof button.emoji.name !== "string" ||
+            !button.emoji.name.trim() ||
+            (button.emoji.id !== undefined &&
+              (typeof button.emoji.id !== "string" ||
+                !/^\d{17,20}$/.test(button.emoji.id))) ||
+            (button.emoji.animated !== undefined &&
+              typeof button.emoji.animated !== "boolean"))
+        )
+          return false;
+        return (
+          (typeof button.label === "string" && !!button.label.trim()) ||
+          button.emoji !== undefined
+        );
+      }),
+  );
+}
 
 const botId = "123456789012345678";
 
@@ -327,6 +387,12 @@ export function startFakeDiscord(port: number) {
           filename: part.filename!,
           size: part.data.length,
         }));
+
+      if (
+        payload.components !== undefined &&
+        !validComponents(payload.components)
+      )
+        return reply({ message: "Invalid components", code: 50035 }, 400);
 
       const declared = payload.attachments as
         { id: string | number; filename: string }[] | undefined;
