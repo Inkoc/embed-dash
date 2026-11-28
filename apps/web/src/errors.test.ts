@@ -10,7 +10,7 @@ import {
 test.each([
   [
     "DISCORD_UNREACHABLE",
-    "Couldn’t load servers: the bot may be offline, or the app can’t reach Discord.",
+    "Couldn’t load servers: the app can’t reach Discord. Check the server’s network connection and DNS",
   ],
   [
     "DISCORD_INVALID_TOKEN",
@@ -55,11 +55,32 @@ test("sign-in details show only the status and code", () => {
   expect(describeFailure("sign-in", 502, null).detail).toBe("HTTP 502");
 });
 
+test("a refused password and a paused sign-in read differently", () => {
+  const wrong = describeFailure("sign-in", 401, {
+    code: "WRONG_PASSWORD",
+    error: "Incorrect password. Try again.",
+  });
+  const paused = describeFailure("sign-in", 429, {
+    code: "TOO_MANY_ATTEMPTS",
+    error: "Too many sign-in attempts.",
+  });
+  expect(wrong.message).toBe(
+    "Couldn’t sign in: the password is incorrect. Check it and try again; it’s the instance password the server was started with.",
+  );
+  expect(paused.message).toBe(
+    "Couldn’t sign in: too many attempts, so sign-in is paused. Wait a minute, then try again.",
+  );
+});
+
 test.each([
   ["sign-in", 401, "Couldn’t sign in: the password is incorrect."],
   ["send", 401, "Couldn’t send: your session ended."],
   ["send", 403, "Couldn’t send: your session changed."],
-  ["sign-in", 429, "Couldn’t sign in: too many attempts."],
+  [
+    "sign-in",
+    429,
+    "Couldn’t sign in: too many attempts, so sign-in is paused.",
+  ],
   ["upload", 429, "Couldn’t upload the file: too many requests."],
   [
     "upload",

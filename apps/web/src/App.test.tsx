@@ -88,11 +88,17 @@ test("shows connection progress followed by the bot in the bar and preview", asy
 });
 
 test("provides a working retry after a failed connection", async () => {
-  stubBot(new Response("", { status: 502 }));
+  stubBot(
+    Response.json(
+      { code: "DISCORD_UNREACHABLE", error: "Unable to reach Discord." },
+      { status: 502 },
+    ),
+  );
   renderApp();
   const alerts = await screen.findAllByRole("alert");
+  expect(alerts[0]!.textContent).toContain("Discord unreachable");
   expect(alerts[0]!.textContent).toContain("Not connected");
-  expect(alerts[0]!.textContent).toContain("Unable to connect to Discord");
+  expect(alerts[0]!.textContent).toContain("app can’t reach Discord");
   fireEvent.click(banner().getByRole("button", { name: "Retry connection" }));
   expect(await banner().findByText("Test bot")).toBeTruthy();
 });

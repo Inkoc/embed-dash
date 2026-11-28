@@ -242,6 +242,14 @@ export async function registerAuth(
     "/api/auth/login",
     {
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+      // A paused sign-in must not read as one more wrong password.
+      errorHandler: async (error: FastifyError, _request, reply) => {
+        if (error.statusCode !== 429) throw error;
+        return reply.code(429).send({
+          code: "TOO_MANY_ATTEMPTS",
+          error: "Too many sign-in attempts. Wait a minute, then try again.",
+        });
+      },
       schema: {
         body: {
           type: "object",

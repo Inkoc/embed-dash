@@ -6,17 +6,56 @@ A self-hosted web app for building Discord embeds with a pixel-accurate live pre
 
 ## Setup
 
-Install Docker with Compose. Create `secrets/bot_token.txt` containing your Discord bot token and `secrets/admin_password.txt` containing a strong instance password (one line each); this file stays outside version control. Compose file secrets keep their host permissions, and the container runs as uid 1000, so give the files to that user and keep them private: `sudo chown 1000:1000 secrets/*.txt && chmod 600 secrets/*.txt` (if `id -u` already prints 1000, `chmod 600 secrets/*.txt` is enough). Avoid world-readable permissions such as 644: any account on the host could read the token. Then run:
+Install Docker with Compose. Create `secrets/bot_token.txt` containing your Discord bot token and `secrets/admin_password.txt` containing a strong instance password, as described in [Secret files](#secret-files); the `secrets/` folder stays outside version control. Then run:
 
 ```sh
-mkdir -p secrets
-# Create both secret files with your editor before starting.
 docker compose up --build
 ```
 
 Open <http://127.0.0.1:8742> and sign in with the instance password. The composer starts blank ("Start from an example" fills in a sample); the top bar shows which bot is connected. Write the message, choose **Choose channels**, tick the channels (search by channel name, server name or ID), then **Send** and confirm. Each channel reports its result, with **Retry** for failures; then start the next one with **Compose a new message**, or **Keep this draft** to send it to more channels. SQLite and uploaded files live in the named `embed-data` volume and migrations run at startup. Stop with `docker compose down`; the volume persists.
 
 The bot must already be in your servers. When you invite it, give it **View Channels**, **Send Messages** and **Embed Links**, plus **Attach Files** if you send files; channels where it lacks these are shown but can't be ticked. Mentions in a message don't notify anyone unless you allow it in the send options. Forum channels are listed but not yet supported, and sent messages can't be edited from the app yet. Running behind an HTTPS reverse proxy? Set `TRUST_PROXY` (see below) or `PUBLIC_URL`, otherwise sign-in is refused, and the sign-in page says which of the two to set.
+
+### Secret files
+
+Each secret file holds one line of plain text: the bot token from the **Bot** page of your application in the [Discord developer portal](https://discord.com/developers/applications) (**Reset Token**), not the client secret or the application ID; and a password of your choice. On Linux or macOS:
+
+```sh
+mkdir -p secrets
+printf '%s\n' 'paste-the-bot-token-here' > secrets/bot_token.txt
+printf '%s\n' 'choose-a-strong-password' > secrets/admin_password.txt
+```
+
+On Windows, in PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force secrets | Out-Null
+Set-Content -Encoding utf8 secrets\bot_token.txt 'paste-the-bot-token-here'
+Set-Content -Encoding utf8 secrets\admin_password.txt 'choose-a-strong-password'
+```
+
+`-Encoding utf8` keeps accented, Cyrillic, Chinese or emoji characters in a password intact. PowerShell 7 writes plain UTF-8; Windows PowerShell 5 adds a byte-order mark, which is fine.
+
+These commands leave the values in your shell history; clear it afterwards, or write the files with an editor instead. Files saved another way work too: UTF-8 with or without a byte-order mark, and UTF-16 (what `echo … > file` in Windows PowerShell 5 and Notepad's "Unicode" option write), with any line ending. UTF-16 without a byte-order mark is recognised from its zero bytes, so it needs at least one ASCII character, which a line ending counts as; a value saved with no ASCII character at all (for example only Cyrillic letters, with no line ending) has to be saved as UTF-8 or with a byte-order mark. Spaces and line breaks around the value are ignored, so a password can't start or end with a space; spaces inside a password are kept. A file that is empty, holds more than one line, or contains invisible or control characters stops startup with an error naming the file (never its contents); recreate it with the commands above.
+
+The server in the container runs as uid 1000 and must be able to read the files.
+
+- **Linux:** Compose secret files keep their host owner and permissions, so give them to uid 1000 and make them private: `sudo chown 1000:1000 secrets/*.txt && sudo chmod 600 secrets/*.txt`. Both need `sudo` because after the `chown` the files belong to uid 1000, not to you (if `id -u` already prints 1000, `chmod 600 secrets/*.txt` alone is enough). To change a file later, write it with `sudo`, for example `printf '%s\n' 'new-value' | sudo tee secrets/bot_token.txt > /dev/null`. Avoid world-readable permissions such as 644: any account on the host could read the token.
+- **Docker Desktop (macOS, Windows):** no `chown` is needed. Docker Desktop shares your files with its virtual machine and lets the container read them as they are. Keep them private to your account: `chmod 600 secrets/*.txt` on macOS; on Windows, keep the project in your user folder, which other accounts can't read.
+
+If the server can't read a file, it stops with an error naming the file and the uid it runs as.
+
+Secrets are read once, at startup. After changing a secret file, recreate the container: `docker compose up -d --force-recreate`.
+
+### Troubleshooting
+
+`docker compose logs embed-dash` shows the server's log. Shortly after startup it checks the bot token with Discord once and logs one line about it; the server keeps running whatever the answer, and the top bar says the same thing as "Not connected" with the reason.
+
+- **"Discord: connected as …"**: the token works.
+- **"the bot token was refused"** (top bar: _token refused_): the token file doesn't hold a valid bot token. Copy it again from the **Bot** page in the developer portal (**Reset Token**); the client secret and the application ID from **OAuth2** or **General Information** are not the token. Save it as above and run `docker compose up -d --force-recreate`.
+- **"can't reach Discord"** (top bar: _Discord unreachable_): the server can't connect to Discord. Check the host's network connection, any firewall or proxy, and DNS; inside Docker, the container uses the DNS servers Docker gives it.
+- **The container exits at startup** with a message naming a secret file: the file is missing, unreadable by uid 1000, empty, or not plain one-line text. The message says which; recreate the file as above.
+- **"the password is incorrect"** at sign-in: the password doesn't match the one in `secrets/admin_password.txt` when the server started (surrounding spaces don't count). After five wrong attempts in a minute, sign-in says it is paused instead; wait a minute and try again.
 
 ### Development
 

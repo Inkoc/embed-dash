@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { snowflakeSchema, uploadLimits } from "@embed-dash/shared";
+import { readSecret } from "./secrets.js";
 export interface DiscordLoginConfig {
   clientId: string;
   clientSecret: string;
@@ -42,19 +42,10 @@ function isProxyAddress(value: string) {
 }
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const baseDir = env.INIT_CWD ?? process.cwd();
-  let botToken = env.BOT_TOKEN ?? "";
-  if (env.BOT_TOKEN_FILE) {
-    try {
-      botToken = readFileSync(resolve(baseDir, env.BOT_TOKEN_FILE), "utf8");
-    } catch {
-      throw new Error("BOT_TOKEN_FILE must point to a readable secret file");
-    }
-  }
-  botToken = botToken.trim();
-  if (!botToken || /\s/.test(botToken))
-    throw new Error(
-      "BOT_TOKEN or BOT_TOKEN_FILE must provide a non-empty token without whitespace",
-    );
+  const fromBase = (path: string) => resolve(baseDir, path);
+  const botToken = readSecret(env, "BOT_TOKEN", fromBase);
+  if (!botToken)
+    throw new Error("BOT_TOKEN or BOT_TOKEN_FILE must provide the bot token");
   const port = Number(env.PORT ?? 8742);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error("PORT must be an integer from 1 to 65535");
@@ -103,21 +94,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const authMode = env.AUTH_MODE ?? "password";
   if (authMode !== "password" && authMode !== "none" && authMode !== "discord")
     throw new Error("AUTH_MODE must be password, none or discord");
-  let adminPassword = env.ADMIN_PASSWORD;
+  let adminPassword: string | undefined;
   if (authMode === "password") {
-    if (env.ADMIN_PASSWORD_FILE) {
-      try {
-        adminPassword = readFileSync(
-          resolve(baseDir, env.ADMIN_PASSWORD_FILE),
-          "utf8",
-        ).trimEnd();
-      } catch {
-        throw new Error(
-          "ADMIN_PASSWORD_FILE must point to a readable secret file",
-        );
-      }
-    }
-    if (!adminPassword?.trim())
+    adminPassword = readSecret(env, "ADMIN_PASSWORD", fromBase, {
+      spaces: true,
+    });
+    if (!adminPassword)
       throw new Error(
         "ADMIN_PASSWORD or ADMIN_PASSWORD_FILE must provide a non-empty password",
       );
@@ -157,7 +139,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const discordLogin =
     authMode === "discord"
-      ? readDiscordLogin(env, baseDir, publicUrl)
+      ? readDiscordLogin(env, fromBase, publicUrl)
       : undefined;
   return {
     trustProxy,
@@ -177,7 +159,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 function readDiscordLogin(
   env: NodeJS.ProcessEnv,
-  baseDir: string,
+  fromBase: (path: string) => string,
   publicUrl: string | undefined,
 ): DiscordLoginConfig {
   const clientId = env.DISCORD_CLIENT_ID?.trim() ?? "";
@@ -185,23 +167,10 @@ function readDiscordLogin(
     throw new Error(
       "DISCORD_CLIENT_ID must be the application ID from the Discord developer portal",
     );
-  let clientSecret = env.DISCORD_CLIENT_SECRET ?? "";
-  if (env.DISCORD_CLIENT_SECRET_FILE) {
-    try {
-      clientSecret = readFileSync(
-        resolve(baseDir, env.DISCORD_CLIENT_SECRET_FILE),
-        "utf8",
-      );
-    } catch {
-      throw new Error(
-        "DISCORD_CLIENT_SECRET_FILE must point to a readable secret file",
-      );
-    }
-  }
-  clientSecret = clientSecret.trim();
-  if (!clientSecret || /\s/.test(clientSecret))
+  const clientSecret = readSecret(env, "DISCORD_CLIENT_SECRET", fromBase);
+  if (!clientSecret)
     throw new Error(
-      "DISCORD_CLIENT_SECRET or DISCORD_CLIENT_SECRET_FILE must provide a non-empty secret without whitespace",
+      "DISCORD_CLIENT_SECRET or DISCORD_CLIENT_SECRET_FILE must provide the client secret",
     );
   if (!publicUrl)
     throw new Error(
