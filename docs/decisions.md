@@ -48,3 +48,4 @@ One line per decision that shaped M1; the PRs hold the detail.
 ## Milestone 3
 
 - **Channel groups add to the selection.** Selecting a group ticks its available channels on top of the ticked ones, like the other quick picks, with Undo; replacing would silently drop channels the operator just ticked. Groups store each channel with its server and name as saved, so a channel that has gone can still be named; availability is worked out in the browser against the listing it shows, so it follows Refresh without another request, and the server refuses to save a channel the bot can’t post to.
+- **Channel groups are bounded and uniquely named.** At most 50 groups of at most 500 channels; names are unique ignoring case, checked by the server on save and rename and at the field before asking. Groups stay listed when the bot has no readable server, so they can still be managed.

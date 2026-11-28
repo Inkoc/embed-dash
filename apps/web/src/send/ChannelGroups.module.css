@@ -1,12 +1,42 @@
 .groups {
   display: grid;
+  /* the strip scrolls inside the column instead of widening it */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
 }
 .row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+/*
+ * The groups stay one line however many there are, scrolling sideways, so
+ * the sticky search above the catalogue never grows with them. The inset
+ * keeps focus rings clear of the scroll edge.
+ */
+.strip {
+  /* holds the picks' visually hidden text, which would otherwise widen the page */
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: calc(var(--space-1) * -1);
+  padding: var(--space-1);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.strip > * {
+  flex: none;
+}
+.row > button {
+  flex: none;
+  white-space: nowrap;
+}
+.label:focus {
+  outline: none;
 }
 /* user-chosen names need their row's label even where the quick picks drop theirs */
 .label {
@@ -235,7 +265,18 @@
   margin-top: var(--space-1);
 }
 
+/* on phones the strip takes a line of its own under the label and Save */
 @media (max-width: 640px) {
+  .row {
+    flex-wrap: wrap;
+  }
+  .row > button {
+    margin-left: auto;
+  }
+  .strip {
+    order: 1;
+    flex-basis: 100%;
+  }
   .name {
     max-width: calc(var(--group-name-max) * 0.625);
   }
@@ -253,4 +294,8 @@
   .quiet {
     transition: none;
   }
+}
+/* a failed load's sentence wraps instead of scrolling away */
+.strip > .failed {
+  flex: 1 1 auto;
 }

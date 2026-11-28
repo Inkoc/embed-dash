@@ -65,7 +65,10 @@ type Call = { url: string; method: string; body?: unknown };
 
 function serve(
   initial: ChannelGroup[],
-  { listStatus = 200 }: { listStatus?: number } = {},
+  {
+    listStatus = 200,
+    savedElsewhere = [],
+  }: { listStatus?: number; savedElsewhere?: string[] } = {},
 ) {
   let groups = [...initial];
   const calls: Call[] = [];
@@ -84,6 +87,14 @@ function serve(
       );
       const channels = (ids: string[]) =>
         ids.map((id) => all.find((c) => c.id === id)!);
+      if (method === "POST" && savedElsewhere.includes(body.name))
+        return Response.json(
+          {
+            code: "GROUP_NAME_TAKEN",
+            error: `Another group is already called “${body.name}”.`,
+          },
+          { status: 409 },
+        );
       if (method === "POST") {
         const created: ChannelGroup = {
           id: "22222222-2222-4222-8222-222222222222",
@@ -343,4 +354,115 @@ test("renames a group, updates it from the selection after asking, and deletes i
   expect(screen.getByRole("button", { name: "Save as group" })).toHaveFocus();
   expect(screen.queryByRole("button", { name: /Open group/ })).toBeNull();
   expect(selected()).toBe("201");
+});
+
+test("refuses a name another group already has, in any case, before and after asking the server", async () => {
+  const calls = serve([cupGroup], { savedElsewhere: ["Results desk"] });
+  renderGroups(["101"]);
+  fireEvent.click(await screen.findByRole("button", { name: "Save as group" }));
+  const dialog = screen.getByRole("dialog", {
+    name: "Save the ticked channels as a group",
+  });
+  const name = within(dialog).getByLabelText("Group name");
+  fireEvent.change(name, { target: { value: " cup eu" } });
+  fireEvent.blur(name);
+  expect(name).toHaveAccessibleDescription(
+    expect.stringContaining(
+      "Another group is already called “Cup EU”. Choose a different name.",
+    ),
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save group" }));
+  expect(calls.some((c) => c.method === "POST")).toBe(false);
+
+  // Saved by someone else since the list loaded: the server's answer shows at the field.
+  fireEvent.change(name, { target: { value: "Results desk" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save group" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Couldn’t save the group: another group already has this name. Choose a different one.",
+  );
+});
+
+test("renaming refuses another group's name but allows a new case of its own", async () => {
+  const other: ChannelGroup = {
+    ...cupGroup,
+    id: "33333333-3333-4333-8333-333333333333",
+    name: "Community",
+  };
+  const calls = serve([other, cupGroup]);
+  renderGroups();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open group Cup EU" }),
+  );
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Cup EU" })).getByRole("button", {
+      name: "Rename",
+    }),
+  );
+  const rename = screen.getByRole("dialog", { name: "Rename Cup EU" });
+  const name = within(rename).getByLabelText("Group name");
+  fireEvent.change(name, { target: { value: "COMMUNITY" } });
+  fireEvent.click(within(rename).getByRole("button", { name: "Rename" }));
+  expect(rename).toHaveTextContent(
+    "Another group is already called “Community”.",
+  );
+  expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  fireEvent.change(name, { target: { value: "CUP EU" } });
+  fireEvent.click(within(rename).getByRole("button", { name: "Rename" }));
+  expect(
+    await screen.findByText("Renamed the group to CUP EU."),
+  ).toBeInTheDocument();
+});
+
+test("at 50 groups, and past 500 ticked channels, saving waits and says why", async () => {
+  const many = Array.from({ length: 50 }, (_, i) => ({
+    ...cupGroup,
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    name: `Group ${i + 1}`,
+  }));
+  serve(many);
+  renderGroups(["101"]);
+  expect(
+    await screen.findByText(
+      "There are 50 groups, the most there can be. Delete one to save another.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save as group" })).toBeDisabled();
+  cleanup();
+
+  serve([cupGroup]);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const ticked = Array.from({ length: 501 }, (_, i) => ({
+    id: String(5000 + i),
+    guildId: cup.id,
+    guildName: cup.name,
+  }));
+  render(
+    <QueryClientProvider client={client}>
+      <ChannelGroups
+        listing={listing}
+        ticked={ticked}
+        selected={new Set(ticked.map((t) => t.id))}
+        locked={false}
+        setSelected={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+  expect(
+    await screen.findByText(
+      "A group holds at most 500 channels; 501 are ticked.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save as group" })).toBeDisabled();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open group Cup EU" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "Cup EU" });
+  expect(
+    within(dialog).getByRole("button", { name: /Update from selection/ }),
+  ).toBeDisabled();
+  expect(dialog).toHaveTextContent(
+    "A group holds at most 500 channels; 501 are ticked.",
+  );
 });

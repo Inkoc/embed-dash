@@ -74,7 +74,7 @@ All under `/api`, JSON, session cookie + `x-csrf-token` on non-GET.
 | `GET /api/templates`, `GET /api/templates/:id` | Templates, most recently updated first: `{id, name, updatedAt, message, missingFiles}`; `missingFiles` lists the ids of files the server no longer has |
 | `POST /api/templates`, `PATCH /api/templates/:id`, `DELETE /api/templates/:id` | Save `{name, message}`; rename and/or overwrite `{name?, message?}`; delete. The message is a draft (it may still break a Discord limit); only files the server still has are kept |
 | `GET /api/channel-groups` | Groups by name: `{id, name, updatedAt, channels: [{id, name, guildId, guildName}]}`. The browser checks each channel against the listing it shows, so availability follows Refresh |
-| `POST /api/channel-groups`, `PATCH /api/channel-groups/:id`, `DELETE /api/channel-groups/:id` | Save `{name, channelIds}`; rename and/or replace the channels `{name?, channelIds?}`; delete. Channels are saved only if the bot can post to them in the current listing, otherwise `409 GROUP_CHANNELS_UNAVAILABLE` names them and nothing changes |
+| `POST /api/channel-groups`, `PATCH /api/channel-groups/:id`, `DELETE /api/channel-groups/:id` | Save `{name, channelIds}`; rename and/or replace the channels `{name?, channelIds?}`; delete. Channels are saved only if the bot can post to them in the current listing, otherwise `409 GROUP_CHANNELS_UNAVAILABLE` names them and nothing changes. A name another group has (ignoring case and surrounding spaces) is `409 GROUP_NAME_TAKEN`; more than 500 channels is `400 TOO_MANY_GROUP_CHANNELS`; a 51st group is `409 GROUP_LIMIT_REACHED` |
 
 JSON import/export runs in the browser; nothing about it needs the server.
 

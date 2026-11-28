@@ -93,24 +93,30 @@ export function SendView() {
   else if (data.guilds.length === 0 && data.unavailable.length > 0)
     // The notice above names them; inviting the bot again isn't the fix.
     body = (
-      <Closed
-        label="Unreadable"
-        title="None of the bot’s servers could be read"
-      >
-        <p>Check the bot’s access in those servers, then refresh.</p>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => void refresh()}
-          disabled={guilds.isFetching}
+      <SavedGroups listing={data} locked={!!busy}>
+        <Closed
+          label="Unreadable"
+          title="None of the bot’s servers could be read"
         >
-          <RefreshCw aria-hidden="true" />
-          {guilds.isFetching ? "Refreshing…" : "Refresh"}
-        </button>
-      </Closed>
+          <p>Check the bot’s access in those servers, then refresh.</p>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => void refresh()}
+            disabled={guilds.isFetching}
+          >
+            <RefreshCw aria-hidden="true" />
+            {guilds.isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+        </Closed>
+      </SavedGroups>
     );
   else if (data.guilds.length === 0)
-    body = <NoServers refresh={refresh} busy={guilds.isFetching} />;
+    body = (
+      <SavedGroups listing={data} locked={!!busy}>
+        <NoServers refresh={refresh} busy={guilds.isFetching} />
+      </SavedGroups>
+    );
   else
     body = <Picker listing={data} locked={!!busy} received={received(draft)} />;
 
@@ -482,6 +488,36 @@ function Picker({
         flightRef={flight}
         onRemove={(id) => setSelected((set) => withIds(set, [id], false))}
       />
+    </div>
+  );
+}
+
+/**
+ * Saved groups above a closed catalogue, so they can still be inspected,
+ * renamed or deleted when the bot has no channels to offer; every channel in
+ * them then reads as unavailable.
+ */
+function SavedGroups({
+  listing,
+  locked,
+  children,
+}: {
+  listing: GuildsResponse;
+  locked: boolean;
+  children: ReactNode;
+}) {
+  const [selected, setSelected] = useSelection();
+  return (
+    <div className={styles.closedWithGroups}>
+      <ChannelGroups
+        listing={listing}
+        ticked={[]}
+        selected={selected}
+        locked={locked}
+        setSelected={setSelected}
+        catalogue={false}
+      />
+      {children}
     </div>
   );
 }

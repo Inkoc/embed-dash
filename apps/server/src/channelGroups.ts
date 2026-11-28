@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   canSendTo,
   channelGroupInputSchema,
+  channelGroupLimits,
+  channelGroupNameKey,
   channelGroupNameMax,
   channelGroupUpdateSchema,
   type ChannelGroup,
@@ -29,16 +31,27 @@ const notFound = {
   code: "GROUP_NOT_FOUND",
   error: "That channel group no longer exists.",
 };
-const invalid = (issues: readonly { path: readonly PropertyKey[] }[]) =>
+const invalid = (
+  issues: readonly { path: readonly PropertyKey[]; code: string }[],
+) =>
   issues[0]?.path[0] === "name"
     ? {
         code: "INVALID_GROUP_NAME",
         error: `Give the group a name of 1 to ${channelGroupNameMax} characters.`,
       }
-    : {
-        code: "INVALID_GROUP_CHANNELS",
-        error: "A group needs at least one channel, each listed once.",
-      };
+    : issues[0]?.code === "too_big"
+      ? {
+          code: "TOO_MANY_GROUP_CHANNELS",
+          error: `A group holds at most ${channelGroupLimits.channels} channels.`,
+        }
+      : {
+          code: "INVALID_GROUP_CHANNELS",
+          error: "A group needs at least one channel, each listed once.",
+        };
+const nameTaken = (name: string) => ({
+  code: "GROUP_NAME_TAKEN",
+  error: `Another group is already called “${name}”.`,
+});
 
 /**
  * Named sets of channels, shared by everyone who signs in. A group is saved
@@ -103,6 +116,16 @@ export function registerChannelGroups(
     );
   }
 
+  /** The group, other than `except`, whose name only differs in case or spacing. */
+  const sameName = (name: string, except?: string) => {
+    const key = channelGroupNameKey(name);
+    return db
+      .select({ id: channelGroups.id, name: channelGroups.name })
+      .from(channelGroups)
+      .all()
+      .find((g) => g.id !== except && channelGroupNameKey(g.name) === key);
+  };
+
   // By name as people read it, whatever the case or accents; the browser sorts the same way.
   app.get("/api/channel-groups", async () =>
     db
@@ -121,6 +144,18 @@ export function registerChannelGroups(
       return reply.code(400).send(invalid(parsed.error.issues));
     const channelsJson = await snapshot(parsed.data.channelIds, reply);
     if (!channelsJson) return reply;
+    // Checked after the listing is awaited, so nothing can slip in between the check and the insert.
+    const clash = sameName(parsed.data.name);
+    if (clash) return reply.code(409).send(nameTaken(clash.name));
+    const { count } = db
+      .select({ count: sql<number>`count(*)` })
+      .from(channelGroups)
+      .get()!;
+    if (count >= channelGroupLimits.groups)
+      return reply.code(409).send({
+        code: "GROUP_LIMIT_REACHED",
+        error: `There are already ${channelGroupLimits.groups} groups. Delete one to save another.`,
+      });
     const row = {
       id: randomUUID(),
       name: parsed.data.name,
@@ -149,6 +184,8 @@ export function registerChannelGroups(
       if (!taken) return reply;
       channelsJson = taken;
     }
+    const clash = name === undefined ? undefined : sameName(name, id);
+    if (clash) return reply.code(409).send(nameTaken(clash.name));
     const row = db
       .update(channelGroups)
       .set({ name, channelsJson, updatedAt: Date.now() })

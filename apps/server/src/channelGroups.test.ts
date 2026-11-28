@@ -260,3 +260,51 @@ test("every group route needs a session, and changes need the CSRF token", async
   }
   expect(await list(s)).toMatchObject([{ name: "Cup" }]);
 });
+
+test("refuses a name another group has, whatever the case, on save and on rename", async () => {
+  const s = await setup();
+  const cup = (await create(s, { name: "Cup EU", channelIds: [news] })).json();
+  const other = (
+    await create(s, { name: "Community", channelIds: [general] })
+  ).json();
+
+  const again = await create(s, { name: " cup eu ", channelIds: [results] });
+  expect(again.statusCode).toBe(409);
+  expect(again.json()).toEqual({
+    code: "GROUP_NAME_TAKEN",
+    error: "Another group is already called “Cup EU”.",
+  });
+  const rename = await change(s, other.id, { name: "CUP EU" });
+  expect(rename.statusCode).toBe(409);
+  expect(rename.json().code).toBe("GROUP_NAME_TAKEN");
+  // A group may change the case of its own name.
+  const own = await change(s, cup.id, { name: "CUP EU" });
+  expect(own.statusCode).toBe(200);
+  expect((await list(s)).map((g) => g.name)).toEqual(["Community", "CUP EU"]);
+});
+
+test("holds at most 500 channels per group and 50 groups", async () => {
+  const s = await setup();
+  const ids = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      String(1300000000000000000n + BigInt(i)),
+    );
+  // 500 passes the bound and is then checked against the listing.
+  const atLimit = await create(s, { name: "Big", channelIds: ids(500) });
+  expect(atLimit.json().code).toBe("GROUP_CHANNELS_UNAVAILABLE");
+  const over = await create(s, { name: "Big", channelIds: ids(501) });
+  expect(over.statusCode).toBe(400);
+  expect(over.json()).toEqual({
+    code: "TOO_MANY_GROUP_CHANNELS",
+    error: "A group holds at most 500 channels.",
+  });
+
+  for (let i = 1; i <= 50; i++)
+    expect(
+      (await create(s, { name: `Group ${i}`, channelIds: [news] })).statusCode,
+    ).toBe(201);
+  const full = await create(s, { name: "Group 51", channelIds: [news] });
+  expect(full.statusCode).toBe(409);
+  expect(full.json().code).toBe("GROUP_LIMIT_REACHED");
+  expect(await list(s)).toHaveLength(50);
+});

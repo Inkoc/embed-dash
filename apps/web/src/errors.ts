@@ -1,4 +1,8 @@
-import { channelGroupNameMax, templateNameMax } from "@embed-dash/shared";
+import {
+  channelGroupLimits,
+  channelGroupNameMax,
+  templateNameMax,
+} from "@embed-dash/shared";
 
 /**
  * Every failure the app shows goes through here, so the copy stays specific
@@ -115,6 +119,10 @@ const byCode: Record<string, string> = {
     "the group no longer exists. Someone may have deleted it; refresh the page.",
   INVALID_GROUP_NAME: `give it a name of 1 to ${channelGroupNameMax} characters.`,
   INVALID_GROUP_CHANNELS: "tick at least one channel first.",
+  TOO_MANY_GROUP_CHANNELS: `a group holds at most ${channelGroupLimits.channels} channels. Untick some, then try again.`,
+  GROUP_NAME_TAKEN:
+    "another group already has this name. Choose a different one.",
+  GROUP_LIMIT_REACHED: `there are already ${channelGroupLimits.groups} groups. Delete one you no longer need, then save again.`,
   GROUP_CHANNELS_UNAVAILABLE:
     "some ticked channels can’t be posted to any more. Refresh the list, then try again.",
 };

@@ -1,5 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ChannelGroup, GuildsResponse } from "@embed-dash/shared";
+import {
+  channelGroupLimits,
+  type ChannelGroup,
+  type GuildsResponse,
+} from "@embed-dash/shared";
 import {
   BookmarkPlus,
   Check,
@@ -33,6 +37,12 @@ interface Props {
   selected: ReadonlySet<string>;
   locked: boolean;
   setSelected: (next: ReadonlySet<string>) => void;
+  /**
+   * Whether there are channels to pick from. Without them (no servers, or
+   * none readable) groups are still listed to inspect, rename or delete, but
+   * there is nothing to save.
+   */
+  catalogue?: boolean;
 }
 
 /** What the last action did, with a way back when it changed the selection. */
@@ -59,6 +69,7 @@ export function ChannelGroups({
   selected,
   locked,
   setSelected,
+  catalogue = true,
 }: Props) {
   const groups = useChannelGroups();
   const save = useSaveGroup();
@@ -66,6 +77,7 @@ export function ChannelGroups({
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   const saveButton = useRef<HTMLButtonElement>(null);
+  const label = useRef<HTMLSpanElement>(null);
 
   const states = useMemo(
     () =>
@@ -101,6 +113,28 @@ export function ChannelGroups({
   const tickedServers = new Set(ticked.map((t) => t.guildId)).size;
   const openGroup = groups.data?.find((g) => g.id === open);
   const labelId = useId();
+  const names = (groups.data ?? []).map((g) => g.name);
+  const full = names.length >= channelGroupLimits.groups;
+  const tooMany = ticked.length > channelGroupLimits.channels;
+  const someClosed = [...states.values()].some((s) => !s.available.length);
+
+  // With nothing to pick from and no groups saved, there is nothing to show.
+  if (!catalogue && groups.isSuccess && groups.data.length === 0) return null;
+
+  // Why a control is unavailable, one line each, so a disabled button is never left unexplained.
+  const reasons = [
+    catalogue && full
+      ? `There are ${channelGroupLimits.groups} groups, the most there can be. Delete one to save another.`
+      : null,
+    catalogue && !full && tooMany
+      ? `A group holds at most ${channelGroupLimits.channels} channels; ${ticked.length} are ticked.`
+      : null,
+    someClosed
+      ? catalogue
+        ? "A group whose channels are all unavailable can’t be selected. Open it with ⋯ to see why."
+        : "None of the groups’ channels can be posted to right now. Open a group with ⋯ to see why, rename it or delete it."
+      : null,
+  ].filter(Boolean);
 
   return (
     <div className={styles.groups}>
@@ -110,89 +144,101 @@ export function ChannelGroups({
         aria-labelledby={labelId}
         aria-busy={groups.isPending || undefined}
       >
-        <span id={labelId} className={styles.label}>
+        <span ref={label} id={labelId} className={styles.label} tabIndex={-1}>
           Groups
         </span>
-        {groups.isPending ? (
-          <>
-            <span className="visually-hidden" role="status">
-              Loading channel groups…
-            </span>
-            <span className={styles.skel} aria-hidden="true" />
-            <span className={styles.skel} aria-hidden="true" />
-          </>
-        ) : groups.isError ? (
-          <span className={styles.failed}>
-            <CircleAlert aria-hidden="true" />
-            <span role="alert">
-              {asAppError("load-groups", groups.error).message}
-            </span>
-            <button
-              type="button"
-              className={pickStyles.pick}
-              onClick={() => void groups.refetch()}
-              disabled={groups.isFetching}
-            >
-              <RefreshCw aria-hidden="true" />
-              {groups.isFetching ? "Retrying…" : "Retry"}
-            </button>
-          </span>
-        ) : (
-          groups.data.map((group) => {
-            const state = states.get(group.id)!;
-            const skipped = state.entries.length - state.available.length;
-            return (
-              <span key={group.id} className={styles.group}>
-                <button
-                  type="button"
-                  className={`${pickStyles.pick} ${styles.apply}`}
-                  disabled={!state.available.length || locked}
-                  onClick={() => apply(group, state)}
-                >
-                  <Layers aria-hidden="true" />
-                  <span className={styles.name}>{group.name}</span>
-                  <span className={pickStyles.n} aria-hidden="true">
-                    {skipped
-                      ? `${state.available.length}/${state.entries.length}`
-                      : state.entries.length}
-                  </span>
-                  {skipped > 0 && (
-                    <Lock className={styles.lock} aria-hidden="true" />
-                  )}
-                  <span className="visually-hidden">
-                    {" "}
-                    ({channels(state.available.length)}
-                    {skipped > 0 && `, ${skipped} unavailable`})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.more}
-                  aria-haspopup="dialog"
-                  aria-label={`Open group ${group.name}`}
-                  title={`Open group ${group.name}`}
-                  onClick={() => setOpen(group.id)}
-                >
-                  <Ellipsis aria-hidden="true" />
-                </button>
+        <div className={styles.strip}>
+          {groups.isPending ? (
+            <>
+              <span className="visually-hidden" role="status">
+                Loading channel groups…
               </span>
-            );
-          })
+              <span className={styles.skel} aria-hidden="true" />
+              <span className={styles.skel} aria-hidden="true" />
+            </>
+          ) : groups.isError ? (
+            <span className={styles.failed}>
+              <CircleAlert aria-hidden="true" />
+              <span role="alert">
+                {asAppError("load-groups", groups.error).message}
+              </span>
+              <button
+                type="button"
+                className={pickStyles.pick}
+                onClick={() => void groups.refetch()}
+                disabled={groups.isFetching}
+              >
+                <RefreshCw aria-hidden="true" />
+                {groups.isFetching ? "Retrying…" : "Retry"}
+              </button>
+            </span>
+          ) : (
+            groups.data.map((group) => {
+              const state = states.get(group.id)!;
+              const skipped = state.entries.length - state.available.length;
+              return (
+                <span key={group.id} className={styles.group}>
+                  <button
+                    type="button"
+                    className={`${pickStyles.pick} ${styles.apply}`}
+                    disabled={!state.available.length || locked}
+                    onClick={() => apply(group, state)}
+                  >
+                    <Layers aria-hidden="true" />
+                    <span className={styles.name}>{group.name}</span>
+                    <span className={pickStyles.n} aria-hidden="true">
+                      {skipped
+                        ? `${state.available.length}/${state.entries.length}`
+                        : state.entries.length}
+                    </span>
+                    {skipped > 0 && (
+                      <Lock className={styles.lock} aria-hidden="true" />
+                    )}
+                    <span className="visually-hidden">
+                      {" "}
+                      (
+                      {state.available.length
+                        ? `${channels(state.available.length)}${skipped ? `, ${skipped} unavailable` : ""}`
+                        : `${channels(state.entries.length)}, all unavailable`}
+                      )
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.more}
+                    aria-haspopup="dialog"
+                    aria-label={`Open group ${group.name}`}
+                    title={`Open group ${group.name}`}
+                    onClick={() => setOpen(group.id)}
+                  >
+                    <Ellipsis aria-hidden="true" />
+                  </button>
+                </span>
+              );
+            })
+          )}
+        </div>
+        {catalogue && (
+          <button
+            ref={saveButton}
+            type="button"
+            className={pickStyles.pick}
+            disabled={!ticked.length || full || tooMany}
+            onClick={() => {
+              save.reset();
+              setSaving(true);
+            }}
+          >
+            <BookmarkPlus aria-hidden="true" />
+            Save as group
+          </button>
         )}
-        <button
-          ref={saveButton}
-          type="button"
-          className={pickStyles.pick}
-          disabled={!ticked.length}
-          onClick={() => {
-            save.reset();
-            setSaving(true);
-          }}
-        >
-          <BookmarkPlus aria-hidden="true" />
-          Save as group
-        </button>
       </div>
+      {reasons.map((reason) => (
+        <p key={reason} className={styles.hint}>
+          {reason}
+        </p>
+      ))}
       {groups.isSuccess && groups.data.length === 0 && !note && (
         <p className={styles.hint}>
           Tick channels, then save them as a group to tick them again in one
@@ -228,8 +274,14 @@ export function ChannelGroups({
         open={saving}
         subject="group"
         title="Save the ticked channels as a group"
-        initialName={tickedServers === 1 ? ticked[0]!.guildName : ""}
+        initialName={
+          // A suggestion that clashes would only be refused.
+          tickedServers === 1 && !names.includes(ticked[0]!.guildName)
+            ? ticked[0]!.guildName
+            : ""
+        }
         submitLabel="Save group"
+        taken={names}
         pending={save.isPending}
         error={save.isError ? asAppError("save-group", save.error) : null}
         onCancel={() => setSaving(false)}
@@ -258,12 +310,13 @@ export function ChannelGroups({
           group={openGroup}
           state={states.get(openGroup.id)!}
           ticked={ticked}
+          taken={names.filter((n) => n !== openGroup.name)}
           locked={locked}
           onApply={() => apply(openGroup, states.get(openGroup.id)!)}
           onDeleted={(name) => {
             setOpen(null);
             setNote({ kind: "done", text: `Deleted the group ${name}.` });
-            saveButton.current?.focus();
+            (saveButton.current ?? label.current)?.focus();
           }}
           onUpdated={(text) => setNote({ kind: "done", text })}
           onClose={() => setOpen(null)}
@@ -277,6 +330,7 @@ function GroupDialog({
   group,
   state,
   ticked,
+  taken,
   locked,
   onApply,
   onDeleted,
@@ -286,6 +340,7 @@ function GroupDialog({
   group: ChannelGroup;
   state: GroupState;
   ticked: Props["ticked"];
+  taken: readonly string[];
   locked: boolean;
   onApply: () => void;
   onDeleted: (name: string) => void;
@@ -309,6 +364,7 @@ function GroupDialog({
   // Closing the native way hands focus back to the button that opened it.
   const close = () => dialog.current?.close();
 
+  const tooMany = ticked.length > channelGroupLimits.channels;
   const skipped = state.entries.length - state.available.length;
   const groupServers = new Set(state.entries.map((e) => e.guildName)).size;
   const tickedServers = new Set(ticked.map((t) => t.guildId)).size;
@@ -381,7 +437,7 @@ function GroupDialog({
             <button
               type="button"
               className={styles.quiet}
-              disabled={!ticked.length}
+              disabled={!ticked.length || tooMany}
               onClick={() => setStep("replace")}
             >
               Update from selection
@@ -398,6 +454,12 @@ function GroupDialog({
           {!ticked.length && (
             <p className={styles.meta}>
               Tick channels in the catalogue to update the group from them.
+            </p>
+          )}
+          {tooMany && (
+            <p className={styles.meta}>
+              A group holds at most {channelGroupLimits.channels} channels;{" "}
+              {ticked.length} are ticked.
             </p>
           )}
           <div className={dialogStyles.actions}>
@@ -428,6 +490,7 @@ function GroupDialog({
         title={`Rename ${group.name}`}
         initialName={group.name}
         submitLabel="Rename"
+        taken={taken}
         pending={update.isPending}
         error={update.isError ? asAppError("change-group", update.error) : null}
         onCancel={() => setStep(null)}

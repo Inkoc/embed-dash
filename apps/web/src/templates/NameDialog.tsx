@@ -1,6 +1,10 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CircleAlert } from "lucide-react";
-import { channelGroupNameMax, templateNameMax } from "@embed-dash/shared";
+import {
+  channelGroupNameKey,
+  channelGroupNameMax,
+  templateNameMax,
+} from "@embed-dash/shared";
 import { countLevel } from "../compose/TextControl";
 import type { AppError } from "../errors";
 import { FailureDetail } from "../ui/FailureDetail";
@@ -31,6 +35,8 @@ interface Props {
   children?: ReactNode;
   initialName: string;
   submitLabel: string;
+  /** Names already in use; another of the same name, in any case, is refused. */
+  taken?: readonly string[];
   /** While the server is answering: the only time the submit button is disabled. */
   pending: boolean;
   /** Why the server refused the name or the save, with its detail. */
@@ -39,12 +45,21 @@ interface Props {
   onCancel: () => void;
 }
 
-const problemFor = (subject: Subject, name: string) => {
+const problemFor = (
+  subject: Subject,
+  name: string,
+  taken: readonly string[],
+) => {
   const length = name.trim().length;
   const { max } = subjects[subject];
   if (length === 0) return `Give the ${subject} a name.`;
   if (length > max)
     return `Use at most ${max} characters; this name has ${length}.`;
+  const clash = taken.find(
+    (other) => channelGroupNameKey(other) === channelGroupNameKey(name),
+  );
+  if (clash)
+    return `Another ${subject} is already called “${clash}”. Choose a different name.`;
   return undefined;
 };
 
@@ -56,6 +71,7 @@ export function NameDialog({
   children,
   initialName,
   submitLabel,
+  taken = [],
   pending,
   error,
   onSubmit,
@@ -81,7 +97,7 @@ export function NameDialog({
   }, [open, initialName]);
 
   const { label, example, max } = subjects[subject];
-  const problem = left ? problemFor(subject, name) : undefined;
+  const problem = left ? problemFor(subject, name, taken) : undefined;
   const length = name.trim().length;
   const describedBy = [
     `${id}-name-count`,
@@ -107,7 +123,7 @@ export function NameDialog({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (problemFor(subject, name)) {
+          if (problemFor(subject, name, taken)) {
             setLeft(true);
             input.current?.focus();
             return;

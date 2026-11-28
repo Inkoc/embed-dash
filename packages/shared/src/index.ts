@@ -728,6 +728,11 @@ export const channelsUnavailableSchema = z.object({
  * names it had when saved, so one that has since gone can still be named.
  */
 export const channelGroupNameMax = 100;
+/** Bounds that keep the picker's group row and each group readable. */
+export const channelGroupLimits = { groups: 50, channels: 500 } as const;
+/** Two group names that only differ in case or surrounding spaces are the same name. */
+export const channelGroupNameKey = (name: string) =>
+  name.trim().toLocaleLowerCase();
 export const channelGroupNameSchema = z
   .string()
   .trim()
@@ -736,6 +741,7 @@ export const channelGroupNameSchema = z
 const groupChannelIdsSchema = z
   .array(z.string().min(1))
   .min(1)
+  .max(channelGroupLimits.channels)
   .refine((ids) => new Set(ids).size === ids.length);
 export const channelGroupInputSchema = z.object({
   name: channelGroupNameSchema,
