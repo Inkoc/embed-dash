@@ -329,13 +329,16 @@ test("the sweep removes files past retention that no send or template refers to,
   }
 });
 
-test("a failing cleanup is logged and doesn't stop the server", async () => {
+test("an inaccessible entry does not stop cleanup of later files", async () => {
   const dir = mkdtempSync(join(tmpdir(), "embed-sweep-fail-"));
   // A directory where a stray file would be: removing it as a file throws.
   const stray = join(dir, "uploads", "stray-dir");
   mkdirSync(stray, { recursive: true });
   const long = Date.now() / 1000 - 60 * 24 * 60 * 60;
   utimesSync(stray, long, long);
+  const removable = join(dir, "uploads", "z-removable");
+  writeFileSync(removable, "old file");
+  utimesSync(removable, long, long);
   let logs = "";
   const app = await createApp(
     {
@@ -348,14 +351,14 @@ test("a failing cleanup is logged and doesn't stop the server", async () => {
       uploadRetentionDays: 14,
       discordApiBase: "http://127.0.0.1:1/api",
     },
-    {
-      logger: {
-        stream: { write: (chunk: string) => void (logs += chunk) },
-      },
-    },
+    { logger: { stream: { write: (chunk: string) => void (logs += chunk) } } },
   );
   try {
-    expect(logs).toContain("Upload cleanup failed");
+    expect(logs).toContain("Upload cleanup skipped an entry");
+    expect(logs).toContain('"id":"stray-dir"');
+    expect(logs).not.toContain(dir);
+    expect(existsSync(stray)).toBe(true);
+    expect(existsSync(removable)).toBe(false);
     expect((await app.inject("/health")).statusCode).toBe(200);
   } finally {
     await app.close();

@@ -72,19 +72,4 @@ export function discordMessage(
   };
 }
 
-/** What a later search will look in: every text a reader sees. */
-export function searchText(payload: MessagePayload): string {
-  return [
-    payload.content,
-    ...payload.embeds.flatMap((embed) => [
-      embed.title,
-      embed.description,
-      embed.author.name,
-      embed.footer.text,
-      ...embed.fields.flatMap((field) => [field.name, field.value]),
-    ]),
-  ]
-    .map((text) => text.trim())
-    .filter(Boolean)
-    .join("\n");
-}
+export { messageTitle, searchText } from "@embed-dash/shared";
