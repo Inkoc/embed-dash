@@ -11,6 +11,7 @@ export type View = "compose" | "send" | "history" | "templates";
 
 interface Props {
   view: View;
+  editing?: boolean;
   theme: Theme;
   onToggleTheme: () => void;
   onShowShortcuts: () => void;
@@ -55,7 +56,13 @@ const views = [
   { view: "templates", to: "/templates", label: "Templates" },
 ] as const;
 
-export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
+export function TopBar({
+  view,
+  theme,
+  onToggleTheme,
+  onShowShortcuts,
+  editing,
+}: Props) {
   const header = useRef<HTMLElement>(null);
   const end = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -106,17 +113,19 @@ export function TopBar({ view, theme, onToggleTheme, onShowShortcuts }: Props) {
         </Link>
         <nav aria-label="Main" className={styles.views}>
           <Segmented activeKey={view}>
-            {views.map((item) => (
-              <Link
-                key={item.view}
-                to={item.to}
-                className={segmentedItem}
-                aria-current={item.view === view ? "page" : undefined}
-                data-active={item.view === view || undefined}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {views
+              .filter((item) => !editing || item.view !== "send")
+              .map((item) => (
+                <Link
+                  key={item.view}
+                  to={item.to}
+                  className={segmentedItem}
+                  aria-current={item.view === view ? "page" : undefined}
+                  data-active={item.view === view || undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
           </Segmented>
         </nav>
         <div className={styles.end} ref={end}>

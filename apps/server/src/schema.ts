@@ -24,6 +24,7 @@ export const sends = sqliteTable(
       ],
     }).notNull(),
     editId: text("edit_id"),
+    editStatus: text("edit_status", { enum: ["sending", "done"] }),
     lastEditedAt: integer("last_edited_at"),
     scheduledAt: integer("scheduled_at"),
     createdAt: integer("created_at").notNull(),
@@ -66,6 +67,11 @@ export const sendTargets = sqliteTable(
     channelId: text("channel_id").notNull(),
     channelName: text("channel_name").notNull(),
     messageId: text("message_id"),
+    attachmentsJson: text("attachments_json"),
+    editStatus: text("edit_status", {
+      enum: ["pending", "posting", "sent", "failed"],
+    }),
+    editError: text("edit_error"),
     status: text("status", {
       enum: ["pending", "posting", "sent", "failed", "unknown"],
     }).notNull(),

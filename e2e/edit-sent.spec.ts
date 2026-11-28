@@ -32,6 +32,18 @@ test("edit a history message across two channels", async ({ page }) => {
   await page.getByRole("link", { name: new RegExp(title) }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(
+    page.getByRole("heading", { name: "Edit sent message" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("link", { name: "Send", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Clear", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Save as template", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("list", { name: "Original channels" }),
   ).toContainText("#news");
   await expect(

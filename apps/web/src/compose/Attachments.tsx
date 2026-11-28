@@ -236,7 +236,10 @@ function FileRow({
   file: AttachmentDraft;
   onRemove: () => void;
 }) {
-  const missing = useUploadPresent(file.id) === "missing";
+  const { editing } = useDraft();
+  const missing =
+    useUploadPresent(file.id) === "missing" &&
+    !editing?.retainedUploads?.includes(file.id);
   return (
     <li className={styles.row} data-state={missing ? "missing" : undefined}>
       <span className={styles.thumb} aria-hidden="true">

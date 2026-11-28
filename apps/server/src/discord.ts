@@ -36,6 +36,17 @@ const maxRateLimitReplays = 3;
 /** Uploads of up to 25 MB share this budget. */
 const postTimeoutMs = 60_000;
 
+export interface DiscordMessage {
+  id: string;
+  attachments: { id: string; filename: string }[];
+}
+
+export interface StoredAttachment {
+  uploadId: string;
+  id: string;
+  filename: string;
+}
+
 export interface MessageFile {
   name: string;
   data: Buffer;
@@ -57,8 +68,8 @@ export function createDiscord(
     messageId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
-    retainedNames: readonly string[],
-  ) => Promise<string>;
+    retained: readonly { id: string; filename: string }[],
+  ) => Promise<DiscordMessage>;
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
   /** Posts a message, with files as multipart `files[n]` beside `payload_json`; resolves to its ID. */
@@ -66,7 +77,7 @@ export function createDiscord(
     channelId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
-  ) => Promise<string>;
+  ) => Promise<DiscordMessage>;
 } {
   // The bot status answers at once, so a rate limit is reported, not waited out.
   const rest = new REST({
@@ -199,7 +210,13 @@ export function createDiscord(
         Routes.channelMessages(channelId),
         { body, files: files.map((file) => ({ ...file })) },
       )) as RESTPostAPIChannelMessageResult;
-      return message.id;
+      return {
+        id: message.id,
+        attachments: message.attachments.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+        })),
+      };
     } finally {
       rateLimitPauses.delete(channelId);
     }
@@ -227,7 +244,7 @@ export function createDiscord(
     messageId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
-    retainedNames: readonly string[],
+    retained: readonly { id: string; filename: string }[],
   ) {
     const turn = (channelTurns.get(channelId) ?? Promise.resolve()).then(
       async () => {
@@ -235,29 +252,26 @@ export function createDiscord(
         try {
           const route = Routes.channelMessage(channelId, messageId);
           const api = client(posting);
-          const current = (await api.get(
-            route,
-          )) as RESTPostAPIChannelMessageResult;
-          const retained = current.attachments.filter((a) =>
-            retainedNames.includes(a.filename),
-          );
-          const added = files.filter(
-            (f) => !retained.some((a) => a.filename === f.name),
-          );
           const edit: RESTPatchAPIChannelMessageJSONBody = {
             content: body.content ?? "",
             embeds: body.embeds ?? [],
             allowed_mentions: body.allowed_mentions,
             attachments: [
               ...retained.map((a) => ({ id: a.id, filename: a.filename })),
-              ...added.map((f, id) => ({ id, filename: f.name })),
+              ...files.map((f, id) => ({ id, filename: f.name })),
             ],
           };
-          await api.patch(route, {
+          const result = (await api.patch(route, {
             body: edit,
-            files: added.map((f) => ({ ...f })),
-          });
-          return messageId;
+            files: files.map((f) => ({ ...f })),
+          })) as RESTPostAPIChannelMessageResult;
+          return {
+            id: result.id,
+            attachments: result.attachments.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+            })),
+          };
         } finally {
           rateLimitPauses.delete(channelId);
         }

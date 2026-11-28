@@ -401,3 +401,9 @@ All motion uses `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) for arrivals; `--
 - **Don't** use Discord's logo, proprietary font or chrome outside the preview.
 
 The login uses a wider index sheet, hairline rules, and the instance address as a mono identifier. The sheet is centred vertically with a little more room below than above, so on tall screens it sits just above the middle; the brand and theme switch come before it in both reading and tab order. A heading that script focuses (the not-allowed explanation) draws no focus ring, since it is not a control. Sign out sits in the header beside the shared sun/moon theme switch.
+
+## Editing sent messages
+
+An edit opens an accent-wash sheet above the composer. Its heading receives focus and names the message, original send time and confirmed copy count. Read-only destinations use the catalogue’s hash marks and mono call numbers; rows without a confirmed message explain that they are skipped. The sheet uses `--edit-wash` (the accent wash) and `--edit-rule` (the stronger rule) in both themes.
+
+Save updates replaces the ordinary Send path in the preview’s sticky action area and the phone’s fixed action bar. Clear and Save as template are hidden while editing. Closing a dirty editor uses the shared confirmation, Cancel returns focus to Close editor, and leaving restores the earlier local draft and focuses the composer heading. Results use Send’s deep-ink slips and status components.

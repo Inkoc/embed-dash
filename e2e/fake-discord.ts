@@ -203,6 +203,8 @@ function parseMultipart(body: Buffer, contentType: string) {
 /** The fake Discord, plus what tests need to steer and inspect it. */
 export function startFakeDiscord(port: number) {
   const messages: FakeMessage[] = [];
+  const messageReads: string[] = [];
+  let lastAttachment = 91000000000000000n;
   const forced = new Map<string, Forced>();
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
@@ -300,11 +302,10 @@ export function startFakeDiscord(port: number) {
       );
       if (request.method !== "POST" && !existing)
         return reply({ message: "Unknown Message", code: 10008 }, 404);
-      if (request.method === "GET")
-        return reply({
-          id: existing!.id,
-          attachments: existing!.attachments ?? [],
-        });
+      if (request.method === "GET") {
+        messageReads.push(channel);
+        return reply({ message: "Missing Permissions", code: 50013 }, 403);
+      }
       const body = await readBody(request);
       if (postDelayMs) await new Promise((r) => setTimeout(r, postDelayMs));
       const type = request.headers["content-type"] ?? "";
@@ -321,22 +322,70 @@ export function startFakeDiscord(port: number) {
           filename: part.filename!,
           size: part.data.length,
         }));
-      const declared = (payload.attachments as unknown[] | undefined) ?? [];
-      // Discord refuses an attachments list that doesn't match the uploaded parts.
-      if (request.method === "POST" && declared.length !== files.length)
-        return reply({ message: "Invalid Form Body", code: 50035 }, 400);
-      if (request.method === "PATCH") {
-        existing!.payload = { ...existing!.payload, ...payload };
-        existing!.attachments = payload.attachments as {
-          id: string;
-          filename: string;
-        }[];
-        return reply({ id: existing!.id });
-      }
-      const attachments = files.map((f, i) => ({
-        id: String(900000 + lastMessage * 10 + i),
+
+      const declared = payload.attachments as
+        { id: string | number; filename: string }[] | undefined;
+      const invalid = () =>
+        reply({ message: "Invalid Form Body", code: 50035 }, 400);
+      if (
+        declared !== undefined &&
+        (!Array.isArray(declared) ||
+          declared.some(
+            (a) =>
+              !a ||
+              typeof a.filename !== "string" ||
+              !["number", "string"].includes(typeof a.id),
+          ) ||
+          new Set(declared.map((a) => String(a.id))).size !== declared.length)
+      )
+        return invalid();
+      const kept = (declared ?? []).filter(
+        (a) => typeof a.id === "string" && /^\d{17,20}$/.test(a.id),
+      );
+      const added = (declared ?? []).filter((a) => !kept.includes(a));
+      if (
+        kept.some(
+          (a) =>
+            !existing?.attachments?.some(
+              (old) => old.id === a.id && old.filename === a.filename,
+            ),
+        )
+      )
+        return invalid();
+      if (
+        added.length !== files.length ||
+        added.some(
+          (a, i) =>
+            String(a.id) !== String(i) ||
+            a.filename !== files[i].filename ||
+            files[i].field !== `files[${i}]`,
+        )
+      )
+        return invalid();
+      const addedAttachments = files.map((f) => ({
+        id: String(++lastAttachment),
         filename: f.filename,
       }));
+      const attachments =
+        declared === undefined && request.method === "PATCH"
+          ? (existing!.attachments ?? [])
+          : [
+              ...kept.map((a) => ({ id: String(a.id), filename: a.filename })),
+              ...addedAttachments,
+            ];
+      if (request.method === "PATCH") {
+        const keptNames = new Set(
+          (declared === undefined ? attachments : kept).map((a) => a.filename),
+        );
+        existing!.files = [
+          ...existing!.files.filter((f) => keptNames.has(f.filename)),
+          ...files,
+        ];
+        existing!.payload = { ...existing!.payload, ...payload };
+        existing!.attachments = attachments;
+        existing!.multipart = multipart;
+        return reply({ id: existing!.id, attachments });
+      }
       const message = {
         id: String(++lastMessage),
         channelId: channel,
@@ -346,7 +395,7 @@ export function startFakeDiscord(port: number) {
         multipart,
       };
       messages.push(message);
-      return reply({ id: message.id, channel_id: channel });
+      return reply({ id: message.id, channel_id: channel, attachments });
     }
     const found = fakeGuilds.find((g) => g.id === guildId);
     if (section !== "guilds" || !found)
@@ -368,6 +417,7 @@ export function startFakeDiscord(port: number) {
   return Object.assign(server.listen(port, "127.0.0.1"), {
     /** Every message accepted so far, oldest first. */
     messages,
+    messageReads,
     /** Answers the next `times` posts to a channel with this failure. */
     fail: (
       channelId: string,

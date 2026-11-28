@@ -363,7 +363,11 @@ export function DraftProvider({ children }: { children: ReactNode }) {
   );
   const dirty = !!editing && JSON.stringify(toMessage(draft)) !== baseline;
   const saved = useSyncExternalStore(subscribeToSaves, lastSave);
-  const missing = useMissingUploads(draft.attachments.map((file) => file.id));
+  const missing = useMissingUploads(
+    draft.attachments
+      .filter((file) => !editing?.retainedUploads?.includes(file.id))
+      .map((file) => file.id),
+  );
   const issues = useMemo(
     () => validateMessage(draft, { missingFiles: missing }),
     [draft, missing],

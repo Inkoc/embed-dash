@@ -28,9 +28,11 @@ One line per decision that shaped M1; the PRs hold the detail.
 
 ## Milestone 2
 
-- **Edit runs have durable client IDs.** Repeated update requests return the recorded run; copies keep their original message IDs, and interrupted requests remain unconfirmed until an operator checks Discord.
-- **Attachment retention follows Discord IDs.** Each edit records which upload IDs were kept. Before patching a copy, match those files to its Discord attachment IDs; replacement uploads get new IDs even when their filenames match.
+- **Edit runs have durable client IDs.** Repeated update requests return the recorded run; copies keep their original message IDs. Interrupted edits become retryable failures because a full-state PATCH cannot create a duplicate message; interrupted posts retain their unconfirmed delivery status.
+- **Attachment retention follows Discord IDs.** Create and edit responses persist each copy’s Discord attachment IDs, filenames and upload IDs. Kept files use those IDs without fetching the message or re-reading disk; replacement uploads get new IDs even when filenames match.
 - **Destinations and mention settings stay fixed during edits.** Only existing copies are patched; deleted copies are recorded permanently and excluded from retries.
 - **The editor protects unsaved work.** Route navigation and browser unload ask before discarding changes, while the ordinary composition draft stays separate.
 - **Templates hold on to their files.** The upload sweep and a draft's clear skip any file a template names, as they already did for sends; saving keeps only files the server still has, and a file lost anyway (a wiped data directory) is flagged on the template and in the composer when a message is started from it.
-
+- **Legacy copies re-upload retained files on their first edit.** Copies without stored Discord attachment IDs send an explicit replacement attachment list from the retained local uploads. Missing required uploads refuse the edit before any copy changes; the operator can remove or replace them. This avoids requesting Read Message History and never silently drops a retained file.
+- **Delivery and edit outcomes are independent.** History filters use the original delivery status; edit results use separate fields and list only existing copies. Undelivered copies stay retryable as sends of the current payload, and a shared transaction lock excludes overlapping sends, retries and edits.
+- **Edit mode has one primary action.** The composer’s desktop action and mobile sticky action save updates directly; the edit heading names the message and fixed destinations, and closing restores the earlier draft.

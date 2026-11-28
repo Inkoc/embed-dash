@@ -31,6 +31,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { MessageJson } from "./MessageJson";
+import { SaveUpdatesAction } from "./EditPanel";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
@@ -125,7 +126,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       <div className={styles.editor} ref={editor}>
         <div className={styles.head}>
           <h2 id="compose-title" tabIndex={-1}>
-            Compose
+            {editing ? "Message changes" : "Compose"}
           </h2>
           <BudgetRuler
             total={messageEmbedTextLength(draft.embeds)}
@@ -152,11 +153,17 @@ export function ComposeView({ theme }: { theme: Theme }) {
                 </>
               )}
             </p>
-            <SaveTemplate className={styles.quiet} onSaved={setSavedTemplate} />
+            {!editing && (
+              <SaveTemplate
+                className={styles.quiet}
+                onSaved={setSavedTemplate}
+              />
+            )}
             <button
               type="button"
               className={styles.quiet}
               onClick={() => setConfirmClear(true)}
+              hidden={!!editing}
             >
               <Eraser aria-hidden="true" />
               Clear
@@ -429,8 +436,9 @@ const listed = 5;
 
 /** The way to Send, or what stands in its way. */
 function NextStep() {
-  const { draft, issues } = useDraft();
+  const { draft, issues, editing } = useDraft();
   const { reveal } = useEditorState();
+  if (editing) return <SaveUpdatesAction />;
   if (isBlank(draft))
     return (
       <div className={styles.next}>
@@ -512,8 +520,14 @@ function ChooseChannels({ describedBy }: { describedBy: string }) {
 
 /** Pinned to the bottom on phones; kept outside the animated view so it stays fixed. */
 export function ComposeActionBar() {
-  const { draft, issues } = useDraft();
+  const { draft, issues, editing } = useDraft();
   const { reveal } = useEditorState();
+  if (editing)
+    return (
+      <div className={styles.actionBar}>
+        <SaveUpdatesAction mobile />
+      </div>
+    );
   return (
     <div className={styles.actionBar}>
       {issues.length > 0 && !isBlank(draft) ? (

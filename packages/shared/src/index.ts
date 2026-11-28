@@ -644,6 +644,10 @@ export const retryRequestSchema = z.object({
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  EDIT_UNCONFIRMED:
+    "Discord may not have applied this update. Retry to apply the current version safely.",
+  EDIT_NOT_ATTEMPTED:
+    "This copy was not updated. Retry to apply the current version.",
   MESSAGE_DELETED: "Deleted in Discord. This copy can no longer be updated.",
   MISSING_PERMISSION:
     "The bot isn’t allowed to post in this channel. Give it View Channel, Send Messages and Embed Links there, then retry.",
@@ -693,6 +697,14 @@ export type SendTarget = z.infer<typeof sendTargetSchema>;
 export const sendResultSchema = z.object({
   id: z.string(),
   editId: z.string().nullable().optional(),
+  edit: z
+    .object({
+      id: z.string(),
+      status: z.enum(["sending", "done"]),
+      targets: z.array(sendTargetSchema),
+    })
+    .nullable()
+    .optional(),
   lastEditedAt: z.number().nullable().optional(),
   status: z.enum(["sending", "done", "partial", "failed"]),
   targets: z.array(sendTargetSchema),
@@ -758,6 +770,7 @@ export const historyResponseSchema = z.object({
 });
 export type HistoryResponse = z.infer<typeof historyResponseSchema>;
 export const historyDetailSchema = sendResultSchema.extend({
+  retainedUploads: z.array(z.string()).optional(),
   payload: messagePayloadSchema,
   createdAt: z.number(),
 });

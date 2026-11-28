@@ -34,6 +34,8 @@
 }
 
 :root {
+  --edit-wash: var(--accent-wash);
+  --edit-rule: var(--rule-2);
   /* type */
   --font-sans: "Atkinson Next", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Atkinson Mono", ui-monospace, Menlo, monospace;

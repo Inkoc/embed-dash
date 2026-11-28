@@ -337,7 +337,10 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       ),
     retry: false,
     refetchInterval: (query) =>
-      query.state.data?.status === "sending" ? 1000 : false,
+      query.state.data?.status === "sending" ||
+      query.state.data?.edit?.status === "sending"
+        ? 1000
+        : false,
   });
   const draft = useMemo(
     () => (query.data ? withIds(query.data.payload) : null),
@@ -348,23 +351,6 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       <header className={styles.head}>
         <div>
           <h2 tabIndex={-1}>Send details</h2>
-          {query.data && (
-            <button
-              disabled={
-                query.data.status === "sending" ||
-                query.data.targets.some((t) => t.status === "unknown") ||
-                !query.data.targets.some(
-                  (t) => t.messageId && t.error?.code !== "MESSAGE_DELETED",
-                )
-              }
-              onClick={() => {
-                beginEdit(query.data);
-                void navigate("/");
-              }}
-            >
-              Edit
-            </button>
-          )}
           {query.data?.lastEditedAt && (
             <p>
               Last edited {new Date(query.data.lastEditedAt).toLocaleString()}
@@ -374,6 +360,50 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
             ← Back to history <kbd data-k="back">Esc</kbd>
           </Link>
         </div>
+        {query.data && (
+          <div className={styles.detailActions}>
+            <button
+              className={styles.edit}
+              disabled={
+                query.data.status === "sending" ||
+                query.data.edit?.status === "sending" ||
+                !query.data.targets.some(
+                  (t) =>
+                    t.messageId &&
+                    !query.data.edit?.targets.some(
+                      (e) =>
+                        e.id === t.id && e.error?.code === "MESSAGE_DELETED",
+                    ),
+                )
+              }
+              aria-describedby="edit-availability"
+              onClick={() => {
+                beginEdit(query.data);
+                void navigate("/");
+              }}
+            >
+              Edit
+            </button>
+            <p id="edit-availability">
+              {query.data.status === "sending" ||
+              query.data.edit?.status === "sending"
+                ? "Wait for the current delivery or update to finish."
+                : !query.data.targets.some((t) => t.messageId)
+                  ? "No confirmed copies to edit."
+                  : query.data.targets.every(
+                        (t) =>
+                          !t.messageId ||
+                          query.data.edit?.targets.some(
+                            (e) =>
+                              e.id === t.id &&
+                              e.error?.code === "MESSAGE_DELETED",
+                          ),
+                      )
+                    ? "Every confirmed copy was deleted in Discord."
+                    : "Update the existing copies in their original channels."}
+            </p>
+          </div>
+        )}
       </header>
       {query.isPending ? (
         <Loading />

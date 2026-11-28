@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "76f97849-e8c5-4265-ae54-15dd3281f2aa",
+  "id": "b9581d08-fc42-4fde-a7e8-7fcbea5c2963",
   "prevId": "02ca8c7e-87a5-4e4f-b854-a08ecaaed8c5",
   "tables": {
     "edit_runs": {
@@ -97,6 +97,27 @@
           "notNull": false,
           "autoincrement": false
         },
+        "attachments_json": {
+          "name": "attachments_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "edit_status": {
+          "name": "edit_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "edit_error": {
+          "name": "edit_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -186,6 +207,13 @@
         },
         "edit_id": {
           "name": "edit_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "edit_status": {
+          "name": "edit_status",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

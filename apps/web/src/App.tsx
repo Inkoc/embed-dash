@@ -6,7 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router";
-import { EditPanel, EditGuard } from "./compose/EditPanel";
+import { EditPanel, EditGuard, EditProvider } from "./compose/EditPanel";
 import { ComposeActionBar, ComposeView } from "./compose/ComposeView";
 import { DraftProvider, useDraft } from "./compose/draft";
 import { EditorStateProvider, useEditorState } from "./compose/editorState";
@@ -97,7 +97,12 @@ function Shell() {
         pressKey("forward");
         // A draft Discord would reject doesn't go forward; the shortcut shows the first problem instead.
         if (firstIssue) reveal(firstIssue);
-        else void navigate("/send");
+        else if (editing) {
+          const button = Array.from(
+            document.querySelectorAll<HTMLButtonElement>("[data-edit-save]"),
+          ).find((b) => b.getClientRects().length > 0);
+          button?.click();
+        } else void navigate("/send");
       } else if (action === "back" && view === "send") {
         event.preventDefault();
         pressKey("back");
@@ -126,7 +131,15 @@ function Shell() {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [view, navigate, firstIssue, reveal, location.pathname, location.search]);
+  }, [
+    view,
+    navigate,
+    firstIssue,
+    reveal,
+    location.pathname,
+    location.search,
+    editing,
+  ]);
 
   return (
     <>
@@ -135,57 +148,51 @@ function Shell() {
       </a>
       <TopBar
         view={view}
+        editing={!!editing}
         theme={theme}
         onToggleTheme={toggle}
         onShowShortcuts={() => setShowShortcuts(true)}
       />
       {editing && <EditGuard />}
-      <main id="main">
-        <h1 className="visually-hidden">embed-dash</h1>
-        <BotStatus variant="notice" />
-        {editing && (view === "compose" || view === "send") && <EditPanel />}
-        <div
-          key={view}
-          className={styles.view}
-          data-direction={arrival.view === view ? arrival.direction : "none"}
-        >
-          <Routes>
-            <Route path="/" element={<ComposeView theme={theme} />} />
-            <Route
-              path="/send"
-              element={
-                editing ? (
-                  <p>
-                    Update the message in Compose. Channels stay fixed for this
-                    send.
-                  </p>
-                ) : (
-                  <SendView />
-                )
-              }
-            />
-            <Route
-              path="/history"
-              element={
-                <Suspense fallback={<p role="status">Loading history…</p>}>
-                  <HistoryView theme={theme} />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/history/:id"
-              element={
-                <Suspense fallback={<p role="status">Loading history…</p>}>
-                  <HistoryView theme={theme} />
-                </Suspense>
-              }
-            />
-            <Route path="/templates" element={<TemplatesView />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-        {view === "compose" && <ComposeActionBar />}
-      </main>
+      <EditProvider key={editing?.id ?? "draft"}>
+        <main id="main">
+          <h1 className="visually-hidden">embed-dash</h1>
+          <BotStatus variant="notice" />
+          {editing && (view === "compose" || view === "send") && <EditPanel />}
+          <div
+            key={view}
+            className={styles.view}
+            data-direction={arrival.view === view ? arrival.direction : "none"}
+          >
+            <Routes>
+              <Route path="/" element={<ComposeView theme={theme} />} />
+              <Route
+                path="/send"
+                element={editing ? <Navigate to="/" replace /> : <SendView />}
+              />
+              <Route
+                path="/history"
+                element={
+                  <Suspense fallback={<p role="status">Loading history…</p>}>
+                    <HistoryView theme={theme} />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/history/:id"
+                element={
+                  <Suspense fallback={<p role="status">Loading history…</p>}>
+                    <HistoryView theme={theme} />
+                  </Suspense>
+                }
+              />
+              <Route path="/templates" element={<TemplatesView />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+          {view === "compose" && <ComposeActionBar />}
+        </main>
+      </EditProvider>
       <ShortcutsDialog
         open={showShortcuts}
         onClose={() => setShowShortcuts(false)}

@@ -120,7 +120,9 @@ export function BlockedList({ issues }: { issues: Issue[] }) {
 export function Verdict({
   state,
   index,
+  label,
 }: {
+  label?: string;
   state: "waiting" | SendTarget["status"];
   index: number;
 }) {
@@ -154,7 +156,7 @@ export function Verdict({
           />
         </svg>
       )}
-      <span className={styles.word}>{word}</span>
+      <span className={styles.word}>{label ?? word}</span>
     </span>
   );
 }
