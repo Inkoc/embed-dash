@@ -2324,3 +2324,63 @@ test("a claimed scheduled post interrupted mid-flight is unknown after restart a
     ).json().targets[0].status,
   ).toBe("unknown");
 });
+
+test("an hour-overdue schedule survives a transient startup failure and delivers once after backoff", async () => {
+  const s = await schedulerHarness();
+  const { id } = await s.create({}, s.now() + 60000, [news]);
+  await s.app.close();
+  s.advance(61 * 60000);
+  const discord = createDiscord(s.config);
+  const listing = await discord.listGuilds();
+  const list = vi
+    .fn()
+    .mockRejectedValueOnce({ status: 503 })
+    .mockResolvedValue(listing);
+  const restarted = Fastify({ logger: false });
+  const scheduler = await registerSends(
+    restarted,
+    s.config,
+    s.sqlite,
+    { ...discord, listGuilds: list },
+    { now: s.now, intervalMs: 60000 },
+  );
+  cleanups.push(() => restarted.close());
+  await restarted.ready();
+  await expect.poll(() => list.mock.calls.length).toBe(1);
+  const resumed = { ...s, app: restarted };
+  expect((await read(resumed, id)).json().status).toBe("scheduled");
+  await scheduler.tick();
+  s.advance(4999);
+  await scheduler.tick();
+  expect(list).toHaveBeenCalledTimes(1);
+  s.advance(1);
+  await Promise.all([scheduler.tick(), scheduler.tick()]);
+  expect((await settle(resumed, id)).status).toBe("done");
+  await scheduler.tick();
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(s.fake.messages).toHaveLength(1);
+
+  const nextId = randomUUID();
+  expect(
+    (
+      await restarted.inject({
+        method: "POST",
+        url: "/api/sends",
+        payload: {
+          id: nextId,
+          payload: payload(),
+          channelIds: [news],
+          scheduledAt: new Date(s.now() + 60000).toISOString(),
+        },
+      })
+    ).statusCode,
+  ).toBe(202);
+  s.advance(16 * 60000);
+  list.mockRejectedValueOnce({ status: 503 });
+  await scheduler.tick();
+  expect((await read(resumed, nextId)).json().status).toBe("scheduled");
+  s.advance(5000);
+  await scheduler.tick();
+  expect((await settle(resumed, nextId)).status).toBe("done");
+  expect(s.fake.messages).toHaveLength(2);
+});

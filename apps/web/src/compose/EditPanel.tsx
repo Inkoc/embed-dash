@@ -1,3 +1,4 @@
+import { date } from "../history/presentation";
 import { ScheduledFields } from "../send/ScheduledFields";
 import { localInput, scheduleInstant } from "../send/SchedulePicker";
 import {
@@ -516,7 +517,7 @@ export function EditPanel() {
           <p className={styles.meta}>
             {editing.status === "scheduled" ? "Prepared" : "Sent"}{" "}
             <time dateTime={new Date(editing.createdAt).toISOString()}>
-              {new Date(editing.createdAt).toLocaleString()}
+              {date(editing.createdAt)}
             </time>{" "}
             {editing.status === "scheduled" ? (
               "· Waiting for the scheduled time"
@@ -539,7 +540,11 @@ export function EditPanel() {
       <p className={styles.note}>
         Your earlier draft comes back when you close the editor.
       </p>
-      {scheduleFields ?? <ReadOnlyChannels send={message} />}
+      {scheduleFields ? (
+        <div className={styles.schedule}>{scheduleFields}</div>
+      ) : (
+        <ReadOnlyChannels send={message} />
+      )}
       {!wide && <UpdateOutcome />}
       <ConfirmDialog
         open={confirmClose}

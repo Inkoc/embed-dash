@@ -660,7 +660,7 @@ export const retryRequestSchema = z.object({
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
   UPLOAD_MISSING:
-    "A file needed for this message is missing from the server. Edit the message to remove or replace it, then retry.",
+    "A file needed for this message is missing from the server. Compose it again with the file restored or removed.",
   EDIT_UNCONFIRMED:
     "Discord may not have applied this update. Retry to apply the current version safely.",
   EDIT_NOT_ATTEMPTED:

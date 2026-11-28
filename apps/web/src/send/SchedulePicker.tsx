@@ -40,7 +40,7 @@ export function SchedulePicker({
   const problem = !value
     ? "Choose a date and time."
     : new Date(value).getTime() <= now
-      ? `That time has passed. Pick a time after ${new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }).format(now)}.`
+      ? "That time has passed. Choose a future date and time."
       : "Choose a time within the next year.";
   return (
     <div className={styles.picker} data-tray={tray || undefined}>

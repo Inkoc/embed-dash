@@ -1,3 +1,4 @@
+import { date } from "./presentation";
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
@@ -470,6 +471,9 @@ test("cancelling a schedule confirms its due time, defaults to Keep it and resto
   });
   vi.stubGlobal("fetch", fetcher);
   showDetail();
+  expect(
+    await screen.findByRole("article", { name: "Message preview" }),
+  ).toHaveTextContent(date(detail.scheduledAt!));
   const trigger = await screen.findByRole("button", {
     name: "Cancel scheduled send",
   });

@@ -584,6 +584,10 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       setRetrying(false);
     }
   }
+  const previewTime =
+    query.data?.status === "scheduled"
+      ? (query.data.scheduledAt ?? query.data.createdAt)
+      : query.data?.createdAt;
   const draft = useMemo(
     () => (query.data ? withIds(query.data.payload) : null),
     [query.data],
@@ -732,8 +736,8 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
               <div className={styles.sectionHead}>
                 <h3>Message preview</h3>
                 <span>Discord {theme}</span>
-                <time dateTime={new Date(query.data.createdAt).toISOString()}>
-                  {date(query.data.createdAt)}
+                <time dateTime={new Date(previewTime!).toISOString()}>
+                  {date(previewTime!)}
                 </time>
               </div>
               {query.data.edit?.targets.some((t) => t.status !== "sent") && (
@@ -748,7 +752,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   draft={draft}
                   bot={bot.data}
                   botPending={bot.isPending}
-                  time={date(query.data.createdAt)}
+                  time={date(previewTime!)}
                 />
               </div>
             </section>

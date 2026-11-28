@@ -420,7 +420,7 @@ export function SendControls({
     <div className={styles.controls} data-controls>
       <button
         type="button"
-        className={styles.go}
+        className={scheduling ? styles.again : styles.go}
         disabled={!!blocked || !!busy}
         aria-describedby={describedBy}
         onClick={() => {

@@ -4,12 +4,13 @@ test.afterEach(async ({ request }) => {
   const session = (await request.get("/api/session").then((r) => r.json())) as {
     csrfToken: string;
   };
-  await request.delete("/api/test/scheduler/advance", {
+  const reset = await request.delete("/api/test/scheduler/advance", {
     headers: {
       "x-csrf-token": session.csrfToken,
       origin: "http://127.0.0.1:" + (process.env.E2E_PORT ?? 28742),
     },
   });
+  expect(reset.ok()).toBe(true);
 });
 
 test("schedule a minute ahead, then deliver through history", async ({

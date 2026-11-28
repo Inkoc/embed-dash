@@ -532,9 +532,10 @@ export async function registerSends(
   }
 
   // A temporary listing outage delays delivery, but never holds a schedule indefinitely.
-  const maxOverdueMs = 15 * 60 * 1000;
+  const maxListingFailureMs = 15 * 60 * 1000;
   let nextListingAt = 0;
   let listingFailures = 0;
+  let failingSince: number | null = null;
   let listingInFlight = false;
   function claimDue(cutoff = clock.now()) {
     return sqlite.transaction(() => {
@@ -586,6 +587,7 @@ export async function registerSends(
       try {
         listing = await discord.listGuilds();
         listingFailures = 0;
+        failingSince = null;
         nextListingAt = 0;
       } catch (error) {
         const failure = discordFailure(error);
@@ -593,6 +595,7 @@ export async function registerSends(
           { code: failure.code },
           "Scheduled delivery could not list servers",
         );
+        failingSince ??= clock.now();
         listingFailures++;
         nextListingAt =
           clock.now() +
@@ -612,10 +615,8 @@ export async function registerSends(
                 : failure.code === "DISCORD_UNREACHABLE"
                   ? "UNREACHABLE"
                   : "DISCORD_UNAVAILABLE";
-          for (const send of claimDue(
-            permanent ? clock.now() : clock.now() - maxOverdueMs,
-          ))
-            failScheduled(send.id, code);
+          if (permanent || clock.now() - failingSince >= maxListingFailureMs)
+            for (const send of claimDue()) failScheduled(send.id, code);
         }
         return;
       } finally {
