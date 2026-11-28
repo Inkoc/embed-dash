@@ -25,12 +25,13 @@ apps/web/        React SPA (routes: /, /history, /history/:id, /templates, /logi
 apps/server/     Fastify app: config, auth, discord client, routes, scheduler, db
 packages/shared/ Zod schemas, Discord limits, types shared by web and server
 e2e/             Playwright specs + a fake Discord API used in tests
-compose.yml, Dockerfile, scripts/ci.sh
+compose.yaml, Dockerfile, scripts/ci.sh
 ```
 
 ## Modules (server)
 
-- **config** — reads environment once at startup, resolves `*_FILE` secrets, fails fast with a clear message on invalid config.
+- **config** — reads environment once at startup, resolves `*_FILE` secrets through one reader (UTF-8 with or without BOM, UTF-16 with a BOM or ASCII-range UTF-16 without one; surrounding whitespace dropped; control or invisible characters refused), fails fast with a clear message on invalid config that names the file but never its contents.
+- **bot check** — once the server is listening, looks up the bot identity once and logs one line: connected, token refused or Discord unreachable, each with a hint. It never blocks or stops startup.
 - **discord** — wraps `@discordjs/rest`: bot identity, guilds + channels (cached ~60 s, refreshable), effective permission computation, create/edit message (multipart), forum thread create, crosspost. Base URL is configurable so tests run against a fake Discord.
 - **auth** — mode `none` | `password` | `discord`; sessions table; CSRF (double-submit token header) on non-GET routes; login rate limit. Discord mode runs the OAuth authorization-code flow (`identify` only, `state` bound to the browser by a cookie, single-use, 10-minute expiry), checks the user ID against the allowlist, then revokes the Discord tokens at Discord and discards them; only the ID, display name and avatar address are kept in the session. The callback is a GET navigation, so `state` replaces the origin/CSRF checks there.
 - **sends** — validates payload with the shared schema, checks attachments against the stored upload records and each channel against the current guild listing, stores the send and one target row per channel, answers `202` as soon as the send and its targets are stored, then delivers sequentially through the rate-limited client in the same process and records each target as it completes (short 429s are waited out a few times, long or repeated ones fail that channel; a 401 ends the send; three refusals in a row from one server skip its remaining channels; two sends to one channel take turns, so each post has its own 429 budget). Just before a target's request goes out it is marked `posting`. Targets left `posting` by a restart become `unknown` (the post may have arrived); targets left `pending` were never attempted and become `failed` with `NOT_ATTEMPTED`, so retry can pick them up. A graceful stop lets the post in flight finish, starts no more and records the remaining targets the same way. Two requests with the same send id that race on the insert both get that send back, and only the first delivers. retry and edit operate on target rows. A post that got no answer, or a Discord 500 or 504, is `unknown`, not `failed`, because it may have been created.

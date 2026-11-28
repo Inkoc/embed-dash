@@ -12,6 +12,7 @@ import {
  */
 
 export type Action =
+  | "connect-bot"
   | "load-servers"
   | "load-history"
   | "load-templates"
@@ -34,6 +35,7 @@ export type Action =
   | "sign-out";
 
 const lead: Record<Action, string> = {
+  "connect-bot": "Not connected",
   "load-servers": "Couldn’t load servers",
   "load-history": "Couldn’t load history",
   "load-templates": "Couldn’t load templates",
@@ -76,13 +78,13 @@ const byCode: Record<string, string> = {
   SCHEDULE_STARTED:
     "this schedule has already started or was cancelled. Refresh History to see its current state.",
   DISCORD_UNREACHABLE:
-    "the bot may be offline, or the app can’t reach Discord. Check the connection, then retry.",
+    "the app can’t reach Discord. Check the server’s network connection and DNS, then retry.",
   DISCORD_UNAVAILABLE:
     "Discord is having problems on its side. Try again in a few minutes.",
   DISCORD_RATE_LIMITED:
     "Discord asked the bot to slow down. Wait a minute, then retry.",
   DISCORD_INVALID_TOKEN:
-    "Discord rejected the bot token. Fix the configured token and restart the app.",
+    "Discord rejected the bot token. Copy the token from the Bot page of your application in the Discord developer portal (not the client secret or application ID), save it as the token secret and restart the app.",
   DISCORD_REQUEST_FAILED:
     "Discord refused the bot’s request. Check the bot’s access, then retry.",
   CHANNELS_UNAVAILABLE:
@@ -113,7 +115,10 @@ const byCode: Record<string, string> = {
     "this page was opened through an HTTPS proxy that embed-dash isn’t set up for. Set TRUST_PROXY to the address the proxy connects from, or PUBLIC_URL to the address in your browser’s address bar, then restart the app.",
   LOCAL_ONLY:
     "this instance runs without sign-in, so it only answers on 127.0.0.1 or localhost.",
-  WRONG_PASSWORD: "the password is incorrect. Try again.",
+  WRONG_PASSWORD:
+    "the password is incorrect. Check it and try again; it’s the instance password the server was started with.",
+  TOO_MANY_ATTEMPTS:
+    "too many attempts, so sign-in is paused. Wait a minute, then try again.",
   EMPTY_FILE: "the file is empty. Choose one with something in it.",
   TEMPLATE_NOT_FOUND:
     "the template no longer exists. Someone may have deleted it; refresh the list.",
@@ -141,7 +146,7 @@ function byStatus(action: Action, status: number): string {
   if (status === 415) return "the server doesn’t accept this file format.";
   if (status === 429)
     return action === "sign-in"
-      ? "too many attempts. Wait a minute, then try again."
+      ? byCode.TOO_MANY_ATTEMPTS!
       : "too many requests. Wait a minute, then try again.";
   if (status >= 500)
     return "the server had a problem. Try again; if it keeps happening, check the server’s log.";

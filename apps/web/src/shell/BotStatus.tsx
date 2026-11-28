@@ -1,5 +1,5 @@
 import { RotateCw, X } from "lucide-react";
-import { botErrorMessage, botInitial, useBot } from "../bot";
+import { botInitial, botShortReason, useBot } from "../bot";
 import styles from "./BotStatus.module.css";
 
 /**
@@ -18,20 +18,20 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
         </span>
       </p>
     ) : null;
-  if (bot.isError)
+  if (bot.isError) {
+    const short = botShortReason(bot.error);
     return (
       <div className={styles[variant]} data-state="error" role="alert">
         <X className={styles.icon} aria-hidden="true" />
-        <p>
-          {variant === "bar" ? (
-            <>
-              Not connected
-              <span className="visually-hidden">. {botErrorMessage}</span>
-            </>
-          ) : (
-            botErrorMessage
-          )}
-        </p>
+        {variant === "bar" ? (
+          // The full reason and its fix show on hover here, and in the notice when the bar sheds the failure.
+          <p title={bot.error.reason}>
+            Not connected{short && `: ${short}`}
+            <span className="visually-hidden">. {bot.error.reason}</span>
+          </p>
+        ) : (
+          <p>{bot.error.message}</p>
+        )}
         <button
           type="button"
           className={styles.retry}
@@ -44,6 +44,7 @@ export function BotStatus({ variant }: { variant: "bar" | "notice" }) {
         </button>
       </div>
     );
+  }
   return variant === "bar" ? (
     <p className={styles.bar} data-state="connected">
       {bot.data.avatarUrl ? (

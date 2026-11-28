@@ -7,6 +7,7 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import fastifyStatic from "@fastify/static";
+import { checkBot } from "./botCheck.js";
 import type { Config } from "./config.js";
 import { createDiscord } from "./discord.js";
 import { openDatabase } from "./db.js";
@@ -40,6 +41,10 @@ export async function createApp(
   const discord = createDiscord(config);
   app.addHook("onClose", async () => {
     database.close();
+  });
+  // Not awaited: startup never waits on Discord, and the check logs its own failures.
+  app.addHook("onListen", async () => {
+    void checkBot(discord.getBot, app.log);
   });
   await registerAuth(app, config, database);
   await registerUploads(app, config, database);

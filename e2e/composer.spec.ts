@@ -118,19 +118,24 @@ test("when the bot can't connect after the page loads, the bar refits around the
   // Held briefly, so the bar first fits the connecting state and then has to refit.
   await page.route("/api/bot", async (route) => {
     await new Promise((done) => setTimeout(done, 300));
-    await route.fulfill({ status: 502, json: {} });
+    await route.fulfill({
+      status: 502,
+      json: { code: "DISCORD_INVALID_TOKEN", error: "Token refused." },
+    });
   });
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1600, height: 800 });
   await page.goto("/");
   const banner = page.getByRole("banner");
   await expect(banner.getByText("Connecting to Discord…")).toBeVisible();
-  await expect(banner.getByText("Not connected")).toBeVisible();
+  await expect(banner.getByText("Not connected: token refused")).toBeVisible();
   await expectHeaderFits(page);
   // Short of room, the failure moves to the notice above the view, Retry and all.
   await page.setViewportSize({ width: 768, height: 800 });
   await expect(banner.getByText("Not connected")).toBeHidden();
   const notice = page.getByRole("main").getByRole("alert");
-  await expect(notice).toContainText("Unable to connect to Discord");
+  await expect(notice).toContainText(
+    "Not connected: Discord rejected the bot token. Copy the token from the Bot page",
+  );
   const retry = await notice
     .getByRole("button", { name: "Retry connection" })
     .boundingBox();

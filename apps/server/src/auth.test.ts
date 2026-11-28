@@ -412,3 +412,20 @@ test.each(["localhost", "127.0.0.1:8742", "[::1]:8742"])(
     ).toBe(200);
   },
 );
+test("a refused password and a paused sign-in answer differently", async () => {
+  const { app } = await fixture();
+  const headers = await session(app);
+  const attempt = () =>
+    app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers,
+      payload: { password: "wrong" },
+    });
+  for (let i = 0; i < 5; i++)
+    expect((await attempt()).json()).toMatchObject({ code: "WRONG_PASSWORD" });
+  const paused = await attempt();
+  expect(paused.statusCode).toBe(429);
+  expect(paused.json()).toMatchObject({ code: "TOO_MANY_ATTEMPTS" });
+  expect(paused.headers["retry-after"]).toBeDefined();
+});
