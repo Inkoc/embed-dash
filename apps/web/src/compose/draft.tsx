@@ -17,6 +17,7 @@ import {
   type EmbedDraft,
   type EmbedFieldDraft,
   type Issue,
+  type HistoryDetail,
   type MessageDraft,
 } from "@embed-dash/shared";
 import { useQueryClient } from "@tanstack/react-query";
@@ -308,6 +309,11 @@ function inEmbed(
 }
 
 interface DraftContextValue {
+  editing: HistoryDetail | null;
+  beginEdit: (send: HistoryDetail) => void;
+  endEdit: () => void;
+  markEdited: (message: MessageDraft) => void;
+  dirty: boolean;
   draft: Draft;
   setDraft: (change: (draft: Draft) => Draft) => void;
   issues: Issue[];
@@ -326,21 +332,52 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 /** Keeps the draft above the views, so switching to Send and back loses nothing, and saves it in the browser. */
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(loadDraft);
+  const [generation, setGeneration] = useState(0);
+  // Read by upload callbacks that finish after a render, so they see the latest clear.
+  const latest = useRef(0);
+
+  const [editing, setEditing] = useState<HistoryDetail | null>(null);
+  const [baseline, setBaseline] = useState("");
+  const previousDraft = useRef<Draft | null>(null);
+  const beginEdit = useCallback(
+    (send: HistoryDetail) => {
+      previousDraft.current = draft;
+      latest.current += 1;
+      setGeneration(latest.current);
+      setEditing(send);
+      setBaseline(JSON.stringify(toMessage(withIds(send.payload))));
+      setDraft(withIds(send.payload));
+    },
+    [draft],
+  );
+  const endEdit = useCallback(() => {
+    latest.current += 1;
+    setGeneration(latest.current);
+    setEditing(null);
+    setDraft(previousDraft.current ?? blankDraft());
+  }, []);
+  const markEdited = useCallback(
+    (message: MessageDraft) =>
+      setBaseline(JSON.stringify(toMessage(withIds(message)))),
+    [],
+  );
+  const dirty = !!editing && JSON.stringify(toMessage(draft)) !== baseline;
   const saved = useSyncExternalStore(subscribeToSaves, lastSave);
-  const missing = useMissingUploads(draft.attachments.map((file) => file.id));
+  const missing = useMissingUploads(
+    draft.attachments
+      .filter((file) => !editing?.retainedUploads?.includes(file.id))
+      .map((file) => file.id),
+  );
   const issues = useMemo(
     () => validateMessage(draft, { missingFiles: missing }),
     [draft, missing],
   );
 
   useEffect(() => {
-    saveDraft(draft);
-  }, [draft]);
+    if (!editing) saveDraft(draft);
+  }, [draft, editing]);
 
   const client = useQueryClient();
-  const [generation, setGeneration] = useState(0);
-  // Read by upload callbacks that finish after a render, so they see the latest clear.
-  const latest = useRef(0);
   const replace = useCallback(
     (next: Draft) => {
       const csrfToken =
@@ -370,8 +407,26 @@ export function DraftProvider({ children }: { children: ReactNode }) {
       replace,
       generation,
       isCurrent,
+      editing,
+      beginEdit,
+      endEdit,
+      markEdited,
+      dirty,
     }),
-    [draft, issues, saved, clear, replace, generation, isCurrent],
+    [
+      draft,
+      issues,
+      saved,
+      clear,
+      replace,
+      generation,
+      isCurrent,
+      editing,
+      beginEdit,
+      endEdit,
+      markEdited,
+      dirty,
+    ],
   );
   return <DraftContext value={value}>{children}</DraftContext>;
 }

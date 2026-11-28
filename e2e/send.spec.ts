@@ -78,6 +78,8 @@ test("compose, pick two channels, confirm, and see two sent copies", async ({
   await page.getByRole("link", { name: "Send", exact: true }).click();
   await expect(tray(page)).toContainText("2 sent.");
 
+  // Measure the settled colours; view-arrival motion is covered by the navigation specs.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const violations = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();

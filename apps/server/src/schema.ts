@@ -23,6 +23,9 @@ export const sends = sqliteTable(
         "cancelled",
       ],
     }).notNull(),
+    editId: text("edit_id"),
+    editStatus: text("edit_status", { enum: ["sending", "done"] }),
+    lastEditedAt: integer("last_edited_at"),
     scheduledAt: integer("scheduled_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -64,6 +67,11 @@ export const sendTargets = sqliteTable(
     channelId: text("channel_id").notNull(),
     channelName: text("channel_name").notNull(),
     messageId: text("message_id"),
+    attachmentsJson: text("attachments_json"),
+    editStatus: text("edit_status", {
+      enum: ["pending", "posting", "sent", "failed"],
+    }),
+    editError: text("edit_error"),
     status: text("status", {
       enum: ["pending", "posting", "sent", "failed", "unknown"],
     }).notNull(),
@@ -81,6 +89,14 @@ export const sendTargets = sqliteTable(
     ),
   ],
 );
+
+export const editRuns = sqliteTable("edit_runs", {
+  retainedJson: text("retained_json"),
+  id: text("id").primaryKey(),
+  sendId: text("send_id")
+    .notNull()
+    .references(() => sends.id, { onDelete: "cascade" }),
+});
 
 export const templates = sqliteTable("templates", {
   id: text("id").primaryKey(),

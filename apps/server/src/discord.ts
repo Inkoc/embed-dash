@@ -8,6 +8,7 @@ import {
   type RESTGetAPIGuildMemberResult,
   type RESTGetAPIGuildResult,
   type RESTPostAPIChannelMessageJSONBody,
+  type RESTPatchAPIChannelMessageJSONBody,
   type RESTPostAPIChannelMessageResult,
 } from "discord-api-types/v10";
 import {
@@ -35,6 +36,17 @@ const maxRateLimitReplays = 3;
 /** Uploads of up to 25 MB share this budget. */
 const postTimeoutMs = 60_000;
 
+export interface DiscordMessage {
+  id: string;
+  attachments: { id: string; filename: string }[];
+}
+
+export interface StoredAttachment {
+  uploadId: string;
+  id: string;
+  filename: string;
+}
+
 export interface MessageFile {
   name: string;
   data: Buffer;
@@ -51,6 +63,13 @@ export function createDiscord(
   // Tests page through a handful of guilds instead of hundreds of rate-limited calls.
   { guildPageSize = maxGuildPageSize } = {},
 ): {
+  editMessage: (
+    channelId: string,
+    messageId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+    retained: readonly { id: string; filename: string }[],
+  ) => Promise<DiscordMessage>;
   getBot: () => Promise<BotIdentity>;
   listGuilds: (options?: { refresh?: boolean }) => Promise<GuildsResponse>;
   /** Posts a message, with files as multipart `files[n]` beside `payload_json`; resolves to its ID. */
@@ -58,7 +77,7 @@ export function createDiscord(
     channelId: string,
     body: RESTPostAPIChannelMessageJSONBody,
     files: readonly MessageFile[],
-  ) => Promise<string>;
+  ) => Promise<DiscordMessage>;
 } {
   // The bot status answers at once, so a rate limit is reported, not waited out.
   const rest = new REST({
@@ -191,7 +210,13 @@ export function createDiscord(
         Routes.channelMessages(channelId),
         { body, files: files.map((file) => ({ ...file })) },
       )) as RESTPostAPIChannelMessageResult;
-      return message.id;
+      return {
+        id: message.id,
+        attachments: message.attachments.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+        })),
+      };
     } finally {
       rateLimitPauses.delete(channelId);
     }
@@ -214,7 +239,53 @@ export function createDiscord(
     return turn;
   }
 
-  return { getBot, listGuilds, createMessage };
+  function editMessage(
+    channelId: string,
+    messageId: string,
+    body: RESTPostAPIChannelMessageJSONBody,
+    files: readonly MessageFile[],
+    retained: readonly { id: string; filename: string }[],
+  ) {
+    const turn = (channelTurns.get(channelId) ?? Promise.resolve()).then(
+      async () => {
+        rateLimitPauses.delete(channelId);
+        try {
+          const route = Routes.channelMessage(channelId, messageId);
+          const api = client(posting);
+          const edit: RESTPatchAPIChannelMessageJSONBody = {
+            content: body.content ?? "",
+            embeds: body.embeds ?? [],
+            allowed_mentions: body.allowed_mentions,
+            attachments: [
+              ...retained.map((a) => ({ id: a.id, filename: a.filename })),
+              ...files.map((f, id) => ({ id, filename: f.name })),
+            ],
+          };
+          const result = (await api.patch(route, {
+            body: edit,
+            files: files.map((f) => ({ ...f })),
+          })) as RESTPostAPIChannelMessageResult;
+          return {
+            id: result.id,
+            attachments: result.attachments.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+            })),
+          };
+        } finally {
+          rateLimitPauses.delete(channelId);
+        }
+      },
+    );
+    const settled = turn.catch(() => undefined);
+    channelTurns.set(channelId, settled);
+    void settled.then(() => {
+      if (channelTurns.get(channelId) === settled)
+        channelTurns.delete(channelId);
+    });
+    return turn;
+  }
+  return { getBot, listGuilds, createMessage, editMessage };
 }
 
 async function fetchGuild(

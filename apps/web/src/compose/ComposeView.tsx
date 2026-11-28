@@ -31,6 +31,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { MessageJson } from "./MessageJson";
+import { SaveUpdatesAction } from "./EditPanel";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import { addEmbed, blankEmbed, exampleDraft, isBlank, useDraft } from "./draft";
@@ -43,7 +44,15 @@ import styles from "./ComposeView.module.css";
 const format = (n: number) => n.toLocaleString("en-GB");
 
 export function ComposeView({ theme }: { theme: Theme }) {
-  const { draft, setDraft, saved, clear: clearDraft, generation } = useDraft();
+  const {
+    draft,
+    setDraft,
+    saved,
+    clear: clearDraft,
+    generation,
+    editing,
+    dirty,
+  } = useDraft();
   const { pane, setPane, focusAfter, reset, reveal } = useEditorState();
   const bot = useBot();
   const location = useLocation();
@@ -92,7 +101,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       ) {
         event.preventDefault();
         setPane("edit");
-        document.getElementById("pane-edit")?.focus();
+        document.getElementById("pane-edit")?.focus({ preventScroll: true });
       }
     };
     addEventListener("keydown", onKey);
@@ -117,7 +126,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       <div className={styles.editor} ref={editor}>
         <div className={styles.head}>
           <h2 id="compose-title" tabIndex={-1}>
-            Compose
+            {editing ? "Message changes" : "Compose"}
           </h2>
           <BudgetRuler
             total={messageEmbedTextLength(draft.embeds)}
@@ -129,7 +138,13 @@ export function ComposeView({ theme }: { theme: Theme }) {
               role="status"
               data-failed={saved ? undefined : ""}
             >
-              {saved ? (
+              {editing ? (
+                dirty ? (
+                  "Unsaved edits"
+                ) : (
+                  "No unsaved edits"
+                )
+              ) : saved ? (
                 "Saved in this browser"
               ) : (
                 <>
@@ -138,11 +153,17 @@ export function ComposeView({ theme }: { theme: Theme }) {
                 </>
               )}
             </p>
-            <SaveTemplate className={styles.quiet} onSaved={setSavedTemplate} />
+            {!editing && (
+              <SaveTemplate
+                className={styles.quiet}
+                onSaved={setSavedTemplate}
+              />
+            )}
             <button
               type="button"
               className={styles.quiet}
               onClick={() => setConfirmClear(true)}
+              hidden={!!editing}
             >
               <Eraser aria-hidden="true" />
               Clear
@@ -415,8 +436,14 @@ const listed = 5;
 
 /** The way to Send, or what stands in its way. */
 function NextStep() {
-  const { draft, issues } = useDraft();
+  const { draft, issues, editing } = useDraft();
   const { reveal } = useEditorState();
+  if (editing)
+    return (
+      <div className={styles.editNext}>
+        <SaveUpdatesAction />
+      </div>
+    );
   if (isBlank(draft))
     return (
       <div className={styles.next}>
@@ -498,8 +525,14 @@ function ChooseChannels({ describedBy }: { describedBy: string }) {
 
 /** Pinned to the bottom on phones; kept outside the animated view so it stays fixed. */
 export function ComposeActionBar() {
-  const { draft, issues } = useDraft();
+  const { draft, issues, editing } = useDraft();
   const { reveal } = useEditorState();
+  if (editing)
+    return (
+      <div className={styles.actionBar}>
+        <SaveUpdatesAction mobile />
+      </div>
+    );
   return (
     <div className={styles.actionBar}>
       {issues.length > 0 && !isBlank(draft) ? (

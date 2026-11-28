@@ -153,6 +153,7 @@ export const fakeGuilds: FakeGuild[] = [
 
 /** A message the fake accepted, as Discord's create-message route received it. */
 export interface FakeMessage {
+  attachments?: { id: string; filename: string }[];
   id: string;
   channelId: string;
   /** `payload_json` for a multipart request, the JSON body otherwise. */
@@ -202,7 +203,10 @@ function parseMultipart(body: Buffer, contentType: string) {
 /** The fake Discord, plus what tests need to steer and inspect it. */
 export function startFakeDiscord(port: number) {
   const messages: FakeMessage[] = [];
+  const messageReads: string[] = [];
+  let lastAttachment = 91000000000000000n;
   const forced = new Map<string, Forced>();
+  const forcedEdits = new Map<string, Forced>();
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
   let postDelayMs = 0;
@@ -271,15 +275,19 @@ export function startFakeDiscord(port: number) {
     }
     const [, section, guildId, sub, memberId] = path.split("/");
     if (
-      request.method === "POST" &&
+      ["POST", "PATCH", "GET"].includes(request.method ?? "") &&
       section === "channels" &&
       sub === "messages"
     ) {
       // Here `guildId` is the channel: the path is /channels/{id}/messages.
       const channel = guildId;
-      const answer = forced.get(channel);
+      const failures =
+        request.method === "PATCH" && forcedEdits.has(channel)
+          ? forcedEdits
+          : forced;
+      const answer = failures.get(channel);
       if (answer) {
-        if (--answer.times <= 0) forced.delete(channel);
+        if (--answer.times <= 0) failures.delete(channel);
         // Status 0: the connection drops without an answer, so the post's fate is unknown.
         if (answer.status === 0) return request.socket.destroy();
         if (answer.retryAfter !== undefined)
@@ -294,6 +302,15 @@ export function startFakeDiscord(port: number) {
       );
       if (!exists)
         return reply({ message: "Unknown Channel", code: 10003 }, 404);
+      const existing = messages.find(
+        (m) => m.id === memberId && m.channelId === channel,
+      );
+      if (request.method !== "POST" && !existing)
+        return reply({ message: "Unknown Message", code: 10008 }, 404);
+      if (request.method === "GET") {
+        messageReads.push(channel);
+        return reply({ message: "Missing Permissions", code: 50013 }, 403);
+      }
       const body = await readBody(request);
       if (postDelayMs) await new Promise((r) => setTimeout(r, postDelayMs));
       const type = request.headers["content-type"] ?? "";
@@ -310,19 +327,80 @@ export function startFakeDiscord(port: number) {
           filename: part.filename!,
           size: part.data.length,
         }));
-      const declared = (payload.attachments as unknown[] | undefined) ?? [];
-      // Discord refuses an attachments list that doesn't match the uploaded parts.
-      if (declared.length !== files.length)
-        return reply({ message: "Invalid Form Body", code: 50035 }, 400);
+
+      const declared = payload.attachments as
+        { id: string | number; filename: string }[] | undefined;
+      const invalid = () =>
+        reply({ message: "Invalid Form Body", code: 50035 }, 400);
+      if (
+        declared !== undefined &&
+        (!Array.isArray(declared) ||
+          declared.some(
+            (a) =>
+              !a ||
+              typeof a.filename !== "string" ||
+              !["number", "string"].includes(typeof a.id),
+          ) ||
+          new Set(declared.map((a) => String(a.id))).size !== declared.length)
+      )
+        return invalid();
+      const kept = (declared ?? []).filter(
+        (a) => typeof a.id === "string" && /^\d{17,20}$/.test(a.id),
+      );
+      const added = (declared ?? []).filter((a) => !kept.includes(a));
+      if (
+        kept.some(
+          (a) =>
+            !existing?.attachments?.some(
+              (old) => old.id === a.id && old.filename === a.filename,
+            ),
+        )
+      )
+        return invalid();
+      if (
+        added.length !== files.length ||
+        added.some(
+          (a, i) =>
+            String(a.id) !== String(i) ||
+            a.filename !== files[i].filename ||
+            files[i].field !== `files[${i}]`,
+        )
+      )
+        return invalid();
+      const addedAttachments = files.map((f) => ({
+        id: String(++lastAttachment),
+        filename: f.filename,
+      }));
+      const attachments =
+        declared === undefined && request.method === "PATCH"
+          ? (existing!.attachments ?? [])
+          : [
+              ...kept.map((a) => ({ id: String(a.id), filename: a.filename })),
+              ...addedAttachments,
+            ];
+      if (request.method === "PATCH") {
+        const keptNames = new Set(
+          (declared === undefined ? attachments : kept).map((a) => a.filename),
+        );
+        existing!.files = [
+          ...existing!.files.filter((f) => keptNames.has(f.filename)),
+          ...files,
+        ];
+        existing!.payload = { ...existing!.payload, ...payload };
+        existing!.attachments = attachments;
+        existing!.multipart = multipart;
+        return reply({ id: existing!.id, attachments });
+      }
       const message = {
         id: String(++lastMessage),
         channelId: channel,
+        attachments,
         payload,
         files,
         multipart,
       };
       messages.push(message);
-      return reply({ id: message.id, channel_id: channel });
+      return reply({ id: message.id, channel_id: channel, attachments });
     }
     const found = fakeGuilds.find((g) => g.id === guildId);
     if (section !== "guilds" || !found)
@@ -344,11 +422,17 @@ export function startFakeDiscord(port: number) {
   return Object.assign(server.listen(port, "127.0.0.1"), {
     /** Every message accepted so far, oldest first. */
     messages,
+    messageReads,
     /** Answers the next `times` posts to a channel with this failure. */
     fail: (
       channelId: string,
       failure: Omit<Forced, "times"> & { times?: number },
     ) => void forced.set(channelId, { times: 1, ...failure }),
+    /** Refuses updates independently of initial delivery. */
+    failEdit: (
+      channelId: string,
+      failure: Omit<Forced, "times"> & { times?: number },
+    ) => void forcedEdits.set(channelId, { times: 1, ...failure }),
     /** Every accepted post takes this long to answer. */
     slow: (ms: number) => void (postDelayMs = ms),
     /** Every guild listing takes this long to answer. */

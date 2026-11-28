@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   historyQuerySchema,
+  editRequestSchema,
   canPost,
   canSendTo,
   deliveryErrors,
@@ -23,19 +24,30 @@ import {
   type SendResult,
 } from "@embed-dash/shared";
 import type { Config } from "./config.js";
-import type { MessageFile } from "./discord.js";
+import type {
+  MessageFile,
+  DiscordMessage,
+  StoredAttachment,
+} from "./discord.js";
 import { deliveryFailure, discordFailure } from "./errors.js";
 import { discordMessage, searchText } from "./payload.js";
-import { sends, sendTargets } from "./schema.js";
+import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
 type Discord = {
+  editMessage: (
+    channelId: string,
+    messageId: string,
+    body: ReturnType<typeof discordMessage>,
+    files: readonly MessageFile[],
+    retained: readonly { id: string; filename: string }[],
+  ) => Promise<DiscordMessage>;
   listGuilds: () => Promise<GuildsResponse>;
   createMessage: (
     channelId: string,
     body: ReturnType<typeof discordMessage>,
     files: readonly MessageFile[],
-  ) => Promise<string>;
+  ) => Promise<DiscordMessage>;
 };
 type TargetRow = typeof sendTargets.$inferSelect;
 
@@ -82,6 +94,33 @@ export async function registerSends(
         .set({ status: "failed", error: "NOT_ATTEMPTED" })
         .where(scope("pending"))
         .run();
+      db.update(sendTargets)
+        .set({ editStatus: "failed", editError: "EDIT_UNCONFIRMED" })
+        .where(
+          and(
+            eq(sendTargets.editStatus, "posting"),
+            sendId ? eq(sendTargets.sendId, sendId) : undefined,
+          ),
+        )
+        .run();
+      db.update(sendTargets)
+        .set({ editStatus: "failed", editError: "EDIT_NOT_ATTEMPTED" })
+        .where(
+          and(
+            eq(sendTargets.editStatus, "pending"),
+            sendId ? eq(sendTargets.sendId, sendId) : undefined,
+          ),
+        )
+        .run();
+      db.update(sends)
+        .set({ editStatus: "done" })
+        .where(
+          and(
+            eq(sends.editStatus, "sending"),
+            sendId ? eq(sends.id, sendId) : undefined,
+          ),
+        )
+        .run();
       for (const send of db
         .select({ id: sends.id })
         .from(sends)
@@ -114,10 +153,14 @@ export async function registerSends(
    * claim, decides names and sizes. Files the server no longer has are
    * reported by id; the rest are read for sending.
    */
-  function loadAttachments(payload: MessagePayload) {
+  function loadAttachments(
+    payload: MessagePayload,
+    retained = new Set<string>(),
+  ) {
     const missing = new Set<string>();
     const files: MessageFile[] = [];
     const attachments = payload.attachments.map((draft) => {
+      if (retained.has(draft.id)) return draft;
       const row = store.present(draft.id);
       if (!row) {
         missing.add(draft.id);
@@ -146,6 +189,7 @@ export async function registerSends(
     reply: FastifyReply,
     payload: MessagePayload,
     missing: ReadonlySet<string>,
+    editing = false,
   ) {
     const issues: Issue[] = validateMessage(payload, { missingFiles: missing });
     if (issues.length === 0) return null;
@@ -154,13 +198,54 @@ export async function registerSends(
       .send(
         sendError(
           missing.size > 0 ? "UPLOAD_MISSING" : "INVALID_MESSAGE",
-          missing.size > 0
-            ? "A file in this message is no longer on the server. Nothing was sent."
-            : "The message breaks a Discord limit. Nothing was sent.",
+          (missing.size > 0
+            ? "A file in this message is no longer on the server. "
+            : "The message breaks a Discord limit. ") +
+            (editing ? "Nothing was changed." : "Nothing was sent."),
           { issues, missingFiles: [...missing] },
         ),
       );
   }
+
+  const storedAttachments = (target: TargetRow): StoredAttachment[] =>
+    JSON.parse(target.attachmentsJson ?? "[]") as StoredAttachment[];
+
+  function loadEditAttachments(
+    payload: MessagePayload,
+    copies: readonly TargetRow[],
+  ) {
+    const retained = new Set(
+      payload.attachments
+        .filter((file) =>
+          copies.every((copy) =>
+            storedAttachments(copy).some((a) => a.uploadId === file.id),
+          ),
+        )
+        .map((file) => file.id),
+    );
+    return loadAttachments(payload, retained);
+  }
+
+  const editErrorMessage = (code: DeliveryErrorCode) =>
+    ({
+      MISSING_PERMISSION:
+        "Discord refused this update. Check the bot’s access, then retry.",
+      CHANNEL_GONE:
+        "This channel is unavailable. Restore the bot’s access, then retry.",
+      RATE_LIMITED:
+        "Discord’s rate limit held up this update. Wait a moment, then retry.",
+      DISCORD_UNAVAILABLE:
+        "Discord had a problem applying this update. Retry to apply the current version.",
+      UNREACHABLE:
+        "The app couldn’t reach Discord. Check the connection, then retry this update.",
+      INVALID_TOKEN:
+        "Discord rejected the bot token, so updates stopped. Fix the configured token, restart the app, then retry.",
+      INVALID_PAYLOAD:
+        "Discord rejected this update. Check the message and its files, then save again.",
+      NOT_ATTEMPTED: deliveryErrors.EDIT_NOT_ATTEMPTED,
+      SERVER_REFUSING:
+        "The server refused several updates. Check the bot’s access, then retry.",
+    })[code as "MISSING_PERMISSION"] ?? deliveryErrors[code];
 
   const readSend = (id: string) => {
     const send = db.select().from(sends).where(eq(sends.id, id)).get()!;
@@ -174,7 +259,48 @@ export async function registerSends(
       id,
       payload: messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
       createdAt: send.createdAt,
+      retainedUploads: messagePayloadSchema
+        .parse(JSON.parse(send.payloadJson))
+        .attachments.filter((file) => {
+          const copies = targets.filter(
+            (t) => t.messageId && t.editError !== "MESSAGE_DELETED",
+          );
+          return (
+            copies.length > 0 &&
+            copies.every((t) =>
+              storedAttachments(t).some((a) => a.uploadId === file.id),
+            )
+          );
+        })
+        .map((file) => file.id),
+      editId: send.editId,
+      lastEditedAt: send.lastEditedAt,
       status: send.status as SendResult["status"],
+      edit: send.editId
+        ? {
+            id: send.editId,
+            status: send.editStatus ?? "done",
+            targets: targets
+              .filter((t) => t.editStatus !== null)
+              .map((t) => ({
+                id: t.id,
+                guildId: t.guildId,
+                guildName: t.guildName,
+                channelId: t.channelId,
+                channelName: t.channelName,
+                messageId: t.messageId,
+                status: t.editStatus,
+                error: t.editError
+                  ? {
+                      code: t.editError,
+                      message: editErrorMessage(
+                        t.editError as DeliveryErrorCode,
+                      ),
+                    }
+                  : null,
+              })),
+          }
+        : null,
       targets: targets.map((target) => ({
         id: target.id,
         guildId: target.guildId,
@@ -230,6 +356,7 @@ export async function registerSends(
     files: readonly MessageFile[],
     sentAt: Date,
     listing: GuildsResponse,
+    editing = false,
   ) {
     const channels = listed(listing);
     const body = discordMessage(payload, sentAt);
@@ -239,14 +366,26 @@ export async function registerSends(
     ) =>
       db
         .update(sendTargets)
-        .set({ ...change, attemptedAt: Date.now() })
+        .set(
+          editing
+            ? {
+                editStatus: change.status as TargetRow["editStatus"],
+                editError: change.error,
+                attachmentsJson: change.attachmentsJson,
+                attemptedAt: Date.now(),
+              }
+            : { ...change, attemptedAt: Date.now() },
+        )
         .where(eq(sendTargets.id, target.id))
         .run();
     let stopped = false;
     const refusals = new Map<string, number>();
     for (const target of targets) {
       if (stopped || closing) {
-        record(target, { status: "failed", error: "NOT_ATTEMPTED" });
+        record(target, {
+          status: "failed",
+          error: editing ? "EDIT_NOT_ATTEMPTED" : "NOT_ATTEMPTED",
+        });
         continue;
       }
       if ((refusals.get(target.guildId) ?? 0) >= maxRefusalsPerServer) {
@@ -257,7 +396,7 @@ export async function registerSends(
       // minute), so this catches channels that changed since the operator
       // looked, not changes within the last minute; Discord has the last word.
       const current = channels.get(target.channelId)?.channel;
-      if (!current || !canSendTo(current)) {
+      if (!editing && (!current || !canSendTo(current))) {
         record(target, {
           status: "failed",
           error: !current
@@ -272,12 +411,49 @@ export async function registerSends(
       // which may have arrived, from the ones never tried.
       record(target, { status: "posting" });
       try {
-        const messageId = await discord.createMessage(
-          target.channelId,
-          body,
-          files,
+        const retained = storedAttachments(target).filter((a) =>
+          payload.attachments.some((file) => file.id === a.uploadId),
         );
-        record(target, { status: "sent", messageId, error: null });
+        const addedDrafts = editing
+          ? payload.attachments.filter(
+              (file) => !retained.some((a) => a.uploadId === file.id),
+            )
+          : payload.attachments;
+        const addedFiles = files.filter((file) =>
+          addedDrafts.some((a) => a.filename === file.name),
+        );
+        const message = editing
+          ? await discord.editMessage(
+              target.channelId,
+              target.messageId!,
+              body,
+              addedFiles,
+              retained,
+            )
+          : await discord.createMessage(target.channelId, body, files);
+        const attachments = payload.attachments.map((file) => {
+          const kept = editing && retained.find((a) => a.uploadId === file.id);
+          const returned =
+            kept ||
+            message.attachments.find((a) => a.filename === file.filename);
+          if (!returned) throw new Error("Missing attachment confirmation");
+          return {
+            uploadId: file.id,
+            id: returned.id,
+            filename: returned.filename,
+          };
+        });
+        record(target, {
+          status: "sent",
+          messageId: message.id,
+          error: null,
+          attachmentsJson: JSON.stringify(attachments),
+        });
+        if (editing)
+          db.update(sends)
+            .set({ lastEditedAt: Date.now() })
+            .where(eq(sends.id, sendId))
+            .run();
         refusals.delete(target.guildId);
       } catch (error) {
         const failure = deliveryFailure(error);
@@ -285,7 +461,13 @@ export async function registerSends(
           { code: failure.code, channelId: target.channelId },
           "Delivery failed",
         );
-        record(target, { status: failure.outcome, error: failure.code });
+        record(target, {
+          status: editing ? "failed" : failure.outcome,
+          error:
+            editing && failure.outcome === "unknown"
+              ? "EDIT_UNCONFIRMED"
+              : failure.code,
+        });
         stopped = failure.stop;
         if (
           failure.code === "MISSING_PERMISSION" ||
@@ -295,7 +477,12 @@ export async function registerSends(
         else refusals.delete(target.guildId);
       }
     }
-    finish(sendId);
+    if (editing)
+      db.update(sends)
+        .set({ editStatus: "done", updatedAt: Date.now() })
+        .where(eq(sends.id, sendId))
+        .run();
+    else finish(sendId);
   }
 
   /** Runs delivery in the background; whatever it didn't get to is settled as after a restart. */
@@ -460,7 +647,7 @@ export async function registerSends(
     }
     const rows = sqlite
       .prepare(
-        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
+        `SELECT s.*, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id) AS channel_count, (SELECT count(*) FROM send_targets t WHERE t.send_id = s.id AND t.edit_status = 'failed') AS update_failure_count FROM sends s WHERE ${conditions.join(" AND ")} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`,
       )
       .all(...params, query.limit + 1, (query.page - 1) * query.limit) as {
       id: string;
@@ -468,6 +655,7 @@ export async function registerSends(
       created_at: number;
       status: string;
       channel_count: number;
+      update_failure_count: number;
     }[];
     const destinations = sqlite
       .prepare(
@@ -491,6 +679,7 @@ export async function registerSends(
           color: payload.embeds[0]?.color ?? "",
           createdAt: row.created_at,
           channelCount: row.channel_count,
+          updateFailureCount: row.update_failure_count,
           status: row.status,
         };
       }),
@@ -518,92 +707,276 @@ export async function registerSends(
     return readSend(id);
   });
 
-  app.post("/api/sends/:id/retry", idParams, async (request, reply) => {
+  const copiesFor = (id: string) =>
+    db
+      .select()
+      .from(sendTargets)
+      .where(eq(sendTargets.sendId, id))
+      .orderBy(asc(sendTargets.position))
+      .all();
+  const editCopies = (targets: TargetRow[]) =>
+    targets.filter((t) => t.messageId && t.editError !== "MESSAGE_DELETED");
+  const locked = (send: typeof sends.$inferSelect) =>
+    send.status === "sending" || send.editStatus === "sending";
+
+  app.put("/api/sends/:id", idParams, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = retryRequestSchema.safeParse(request.body ?? {});
-    if (!body.success)
+    const parsed = editRequestSchema.safeParse(request.body);
+    if (!parsed.success)
       return reply
         .code(400)
-        .send(sendError("INVALID_REQUEST", "The retry request is malformed."));
-    const send = db.select().from(sends).where(eq(sends.id, id)).get();
-    if (!send)
-      return reply
-        .code(404)
-        .send(sendError("NOT_FOUND", "That send doesn’t exist."));
-
-    const { payload, files, missing } = loadAttachments(
-      messagePayloadSchema.parse(JSON.parse(send.payloadJson)),
-    );
-    const refused = refusal(reply, payload, missing);
-    if (refused) return refused;
+        .send(sendError("INVALID_REQUEST", "The edit request is malformed."));
+    const previous = db
+      .select()
+      .from(editRuns)
+      .where(eq(editRuns.id, parsed.data.id))
+      .get();
+    if (previous)
+      return previous.sendId === id
+        ? reply.code(202).send({ id })
+        : reply
+            .code(409)
+            .send(
+              sendError(
+                "EDIT_CONFLICT",
+                "This edit ID belongs to another send.",
+              ),
+            );
     let listing: GuildsResponse;
     try {
       listing = await discord.listGuilds();
     } catch (error) {
       return listingFailed(reply, error);
     }
-    // Claiming and attempting are one step, so two retries can't both post a
-    // copy. The send's status is read here, not before the listing was awaited,
-    // so a delivery that began meanwhile is seen.
-    const claimed = sqlite.transaction(() => {
-      const current = db.select().from(sends).where(eq(sends.id, id)).get()!;
-      if (current.status === "sending") return "in-progress" as const;
-      const failed = db
+    const claim = sqlite.transaction(() => {
+      const duplicate = db
         .select()
-        .from(sendTargets)
+        .from(editRuns)
+        .where(eq(editRuns.id, parsed.data.id))
+        .get();
+      if (duplicate)
+        return duplicate.sendId === id
+          ? ("duplicate" as const)
+          : ("conflict" as const);
+      const current = db.select().from(sends).where(eq(sends.id, id)).get();
+      if (!current) return "missing" as const;
+      if (locked(current)) return "blocked" as const;
+      const copies = editCopies(copiesFor(id));
+      if (!copies.length) return "empty" as const;
+      const original = messagePayloadSchema.parse(
+        JSON.parse(current.payloadJson),
+      );
+      const candidate = {
+        ...parsed.data.payload,
+        pings: original.pings,
+        silent: original.silent,
+      };
+      // Retained metadata comes from the stored payload, never a browser's filename claim.
+      candidate.attachments = candidate.attachments.map(
+        (file) => original.attachments.find((a) => a.id === file.id) ?? file,
+      );
+      const loaded = loadEditAttachments(candidate, copies);
+      if (
+        validateMessage(loaded.payload, { missingFiles: loaded.missing }).length
+      )
+        return { invalid: loaded };
+      db.insert(editRuns).values({ id: parsed.data.id, sendId: id }).run();
+      db.update(sends)
+        .set({
+          editId: parsed.data.id,
+          editStatus: "sending",
+          payloadJson: JSON.stringify(loaded.payload),
+          searchText: searchText(loaded.payload),
+          updatedAt: Date.now(),
+        })
+        .where(eq(sends.id, id))
+        .run();
+      // Only this run's existing copies appear in its results.
+      db.update(sendTargets)
+        .set({ editStatus: null, editError: null })
         .where(
           and(
             eq(sendTargets.sendId, id),
-            eq(sendTargets.status, "failed"),
-            body.data.targetIds
-              ? inArray(sendTargets.id, body.data.targetIds)
-              : undefined,
+            inArray(
+              sendTargets.id,
+              copies.map((t) => t.id),
+            ),
           ),
         )
-        .orderBy(asc(sendTargets.position))
-        .all();
-      if (failed.length === 0) return failed;
+        .run();
       db.update(sendTargets)
-        .set({ status: "pending", error: null })
+        .set({ editStatus: "pending", editError: null })
         .where(
           inArray(
             sendTargets.id,
-            failed.map((target) => target.id),
+            copies.map((t) => t.id),
           ),
         )
         .run();
-      db.update(sends)
-        .set({ status: "sending", updatedAt: Date.now() })
-        .where(eq(sends.id, id))
-        .run();
-      return failed;
+      return { copies, loaded, createdAt: current.createdAt };
     })();
-    if (claimed === "in-progress")
+    if (claim === "missing")
+      return reply
+        .code(404)
+        .send(sendError("NOT_FOUND", "That send doesn’t exist."));
+    if (claim === "conflict")
+      return reply
+        .code(409)
+        .send(
+          sendError("EDIT_CONFLICT", "This edit ID belongs to another send."),
+        );
+    if (claim === "blocked" || claim === "empty")
       return reply
         .code(409)
         .send(
           sendError(
-            "SEND_IN_PROGRESS",
-            "This send is still being delivered. Wait for it to finish.",
+            claim === "blocked" ? "EDIT_IN_PROGRESS" : "NO_EDITABLE_COPIES",
+            claim === "blocked"
+              ? "Wait for the current delivery or update to finish, then try again."
+              : "There are no existing copies to update.",
           ),
         );
-    if (claimed.length === 0)
-      return reply
-        .code(409)
-        .send(
-          sendError(
-            "NOTHING_TO_RETRY",
-            "There are no failed channels to retry.",
-          ),
+    if (claim !== "duplicate") {
+      if (claim.invalid)
+        return refusal(
+          reply,
+          claim.invalid.payload,
+          claim.invalid.missing,
+          true,
         );
-    deliverInBackground(
-      id,
-      claimed,
-      payload,
-      files,
-      new Date(send.createdAt),
-      listing,
-    );
+      deliverInBackground(
+        id,
+        claim.copies,
+        claim.loaded.payload,
+        claim.loaded.files,
+        new Date(claim.createdAt),
+        listing,
+        true,
+      );
+    }
     return reply.code(202).send({ id });
   });
+
+  const registerRetry = (editing: boolean) =>
+    app.post(
+      editing ? "/api/sends/:id/edits/retry" : "/api/sends/:id/retry",
+      idParams,
+      async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const body = retryRequestSchema.safeParse(request.body ?? {});
+        if (!body.success)
+          return reply
+            .code(400)
+            .send(
+              sendError("INVALID_REQUEST", "The retry request is malformed."),
+            );
+        let listing: GuildsResponse;
+        try {
+          listing = await discord.listGuilds();
+        } catch (error) {
+          return listingFailed(reply, error);
+        }
+        const claimed = sqlite.transaction(() => {
+          const current = db.select().from(sends).where(eq(sends.id, id)).get();
+          if (!current) return "missing" as const;
+          if (editing && body.data.id) {
+            const previous = db
+              .select()
+              .from(editRuns)
+              .where(eq(editRuns.id, body.data.id))
+              .get();
+            if (previous)
+              return previous.sendId === id
+                ? ("duplicate" as const)
+                : ("conflict" as const);
+          }
+          if (locked(current)) return "blocked" as const;
+          const failed = copiesFor(id).filter(
+            (t) =>
+              (editing
+                ? t.editStatus === "failed" &&
+                  t.editError !== "MESSAGE_DELETED" &&
+                  !!t.messageId
+                : t.status === "failed" && !t.messageId) &&
+              (!body.data.targetIds || body.data.targetIds.includes(t.id)),
+          );
+          if (!failed.length) return "empty" as const;
+          // Read the current payload only after acquiring the claim: edits may have finished during the listing await.
+          const payload = messagePayloadSchema.parse(
+            JSON.parse(current.payloadJson),
+          );
+          const loaded = editing
+            ? loadEditAttachments(payload, failed)
+            : loadAttachments(payload);
+          if (
+            validateMessage(loaded.payload, { missingFiles: loaded.missing })
+              .length
+          )
+            return { invalid: loaded };
+          if (editing && body.data.id)
+            db.insert(editRuns).values({ id: body.data.id, sendId: id }).run();
+          db.update(sendTargets)
+            .set(
+              editing
+                ? { editStatus: "pending", editError: null }
+                : { status: "pending", error: null },
+            )
+            .where(
+              inArray(
+                sendTargets.id,
+                failed.map((t) => t.id),
+              ),
+            )
+            .run();
+          db.update(sends)
+            .set(
+              editing
+                ? { editStatus: "sending", updatedAt: Date.now() }
+                : { status: "sending", updatedAt: Date.now() },
+            )
+            .where(eq(sends.id, id))
+            .run();
+          return { copies: failed, loaded, createdAt: current.createdAt };
+        })();
+        if (claimed === "missing")
+          return reply
+            .code(404)
+            .send(sendError("NOT_FOUND", "That send doesn’t exist."));
+        if (claimed === "duplicate") return reply.code(202).send({ id });
+        if (
+          claimed === "conflict" ||
+          claimed === "blocked" ||
+          claimed === "empty"
+        )
+          return reply
+            .code(409)
+            .send(
+              sendError(
+                claimed === "blocked" ? "SEND_IN_PROGRESS" : "NOTHING_TO_RETRY",
+                claimed === "blocked"
+                  ? "Wait for the current delivery or update to finish."
+                  : "There are no failed copies to retry.",
+              ),
+            );
+        if (claimed.invalid)
+          return refusal(
+            reply,
+            claimed.invalid.payload,
+            claimed.invalid.missing,
+            editing,
+          );
+        deliverInBackground(
+          id,
+          claimed.copies,
+          claimed.loaded.payload,
+          claimed.loaded.files,
+          new Date(claimed.createdAt),
+          listing,
+          editing,
+        );
+        return reply.code(202).send({ id });
+      },
+    );
+  registerRetry(false);
+  registerRetry(true);
 }

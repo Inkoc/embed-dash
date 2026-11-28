@@ -1,17 +1,28 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Link, useParams, useSearchParams } from "react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Link, useParams, useSearchParams, useNavigate } from "react-router";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   historyQuerySchema,
   historyDetailSchema,
   historyResponseSchema,
   messageLink,
 } from "@embed-dash/shared";
-import { withIds } from "../compose/draft";
+import { withIds, useDraft } from "../compose/draft";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import { useBot } from "../bot";
-import { asAppError, connectionFailure, failureFrom } from "../errors";
+import {
+  asAppError,
+  connectionFailure,
+  failureFrom,
+  type AppError,
+} from "../errors";
+import { startSend } from "../send/sendApi";
+import type { Session } from "../shell/SessionGate";
 import type { Theme } from "../theme";
 import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./HistoryView.module.css";
@@ -286,7 +297,17 @@ export function HistoryList() {
                       }}
                       aria-hidden="true"
                     />
-                    <strong>{entry.title}</strong>
+                    <strong>
+                      {entry.title}
+                      {entry.updateFailureCount > 0 && (
+                        <span className={styles.updateNotice}>
+                          {entry.updateFailureCount}{" "}
+                          {entry.updateFailureCount === 1
+                            ? "copy not updated"
+                            : "copies not updated"}
+                        </span>
+                      )}
+                    </strong>
                     <time dateTime={new Date(entry.createdAt).toISOString()}>
                       {new Date(entry.createdAt).toLocaleString()}
                     </time>
@@ -328,6 +349,11 @@ export function HistoryList() {
 function Detail({ id, theme }: { id: string; theme: Theme }) {
   const [params] = useSearchParams();
   const bot = useBot();
+  const { beginEdit } = useDraft();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+  const [retryProblem, setRetryProblem] = useState<AppError | null>(null);
   const query = useQuery({
     queryKey: ["history-detail", id],
     queryFn: async () =>
@@ -336,8 +362,29 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       ),
     retry: false,
     refetchInterval: (query) =>
-      query.state.data?.status === "sending" ? 1000 : false,
+      query.state.data?.status === "sending" ||
+      query.state.data?.edit?.status === "sending"
+        ? 1000
+        : false,
   });
+  async function retryCopy(targetId: string, update = false) {
+    setRetrying(true);
+    setRetryProblem(null);
+    try {
+      await startSend(
+        update ? "retry-edit" : "retry",
+        `/api/sends/${id}/${update ? "edits/retry" : "retry"}`,
+        { targetIds: [targetId] },
+        client.getQueryData<Session>(["session"])?.csrfToken ?? "",
+      );
+      await query.refetch();
+      void client.invalidateQueries({ queryKey: ["history"] });
+    } catch (error) {
+      setRetryProblem(asAppError(update ? "retry-edit" : "retry", error));
+    } finally {
+      setRetrying(false);
+    }
+  }
   const draft = useMemo(
     () => (query.data ? withIds(query.data.payload) : null),
     [query.data],
@@ -347,10 +394,59 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       <header className={styles.head}>
         <div>
           <h2 tabIndex={-1}>Send details</h2>
+          {query.data?.lastEditedAt && (
+            <p>
+              Last edited {new Date(query.data.lastEditedAt).toLocaleString()}
+            </p>
+          )}
           <Link to={`/history?${params}`}>
             ← Back to history <kbd data-k="back">Esc</kbd>
           </Link>
         </div>
+        {query.data && (
+          <div className={styles.detailActions}>
+            <button
+              className={styles.edit}
+              disabled={
+                query.data.status === "sending" ||
+                query.data.edit?.status === "sending" ||
+                !query.data.targets.some(
+                  (t) =>
+                    t.messageId &&
+                    !query.data.edit?.targets.some(
+                      (e) =>
+                        e.id === t.id && e.error?.code === "MESSAGE_DELETED",
+                    ),
+                )
+              }
+              aria-describedby="edit-availability"
+              onClick={() => {
+                beginEdit(query.data);
+                void navigate("/");
+              }}
+            >
+              Edit
+            </button>
+            <p id="edit-availability">
+              {query.data.status === "sending" ||
+              query.data.edit?.status === "sending"
+                ? "Wait for the current delivery or update to finish."
+                : !query.data.targets.some((t) => t.messageId)
+                  ? "No confirmed copies to edit."
+                  : query.data.targets.every(
+                        (t) =>
+                          !t.messageId ||
+                          query.data.edit?.targets.some(
+                            (e) =>
+                              e.id === t.id &&
+                              e.error?.code === "MESSAGE_DELETED",
+                          ),
+                      )
+                    ? "Every confirmed copy was deleted in Discord."
+                    : "Update the existing copies in their original channels."}
+            </p>
+          </div>
+        )}
       </header>
       {query.isPending ? (
         <Loading />
@@ -367,6 +463,13 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   {new Date(query.data.createdAt).toLocaleString()}
                 </time>
               </div>
+              {query.data.edit?.targets.some((t) => t.status !== "sent") && (
+                <p className={styles.versionNotice}>
+                  This is the latest saved version. Check each copy’s update
+                  result below; copies that were not updated may still show an
+                  earlier version.
+                </p>
+              )}
               <div className={styles.preview} data-theme={theme}>
                 <DiscordPreview
                   draft={draft}
@@ -384,40 +487,110 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
               </div>
+              {retryProblem && (
+                <div className={styles.state}>
+                  <p role="alert">{retryProblem.message}</p>
+                  <FailureDetail error={retryProblem} />
+                </div>
+              )}
               <ul>
-                {query.data.targets.map((target) => (
-                  <li className={styles.target} key={target.id}>
-                    <strong>#{target.channelName || target.channelId}</strong>
-                    <span>{target.guildName || target.guildId}</span>
-                    <p>
-                      {
-                        {
-                          sent: "Sent",
-                          failed: "Failed",
-                          unknown: "Unknown outcome",
-                          pending: "Pending",
-                          posting: "Sending",
-                        }[target.status]
-                      }
-                    </p>
-                    {target.error && <p>{target.error.message}</p>}
-                    {target.messageId && (
-                      <a
-                        href={messageLink({
-                          ...target,
-                          messageId: target.messageId,
-                        })}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open in Discord
-                        <span className="visually-hidden">
-                          : #{target.channelName || target.channelId}
+                {query.data.targets.map((target) => {
+                  const update = query.data.edit?.targets.find(
+                    (t) => t.id === target.id,
+                  );
+                  return (
+                    <li className={styles.target} key={target.id}>
+                      <strong>#{target.channelName || target.channelId}</strong>
+                      <span>{target.guildName || target.guildId}</span>
+                      <p>
+                        Delivery:{" "}
+                        <span>
+                          {
+                            {
+                              sent: "Sent",
+                              failed: "Failed",
+                              unknown: "Unknown outcome",
+                              pending: "Pending",
+                              posting: "Sending",
+                            }[target.status]
+                          }
                         </span>
-                      </a>
-                    )}
-                  </li>
-                ))}
+                      </p>
+                      {target.error && <p>{target.error.message}</p>}
+                      {target.status === "failed" && !target.messageId && (
+                        <button
+                          disabled={
+                            retrying ||
+                            query.data.status === "sending" ||
+                            query.data.edit?.status === "sending"
+                          }
+                          onClick={() => void retryCopy(target.id)}
+                        >
+                          Retry delivery
+                          <span className="visually-hidden">
+                            {" "}
+                            to #{target.channelName || target.channelId}
+                          </span>
+                        </button>
+                      )}
+                      {update && (
+                        <div className={styles.updateResult}>
+                          <p>
+                            Latest update:{" "}
+                            <strong>
+                              {update.error?.code === "MESSAGE_DELETED"
+                                ? "Deleted in Discord"
+                                : update.error?.code === "EDIT_UNCONFIRMED" ||
+                                    update.status === "unknown"
+                                  ? "Unconfirmed"
+                                  : {
+                                      sent: "Updated",
+                                      failed:
+                                        "Not updated to the latest version",
+                                      pending: "Pending",
+                                      posting: "Updating",
+                                      unknown: "Unconfirmed",
+                                    }[update.status]}
+                            </strong>
+                          </p>
+                          {update.error && <p>{update.error.message}</p>}
+                          {update.status === "failed" &&
+                            update.error?.code !== "MESSAGE_DELETED" && (
+                              <button
+                                disabled={
+                                  retrying ||
+                                  query.data.status === "sending" ||
+                                  query.data.edit?.status === "sending"
+                                }
+                                onClick={() => void retryCopy(target.id, true)}
+                              >
+                                Retry update
+                                <span className="visually-hidden">
+                                  {" "}
+                                  to #{target.channelName || target.channelId}
+                                </span>
+                              </button>
+                            )}
+                        </div>
+                      )}
+                      {target.messageId && (
+                        <a
+                          href={messageLink({
+                            ...target,
+                            messageId: target.messageId,
+                          })}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in Discord
+                          <span className="visually-hidden">
+                            : #{target.channelName || target.channelId}
+                          </span>
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           </div>

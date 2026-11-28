@@ -147,6 +147,7 @@ export function deliveryFailure(error: unknown): {
     discordCode === missingAccess
   )
     return failed("MISSING_PERMISSION");
+  if (status === 404 && discordCode === 10008) return failed("MESSAGE_DELETED");
   if (status === 404 || discordCode === unknownChannel)
     return failed("CHANNEL_GONE");
   // A 500 or 504 can come after Discord stored the message; 502 and 503 mean it never got that far.

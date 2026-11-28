@@ -34,6 +34,7 @@ test("editing title, description and colour updates the preview live", async ({
 }) => {
   const errors = collectErrors(page);
   await page.goto("/");
+  await expect(page.getByRole("group", { name: "Show" })).toBeHidden();
   await page.getByLabel("Title", { exact: true }).fill("Server maintenance");
   await expect(preview(page)).toContainText("Server maintenance");
   await page

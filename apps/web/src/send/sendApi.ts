@@ -1,5 +1,7 @@
 import {
   channelsUnavailableSchema,
+  historyDetailSchema,
+  type HistoryDetail,
   sendResultSchema,
   type SendResult,
 } from "@embed-dash/shared";
@@ -82,13 +84,14 @@ async function request(
 
 /** Starts a send or a retry; the server answers once it has recorded it, and delivers on its own. */
 export async function startSend(
-  action: "send" | "retry",
+  action: "send" | "retry" | "edit" | "retry-edit",
   url: string,
   body: object,
   csrfToken: string,
+  method: "POST" | "PUT" = "POST",
 ): Promise<{ id: string }> {
   const response = await request(action, url, {
-    method: "POST",
+    method,
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify(body),
   });
@@ -98,4 +101,9 @@ export async function startSend(
 export async function fetchSend(id: string): Promise<SendResult> {
   const response = await request("follow", `/api/sends/${id}`, {});
   return sendResultSchema.parse(await response.json());
+}
+
+export async function fetchEdit(id: string): Promise<HistoryDetail> {
+  const response = await request("follow-edit", `/api/sends/${id}`, {});
+  return historyDetailSchema.parse(await response.json());
 }

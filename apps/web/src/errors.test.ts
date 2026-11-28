@@ -128,3 +128,23 @@ test("a dropped connection and an unexpected throw get plain words", () => {
   expect(odd.detail).toBe("TypeError");
   expect(asAppError("send", "boom").detail).toBeNull();
 });
+
+test.each(["edit", "retry-edit"] as const)(
+  "%s failures describe updates and keep technical text in Details",
+  (action) => {
+    const missing = describeFailure(action, 422, {
+      code: "UPLOAD_MISSING",
+      error: "Stored upload missing",
+    });
+    expect(missing.message).toContain("nothing was changed");
+    expect(missing.message).not.toContain("nothing was sent");
+    expect(missing.message).not.toContain("Stored upload missing");
+    expect(missing.detail).toContain("Stored upload missing");
+    expect(
+      describeFailure(action, 409, { code: "EDIT_IN_PROGRESS" }).message,
+    ).toContain("Wait for every copy to answer");
+    expect(
+      describeFailure(action, 409, { code: "NO_EDITABLE_COPIES" }).message,
+    ).toContain("Compose a new message");
+  },
+);

@@ -17,6 +17,9 @@ export type Action =
   | "send"
   | "retry"
   | "follow"
+  | "edit"
+  | "retry-edit"
+  | "follow-edit"
   | "upload"
   | "sign-in"
   | "sign-out";
@@ -31,6 +34,9 @@ const lead: Record<Action, string> = {
   send: "Couldn’t send",
   retry: "Couldn’t retry",
   follow: "Couldn’t check on the send",
+  edit: "Couldn’t update the message",
+  "retry-edit": "Couldn’t retry the update",
+  "follow-edit": "Couldn’t check on the update",
   upload: "Couldn’t upload the file",
   "sign-in": "Couldn’t sign in",
   "sign-out": "Couldn’t sign out",
@@ -72,6 +78,14 @@ const byCode: Record<string, string> = {
     "the app sent a request the server couldn’t read. Refresh the page and try again.",
   SEND_IN_PROGRESS:
     "this send is still being delivered. Wait for every channel to answer.",
+  EDIT_BLOCKED:
+    "this message can’t be updated yet. Wait for the current delivery or update to finish, then try again.",
+  EDIT_IN_PROGRESS:
+    "a delivery or update is still running. Wait for every copy to answer, then try again.",
+  NO_EDITABLE_COPIES:
+    "there are no confirmed copies left to update. Compose a new message if you need to send it again.",
+  EDIT_CONFLICT:
+    "this update belongs to another message. Close the editor and open the message from History again.",
   NOTHING_TO_RETRY: "no channel is waiting for a retry.",
   NOT_FOUND: "the server has no record of this send.",
   SIGNED_OUT: "your session ended. Refresh the page and sign in again.",
@@ -126,7 +140,15 @@ export function describeFailure(
   const said = typeof body?.error === "string" ? body.error : null;
   // An error page from a proxy or a crashed server is not the app answering.
   const fromApp = said !== null || code !== null;
+  const editing = action === "edit" || action === "retry-edit";
+  const editMessageCause =
+    editing && (code === "UPLOAD_MISSING" || code === "INVALID_MESSAGE")
+      ? code === "UPLOAD_MISSING"
+        ? "a file needed for this update is no longer on the server, so nothing was changed. Remove or replace it in the editor."
+        : "the server found a problem with the message, so nothing was changed. Check it in the editor."
+      : null;
   const cause =
+    editMessageCause ||
     (code && byCode[code]) ||
     (status >= 500 && !fromApp
       ? "embed-dash didn’t answer. It may be offline or restarting; check that it’s running, then retry."

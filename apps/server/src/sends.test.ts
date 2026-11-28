@@ -5,12 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, expect, test } from "vitest";
-import type { FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import { emptyEmbed, type MessagePayload } from "@embed-dash/shared";
 import { fakeGuilds, startFakeDiscord } from "../../../e2e/fake-discord.js";
 import { createApp } from "./app.js";
+import { createDiscord } from "./discord.js";
+import { registerSends } from "./sends.js";
 import type { Config } from "./config.js";
 import { openDatabase } from "./db.js";
+import { sweepUploads } from "./uploads.js";
 import { deliveryFailure } from "./errors.js";
 import { discordMessage } from "./payload.js";
 
@@ -124,7 +127,8 @@ const read = ({ app, headers }: Setup, id: string) =>
 async function settle(s: Setup, id: string) {
   for (let i = 0; i < 500; i++) {
     const send = (await read(s, id)).json();
-    if (send.status !== "sending") return send;
+    if (send.status !== "sending" && send.edit?.status !== "sending")
+      return send;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("The send never finished");
@@ -1199,4 +1203,619 @@ test("history folds Unicode text and destination names and accepts channel prefi
     });
     expect(response.json().entries).toEqual([]);
   }
+});
+
+const edit = (
+  s: Setup,
+  id: string,
+  change: Partial<MessagePayload> = {},
+  editId = randomUUID(),
+) =>
+  s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${id}`,
+    headers: s.headers,
+    payload: { id: editId, payload: payload(change) },
+  });
+
+test("edits every existing copy with original mentions and an idempotent run", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results], {
+    pings: ["roles"],
+    silent: true,
+  });
+  const editId = randomUUID();
+  expect(
+    (
+      await edit(
+        s,
+        initial.id,
+        { content: "Revised", pings: ["everyone"] },
+        editId,
+      )
+    ).statusCode,
+  ).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(done.targets.map((t: { status: string }) => t.status)).toEqual([
+    "sent",
+    "sent",
+  ]);
+  expect(done.lastEditedAt).toBeGreaterThanOrEqual(initial.createdAt);
+  expect(s.fake.messages).toHaveLength(2);
+  for (const message of s.fake.messages) {
+    expect(message.payload.content).toBe("Revised");
+    expect(message.payload.allowed_mentions).toEqual({ parse: ["roles"] });
+  }
+  expect(
+    (await edit(s, initial.id, { content: "Duplicate" }, editId)).statusCode,
+  ).toBe(202);
+  expect(s.fake.messages[0].payload.content).toBe("Revised");
+});
+
+test("failed edit copies retry while deleted copies stay deleted", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results, schedule]);
+  s.fake.fail(results, { status: 403, code: 50013 });
+  s.fake.messages.splice(
+    s.fake.messages.findIndex((m) => m.channelId === schedule),
+    1,
+  );
+  expect(
+    (await edit(s, initial.id, { content: "Updated text" })).statusCode,
+  ).toBe(202);
+  const partial = await settle(s, initial.id);
+  expect(
+    partial.edit.targets.map(
+      (t: { error: { code: string } | null }) => t.error?.code,
+    ),
+  ).toEqual([undefined, "MISSING_PERMISSION", "MESSAGE_DELETED"]);
+  const response = await s.app.inject({
+    method: "POST",
+    url: `/api/sends/${initial.id}/edits/retry`,
+    headers: s.headers,
+    payload: {},
+  });
+  expect(response.statusCode).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(done.status).toBe("done");
+  expect(
+    done.targets.every((t: { status: string }) => t.status === "sent"),
+  ).toBe(true);
+  expect(done.edit.targets.map((t: { status: string }) => t.status)).toEqual([
+    "sent",
+    "sent",
+    "failed",
+  ]);
+  expect(done.edit.targets[2].error.code).toBe("MESSAGE_DELETED");
+  expect(s.fake.messages).toHaveLength(2);
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Updated text"),
+  ).toBe(true);
+});
+
+test("edits retain attachment IDs, remove files explicitly, and clear old text and embeds", async () => {
+  const s = await setup();
+  const file = await upload(s, "chart.png");
+  const initial = await sent(s, [news, results], {
+    attachments: [file],
+    embeds: [{ ...emptyEmbed(), title: "Old" }],
+  });
+  const ids = s.fake.messages.map((m) => m.attachments);
+  expect(
+    (
+      await edit(s, initial.id, {
+        content: "",
+        attachments: [file],
+        embeds: [{ ...emptyEmbed(), title: "New" }],
+      })
+    ).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  expect(s.fake.messages.map((m) => m.attachments)).toEqual(ids);
+  expect(s.fake.messages[0].payload.content).toBe("");
+  expect(
+    (
+      await edit(s, initial.id, {
+        content: "Only text",
+        attachments: [],
+        embeds: [],
+      })
+    ).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  for (const message of s.fake.messages) {
+    expect(message.payload.attachments).toEqual([]);
+    expect(message.payload.embeds).toEqual([]);
+  }
+});
+
+test("edit routes require authentication and CSRF", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news]);
+  const body = { id: randomUUID(), payload: payload() };
+  const anonymous = await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${initial.id}`,
+    payload: body,
+  });
+  expect(anonymous.statusCode).toBe(401);
+  const noCsrf = await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${initial.id}`,
+    headers: { cookie: s.headers.cookie, origin: s.headers.origin },
+    payload: body,
+  });
+  expect(noCsrf.statusCode).toBe(403);
+});
+
+test("restart makes interrupted edits retryable without changing delivery outcomes", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  await s.app.close();
+  const db = database(s.dir);
+  const editId = randomUUID();
+  db.prepare("INSERT INTO edit_runs (id, send_id) VALUES (?, ?)").run(
+    editId,
+    initial.id,
+  );
+  db.prepare(
+    "UPDATE sends SET edit_status = 'sending', edit_id = ?, payload_json = ? WHERE id = ?",
+  ).run(
+    editId,
+    JSON.stringify(payload({ content: "Recovered edit" })),
+    initial.id,
+  );
+  db.prepare(
+    "UPDATE send_targets SET edit_status = 'posting' WHERE channel_id = ?",
+  ).run(news);
+  db.prepare(
+    "UPDATE send_targets SET edit_status = 'pending' WHERE channel_id = ?",
+  ).run(results);
+  db.close();
+  const app = await createApp(s.config, { logger: false });
+  cleanups.push(() => app.close());
+  const resumed = { ...s, app };
+  const interrupted = (await read(resumed, initial.id)).json();
+  expect(interrupted.status).toBe("done");
+  expect(
+    interrupted.edit.targets.map((t: { status: string }) => t.status),
+  ).toEqual(["failed", "failed"]);
+  expect(interrupted.edit.targets[0].error.code).toBe("EDIT_UNCONFIRMED");
+  expect(
+    (
+      await app.inject({
+        method: "POST",
+        url: `/api/sends/${initial.id}/edits/retry`,
+        headers: s.headers,
+        payload: {},
+      })
+    ).statusCode,
+  ).toBe(202);
+  const done = await settle(resumed, initial.id);
+  expect(done.edit.targets.map((t: { status: string }) => t.status)).toEqual([
+    "sent",
+    "sent",
+  ]);
+  expect(s.fake.messages).toHaveLength(2);
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Recovered edit"),
+  ).toBe(true);
+  expect((await edit(resumed, initial.id)).statusCode).toBe(202);
+});
+
+test("removing edit attachments preserves files held by templates and other sends", async () => {
+  const s = await setup();
+  const templateFile = await upload(s, "template.png");
+  const otherFile = await upload(s, "other.png");
+  const initial = await sent(s, [news], {
+    attachments: [templateFile, otherFile],
+  });
+  await sent(s, [results], { attachments: [otherFile] });
+  const template = await s.app.inject({
+    method: "POST",
+    url: "/api/templates",
+    headers: s.headers,
+    payload: {
+      name: "Bulletin",
+      message: { content: "Reusable", embeds: [], attachments: [templateFile] },
+    },
+  });
+  expect(template.statusCode).toBe(201);
+  expect((await edit(s, initial.id, { attachments: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  for (const file of [templateFile, otherFile])
+    await s.app.inject({
+      method: "DELETE",
+      url: `/api/uploads/${file.id}`,
+      headers: s.headers,
+    });
+  const db = database(s.dir);
+  try {
+    sweepUploads(s.dir, db, 14, Date.now() + 30 * 86400000);
+  } finally {
+    db.close();
+  }
+  for (const file of [templateFile, otherFile])
+    expect(
+      (
+        await s.app.inject({
+          url: `/api/uploads/${file.id}`,
+          headers: s.headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+});
+
+test("a replacement upload with the same filename replaces the Discord attachment", async () => {
+  const s = await setup();
+  const oldFile = await upload(s, "chart.png");
+  const initial = await sent(s, [news], { attachments: [oldFile] });
+  const oldAttachments = s.fake.messages[0].attachments;
+  const replacement = await upload(
+    s,
+    "chart.png",
+    Buffer.concat([png, Buffer.alloc(16)]),
+  );
+  expect(
+    (await edit(s, initial.id, { attachments: [replacement] })).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  expect(s.fake.messages[0].attachments).not.toEqual(oldAttachments);
+  expect(s.fake.messages[0].attachments).toEqual([
+    { id: expect.stringMatching(/^\d{17,20}$/), filename: "chart.png" },
+  ]);
+});
+
+const retryEdit = (s: Setup, id: string, targetIds?: string[]) =>
+  s.app.inject({
+    method: "POST",
+    url: `/api/sends/${id}/edits/retry`,
+    headers: s.headers,
+    payload: { targetIds },
+  });
+
+test("an unconfirmed original post is skipped while confirmed copies remain editable", async () => {
+  const s = await setup();
+  s.fake.fail(results, { status: 500 });
+  const initial = await sent(s, [news, results]);
+  expect(initial.targets[1].status).toBe("unknown");
+  expect(
+    (await edit(s, initial.id, { content: "Current edition" })).statusCode,
+  ).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(done.status).toBe("partial");
+  expect(done.targets[1].status).toBe("unknown");
+  expect(
+    done.edit.targets.map((t: { channelId: string }) => t.channelId),
+  ).toEqual([news]);
+  expect(s.fake.messages[0].payload.content).toBe("Current edition");
+  expect(s.fake.messageReads).toEqual([]);
+});
+
+test.each([0, 500, 502, 503, 504])(
+  "an edit response failure %s is retryable and preserves delivery status",
+  async (status) => {
+    const s = await setup();
+    const initial = await sent(s, [news]);
+    s.fake.fail(news, { status });
+    expect((await edit(s, initial.id, { content: "Revised" })).statusCode).toBe(
+      202,
+    );
+    const failed = await settle(s, initial.id);
+    expect(failed.status).toBe("done");
+    expect(failed.targets[0].status).toBe("sent");
+    expect(failed.edit.targets[0].status).toBe("failed");
+    expect(failed.edit.targets[0].error.message).not.toMatch(
+      /\bposted\b|\bsent\b/,
+    );
+    expect((await retryEdit(s, initial.id)).statusCode).toBe(202);
+    expect((await settle(s, initial.id)).edit.targets[0].status).toBe("sent");
+    expect(s.fake.messages).toHaveLength(1);
+    expect(s.fake.messages[0].payload.content).toBe("Revised");
+  },
+);
+
+test("failed original deliveries can post the edited version and are locked during updates", async () => {
+  const s = await setup();
+  s.fake.fail(results, { status: 503 });
+  const initial = await sent(s, [news, results]);
+  s.fake.slow(150);
+  expect(
+    (await edit(s, initial.id, { content: "Current version" })).statusCode,
+  ).toBe(202);
+  expect((await retry(s, initial.id)).statusCode).toBe(409);
+  const updated = await settle(s, initial.id);
+  expect(updated.status).toBe("partial");
+  expect(updated.targets[1].status).toBe("failed");
+  expect(updated.edit.targets).toHaveLength(1);
+  expect((await retry(s, initial.id)).statusCode).toBe(202);
+  expect((await edit(s, initial.id)).statusCode).toBe(409);
+  const done = await settle(s, initial.id);
+  expect(done.status).toBe("done");
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Current version"),
+  ).toBe(true);
+});
+
+test("two different edit runs cannot update the same send concurrently", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  s.fake.slow(100);
+  const responses = await Promise.all([
+    edit(s, initial.id, { content: "First" }),
+    edit(s, initial.id, { content: "Second" }),
+  ]);
+  expect(responses.map((r) => r.statusCode).sort()).toEqual([202, 409]);
+  await settle(s, initial.id);
+  expect(new Set(s.fake.messages.map((m) => m.payload.content)).size).toBe(1);
+  expect(s.fake.messages).toHaveLength(2);
+});
+
+test("an edit cannot claim a send while its initial delivery is running", async () => {
+  const s = await setup();
+  s.fake.slow(100);
+  const response = await post(s, [news, results]);
+  expect((await edit(s, response.json().id)).statusCode).toBe(409);
+  await settle(s, response.json().id);
+});
+
+test("a delivery retry that awaited a listing uses content saved by an intervening edit", async () => {
+  const s = await setup();
+  await s.app.close();
+  const app = Fastify();
+  const sqlite = openDatabase(s.dir);
+  const discord = createDiscord(s.config);
+  const listing = await discord.listGuilds();
+  let list = () => Promise.resolve(listing);
+  await registerSends(app, s.config, sqlite, {
+    ...discord,
+    listGuilds: () => list(),
+  });
+  cleanups.push(async () => {
+    await app.close();
+    sqlite.close();
+  });
+  const raw = { ...s, app };
+  s.fake.fail(results, { status: 503 });
+  const initial = await sent(raw, [news, results]);
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let first = true;
+  list = () => {
+    if (!first) return Promise.resolve(listing);
+    first = false;
+    entered();
+    return new Promise((resolve) => {
+      release = () => resolve(listing);
+    });
+  };
+  const retrying = retry(raw, initial.id).then((r) => r);
+  await waiting;
+  expect(
+    (await edit(raw, initial.id, { content: "Newest content" })).statusCode,
+  ).toBe(202);
+  await settle(raw, initial.id);
+  release();
+  expect((await retrying).statusCode).toBe(202);
+  expect((await settle(raw, initial.id)).status).toBe("done");
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Newest content"),
+  ).toBe(true);
+});
+
+test("keeping an attachment needs no disk copy and adding another uploads only that file", async () => {
+  const s = await setup();
+  const kept = await upload(s, "kept.png");
+  const initial = await sent(s, [news, results], { attachments: [kept] });
+  const oldIds = s.fake.messages.map((m) => m.attachments![0].id);
+  unlinkSync(join(s.dir, "uploads", kept.id));
+  const added = await upload(s, "added.png");
+  expect(
+    (await edit(s, initial.id, { attachments: [kept, added] })).statusCode,
+  ).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(
+    done.edit.targets.every((t: { status: string }) => t.status === "sent"),
+  ).toBe(true);
+  s.fake.messages.forEach((m, i) => {
+    expect(m.attachments![0].id).toBe(oldIds[i]);
+    expect(m.attachments![1]).toEqual({
+      id: expect.stringMatching(/^\d{17,20}$/),
+      filename: "added.png",
+    });
+  });
+  expect(s.fake.messageReads).toEqual([]);
+});
+
+test("legacy copies without stored attachment IDs re-upload safely or refuse missing files", async () => {
+  const s = await setup();
+  const file = await upload(s, "legacy.png");
+  const initial = await sent(s, [news], { attachments: [file] });
+  const oldId = s.fake.messages[0].attachments![0].id;
+  const db = database(s.dir);
+  db.prepare("UPDATE send_targets SET attachments_json = NULL").run();
+  db.close();
+  expect((await edit(s, initial.id, { attachments: [file] })).statusCode).toBe(
+    202,
+  );
+  await settle(s, initial.id);
+  expect(s.fake.messages[0].attachments![0].id).not.toBe(oldId);
+  const db2 = database(s.dir);
+  db2.prepare("UPDATE send_targets SET attachments_json = NULL").run();
+  db2.close();
+  unlinkSync(join(s.dir, "uploads", file.id));
+  const refused = await edit(s, initial.id, { attachments: [file] });
+  expect(refused.statusCode).toBe(422);
+  expect(refused.json().error).toContain("Nothing was changed.");
+  expect(refused.json().error).not.toContain("Nothing was sent.");
+  expect(s.fake.messages[0].attachments).toHaveLength(1);
+});
+
+test("removing the last reference from an edited send makes its file sweepable", async () => {
+  const s = await setup();
+  const file = await upload(s, "removed.png");
+  const initial = await sent(s, [news], { attachments: [file] });
+  expect((await edit(s, initial.id, { attachments: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  const db = database(s.dir);
+  try {
+    sweepUploads(s.dir, db, 14, Date.now() + 30 * 86400000);
+  } finally {
+    db.close();
+  }
+  expect(
+    (await s.app.inject({ url: `/api/uploads/${file.id}`, headers: s.headers }))
+      .statusCode,
+  ).toBe(404);
+});
+
+test("edit preflight does not require send permissions after the message exists", async () => {
+  const s = await setup();
+  await s.app.close();
+  const app = Fastify();
+  const sqlite = openDatabase(s.dir);
+  const discord = createDiscord(s.config);
+  const listing = await discord.listGuilds();
+  let readOnly = false;
+  await registerSends(app, s.config, sqlite, {
+    ...discord,
+    listGuilds: async () =>
+      readOnly
+        ? {
+            ...listing,
+            guilds: listing.guilds.map((g) => ({
+              ...g,
+              channels: g.channels.map((c) => ({
+                ...c,
+                missing: ["sendMessages", "embedLinks"],
+              })),
+            })),
+          }
+        : listing,
+  });
+  cleanups.push(async () => {
+    await app.close();
+    sqlite.close();
+  });
+  const raw = { ...s, app };
+  const initial = await sent(raw, [news]);
+  readOnly = true;
+  expect(
+    (await edit(raw, initial.id, { content: "Still editable" })).statusCode,
+  ).toBe(202);
+  expect((await settle(raw, initial.id)).edit.targets[0].status).toBe("sent");
+  expect(s.fake.messageReads).toEqual([]);
+});
+
+test("fake Discord rejects invented attachment IDs and unmatched new files; omitted attachments stay intact", async () => {
+  const s = await setup();
+  const file = await upload(s, "chart.png");
+  await sent(s, [news], { attachments: [file] });
+  const message = s.fake.messages[0];
+  const url = `${s.config.discordApiBase}/v10/channels/${news}/messages/${message.id}`;
+  const patch = (body: object) =>
+    fetch(url, {
+      method: "PATCH",
+      headers: {
+        authorization: "Bot e2e-test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  const attachments = message.attachments;
+  expect(
+    (
+      await patch({
+        attachments: [{ id: "91999999999999999", filename: "chart.png" }],
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (await patch({ attachments: [{ id: 0, filename: "new.png" }] })).status,
+  ).toBe(400);
+  expect((await patch({ content: "Keep files" })).status).toBe(200);
+  expect(message.attachments).toEqual(attachments);
+  expect(message.files.map((f) => f.filename)).toEqual(["chart.png"]);
+});
+
+test("edit retry routes require authentication and CSRF", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news]);
+  const url = `/api/sends/${initial.id}/edits/retry`;
+  expect(
+    (await s.app.inject({ method: "POST", url, payload: {} })).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await s.app.inject({
+        method: "POST",
+        url,
+        payload: {},
+        headers: { cookie: s.headers.cookie, origin: s.headers.origin },
+      })
+    ).statusCode,
+  ).toBe(403);
+});
+
+test("stored update failures remain visible after reopening History and clear after retry", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  s.fake.fail(results, { status: 403, code: 50013 });
+  expect(
+    (await edit(s, initial.id, { content: "Latest saved edition" })).statusCode,
+  ).toBe(202);
+  await settle(s, initial.id);
+  await s.app.close();
+  const app = await createApp(s.config, { logger: false });
+  cleanups.push(() => app.close());
+  const resumed = { ...s, app };
+  const detail = (await read(resumed, initial.id)).json();
+  expect(detail.payload.content).toBe("Latest saved edition");
+  expect(detail.lastEditedAt).toBeTypeOf("number");
+  expect(
+    detail.targets.every((t: { status: string }) => t.status === "sent"),
+  ).toBe(true);
+  expect(detail.edit.targets[1].status).toBe("failed");
+  expect(
+    s.fake.messages.find((m) => m.channelId === results)!.payload.content,
+  ).toBe(payload().content);
+  const list = () =>
+    app.inject({ url: "/api/sends?status=done", headers: s.headers });
+  expect((await list()).json().entries[0].updateFailureCount).toBe(1);
+  expect((await retryEdit(resumed, initial.id)).statusCode).toBe(202);
+  await settle(resumed, initial.id);
+  expect((await list()).json().entries[0].updateFailureCount).toBe(0);
+  expect(
+    s.fake.messages.every((m) => m.payload.content === "Latest saved edition"),
+  ).toBe(true);
+});
+
+test("History flags an entirely failed update without changing its delivery filter", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news, results]);
+  for (const id of [news, results]) s.fake.fail(id, { status: 504 });
+  expect(
+    (await edit(s, initial.id, { content: "New saved edition" })).statusCode,
+  ).toBe(202);
+  const done = await settle(s, initial.id);
+  expect(done.lastEditedAt).toBeNull();
+  expect(
+    done.edit.targets.every(
+      (t: { error: { code: string } }) => t.error.code === "EDIT_UNCONFIRMED",
+    ),
+  ).toBe(true);
+  const history = await s.app.inject({
+    url: "/api/sends?status=done",
+    headers: s.headers,
+  });
+  expect(history.json().entries[0]).toMatchObject({
+    status: "done",
+    updateFailureCount: 2,
+  });
+  expect(
+    s.fake.messages.every((m) => m.payload.content === payload().content),
+  ).toBe(true);
 });

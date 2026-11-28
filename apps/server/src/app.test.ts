@@ -103,7 +103,7 @@ test("startup migrations are persistent and repeatable", () => {
     expect(() =>
       db
         .prepare(
-          "INSERT INTO sends VALUES ('id', '{}', '', 'invalid', NULL, 0, 0)",
+          "INSERT INTO sends (id, payload_json, search_text, status, scheduled_at, created_at, updated_at) VALUES ('id', '{}', '', 'invalid', NULL, 0, 0)",
         )
         .run(),
     ).toThrow(/CHECK/);
