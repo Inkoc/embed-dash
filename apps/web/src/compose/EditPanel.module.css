@@ -172,3 +172,7 @@
     scroll-margin-top: calc(var(--bar-height) + var(--space-4));
   }
 }
+
+.schedule {
+  margin-top: var(--space-4);
+}

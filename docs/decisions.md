@@ -44,3 +44,13 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Failures read as sentences.** One client mapping turns server and Discord errors into specific copy, with status and code behind a Details disclosure; a refused sign-in behind an unconfigured HTTPS proxy names the settings to set.
 - **The top bar holds four views.** Below about 640 px the views move to their own row; at larger text sizes the bar sheds the brand name, then the bot name, one step at a time. Layout breakpoints are in em so they follow the browser's text size.
 - **Dependency audit (milestone 2).** Production dependencies have no known advisories; the one remaining moderate advisory is in a build-time tool used only to generate migrations and was accepted again.
+
+## Milestone 3
+
+- **Scheduling uses the delivery engine.** UTC due instants live on sends; each timer tick claims due rows in a SQLite transaction before invoking ordinary delivery. A one-second timer also picks up overdue entries after startup.
+- **Scheduled targets have not started.** Restart settlement excludes them; claimed deliveries retain the existing posting/unknown recovery rules and never repost uncertain copies automatically.
+- **Schedules remain mutable until claimed.** Content, due time and destinations change together under the same transaction lock; cancellation excludes the payload from upload retention while completed deliveries retain files for retries.
+- **Scheduler tests control time without production endpoints.** Integration tests inject a clock; only the fake-Discord e2e harness exposes an authenticated, CSRF-protected one-minute advance endpoint and uses a 50 ms tick.
+- **A scheduled send takes its send time when claimed.** Delivery, subsequent edits and retries, previews and history bounds share that persisted instant; the Scheduled filter orders waiting entries by due time.
+- **Listing outages have a bounded delay.** Scheduler listing failures log fixed codes and back off from five seconds to one minute. Permanent refusals fail immediately; transient failures fail due entries only after fifteen continuous minutes of listing failure, allowing an explicit retry. Recovery resets that interval, so downtime does not consume the retry window.
+- **Plans extend at most one year ahead.** Shared validation and the browser enforce a 365-day horizon; missing scheduled files produce an explicit upload failure before posting.

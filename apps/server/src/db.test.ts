@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
@@ -12,9 +12,18 @@ test("the history migration folds existing Unicode text and indexes creation tim
       "INSERT INTO sends (id, payload_json, search_text, status, created_at, updated_at) VALUES ('old', '{}', 'ÉTÉ Αθήνα', 'done', 1, 1)",
     ).run();
     // Replay the generated migration against a database at the preceding version.
-    db.exec("DROP INDEX sends_created_at_idx");
+    db.exec("DROP INDEX sends_created_at_idx; DROP INDEX sends_due_idx");
+    const journal = JSON.parse(
+      readFileSync(
+        new URL("../drizzle/meta/_journal.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { entries: { tag: string; when: number }[] };
+    const historyVersion = journal.entries.find((entry) =>
+      entry.tag.startsWith("0008_"),
+    )!.when;
     db.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+      `DELETE FROM __drizzle_migrations WHERE created_at >= ${historyVersion}`,
     );
     db.close();
     db = openDatabase(dir);

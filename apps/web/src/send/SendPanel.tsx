@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Session } from "../shell/SessionGate";
+import { toMessage } from "../compose/draft";
+import { asAppError } from "../errors";
+import { newSendId, startSend } from "./sendApi";
+import { SchedulePicker, scheduleInstant } from "./SchedulePicker";
+import { date } from "../history/presentation";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
+  Clock,
   Bell,
   BellOff,
   Check,
@@ -27,7 +35,7 @@ import {
   type SendTarget,
 } from "@embed-dash/shared";
 import type { Draft } from "../compose/draft";
-import type { AppError } from "../errors";
+import { AppError } from "../errors";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { FailureDetail } from "../ui/FailureDetail";
 import { useSending, type Received } from "./sending";
@@ -134,11 +142,19 @@ export function Verdict({
   reveal = true,
 }: {
   label?: string;
-  state: "waiting" | "partial" | "deleted" | SendTarget["status"];
+  state:
+    | "scheduled"
+    | "cancelled"
+    | "waiting"
+    | "partial"
+    | "deleted"
+    | SendTarget["status"];
   reveal?: boolean;
   index: number;
 }) {
   const word = {
+    scheduled: "Scheduled",
+    cancelled: "Cancelled",
     partial: "Partial",
     deleted: "Deleted in Discord",
     waiting: "Sending",
@@ -158,7 +174,11 @@ export function Verdict({
       // The reveal staggers down the tray, capped so a long list still lands quickly.
       style={{ "--n": Math.min(index, 8) } as React.CSSProperties}
     >
-      {waiting ? (
+      {state === "scheduled" ? (
+        <Clock aria-hidden="true" />
+      ) : state === "cancelled" ? (
+        <X aria-hidden="true" />
+      ) : waiting ? (
         <LoaderCircle className={styles.spin} aria-hidden="true" />
       ) : state === "partial" ? (
         <CircleMinus aria-hidden="true" />
@@ -288,6 +308,42 @@ export function SendControls({
     startOver,
   } = useSending();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const [scheduleReviewed, setScheduleReviewed] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [due, setDue] = useState("");
+  const [scheduleProblem, setScheduleProblem] = useState<AppError | null>(null);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const scheduleId = useRef(newSendId());
+  async function saveSchedule() {
+    const instant = scheduleInstant(due);
+    if (!instant) {
+      setScheduleReviewed(true);
+      setConfirming(false);
+      return;
+    }
+    setScheduleBusy(true);
+    try {
+      await startSend(
+        "schedule",
+        "/api/sends",
+        {
+          id: scheduleId.current,
+          payload: { ...toMessage(draft), pings, silent },
+          channelIds: entries.map((e) => e.channel.id),
+          scheduledAt: new Date(instant).toISOString(),
+        },
+        client.getQueryData<Session>(["session"])?.csrfToken ?? "",
+      );
+      setConfirming(false);
+      void client.invalidateQueries({ queryKey: ["history"] });
+      void navigate("/history?status=scheduled");
+    } catch (error) {
+      setScheduleProblem(asAppError("schedule", error));
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
   const [confirming, setConfirming] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const servers = new Set(entries.map((entry) => entry.guild.id));
@@ -364,10 +420,11 @@ export function SendControls({
     <div className={styles.controls} data-controls>
       <button
         type="button"
-        className={styles.go}
+        className={scheduling ? styles.again : styles.go}
         disabled={!!blocked || !!busy}
         aria-describedby={describedBy}
         onClick={() => {
+          setScheduling(false);
           prepare();
           setConfirming(true);
         }}
@@ -378,19 +435,77 @@ export function SendControls({
             ? `Send to ${count}`
             : "Send"}
       </button>
+      <button
+        type="button"
+        className={styles.again}
+        disabled={!!blocked || !!busy || scheduleBusy}
+        onClick={() => {
+          setScheduling((value) => !value);
+          setScheduleReviewed(false);
+          setScheduleProblem(null);
+        }}
+      >
+        {scheduling ? "Close schedule picker" : "Schedule"}
+      </button>
+      {scheduling && (
+        <>
+          <SchedulePicker
+            value={due}
+            onChange={setDue}
+            attempted={scheduleReviewed}
+            tray
+          />
+          <button
+            type="button"
+            className={styles.go}
+            onClick={() => {
+              setScheduleReviewed(true);
+              if (!scheduleInstant(due)) return;
+              setScheduleProblem(null);
+              setConfirming(true);
+            }}
+          >
+            Review schedule
+          </button>
+          {scheduleProblem && <p role="alert">{scheduleProblem.message}</p>}
+        </>
+      )}
       {alert}
       <ConfirmDialog
         open={confirming}
         tone="primary"
-        title={`Send to ${count}?`}
-        confirmLabel={`Send to ${count}`}
+        title={scheduling ? `Schedule to ${count}?` : `Send to ${count}?`}
+        confirmLabel={
+          scheduling
+            ? scheduleBusy
+              ? "Scheduling…"
+              : "Schedule send"
+            : `Send to ${count}`
+        }
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
+          if (scheduling) {
+            if (!scheduleBusy) void saveSchedule();
+            return;
+          }
           setConfirming(false);
           void send(entries.map((entry) => entry.channel.id));
         }}
       >
         <div className={styles.confirm}>
+          {scheduling && scheduleInstant(due) && (
+            <div className={styles.due}>
+              <p>
+                Due <strong>{date(new Date(due).getTime())}</strong>
+              </p>
+              <small>
+                You can edit or cancel it in History until delivery starts.
+              </small>
+            </div>
+          )}
+          {scheduling && scheduleProblem && (
+            <p role="alert">{scheduleProblem.message}</p>
+          )}
           <p className={styles.message}>
             <b>{summary.headline}</b>
             {summary.parts && <small>{summary.parts}</small>}
