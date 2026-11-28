@@ -17,7 +17,11 @@ import { registerTemplates } from "./templates.js";
 import { registerUploads } from "./uploads.js";
 export async function createApp(
   config: Config,
-  options: { spaRoot?: string; logger?: FastifyServerOptions["logger"] } = {},
+  options: {
+    spaRoot?: string;
+    logger?: FastifyServerOptions["logger"];
+    sendClock?: { now: () => number; intervalMs?: number };
+  } = {},
 ) {
   const app = Fastify({
     logger: options.logger ?? true,
@@ -39,7 +43,7 @@ export async function createApp(
   });
   await registerAuth(app, config, database);
   await registerUploads(app, config, database);
-  await registerSends(app, config, database, discord);
+  await registerSends(app, config, database, discord, options.sendClock);
   registerTemplates(app, config, database);
   registerChannelGroups(app, database, discord);
   app.get("/health", async () => ({ status: "ok" }));

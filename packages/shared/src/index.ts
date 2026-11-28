@@ -622,7 +622,17 @@ export const messagePayloadSchema = messageDraftSchema.extend({
 });
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
+/** One-off plans are bounded so uploads cannot be held indefinitely. */
+export const scheduleHorizonMs = 365 * 24 * 60 * 60 * 1000;
+export const scheduledAtSchema = z.iso
+  .datetime({ offset: true })
+  .refine(
+    (value) => Date.parse(value) <= Date.now() + scheduleHorizonMs,
+    "Choose a time within the next year.",
+  );
+
 export const sendRequestSchema = z.object({
+  scheduledAt: scheduledAtSchema.optional(),
   /** Chosen by the browser, so repeating a request that may have been lost can't post twice. */
   id: z.uuid(),
   payload: messagePayloadSchema,
@@ -631,6 +641,11 @@ export const sendRequestSchema = z.object({
     .min(1)
     .refine((ids) => new Set(ids).size === ids.length),
 });
+export const scheduleEditSchema = sendRequestSchema
+  .omit({ id: true })
+  .required({ scheduledAt: true })
+  .strict();
+export const sendIdSchema = z.object({ id: z.uuid() });
 export type SendRequest = z.infer<typeof sendRequestSchema>;
 
 export const editRequestSchema = z
@@ -644,6 +659,8 @@ export const retryRequestSchema = z.object({
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  UPLOAD_MISSING:
+    "A file needed for this message is missing from the server. Compose it again with the file restored or removed.",
   EDIT_UNCONFIRMED:
     "Discord may not have applied this update. Retry to apply the current version safely.",
   EDIT_NOT_ATTEMPTED:
@@ -695,6 +712,7 @@ export const sendTargetSchema = z.object({
 export type SendTarget = z.infer<typeof sendTargetSchema>;
 
 export const sendResultSchema = z.object({
+  scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   editId: z.string().nullable().optional(),
   edit: z
@@ -706,7 +724,14 @@ export const sendResultSchema = z.object({
     .nullable()
     .optional(),
   lastEditedAt: z.number().nullable().optional(),
-  status: z.enum(["sending", "done", "partial", "failed"]),
+  status: z.enum([
+    "scheduled",
+    "cancelled",
+    "sending",
+    "done",
+    "partial",
+    "failed",
+  ]),
   targets: z.array(sendTargetSchema),
 });
 export type SendResult = z.infer<typeof sendResultSchema>;
@@ -787,7 +812,9 @@ export const historyQuerySchema = z
     channelId: z.string().min(1).max(100).optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
-    status: z.enum(["sending", "done", "partial", "failed"]).optional(),
+    status: z
+      .enum(["scheduled", "cancelled", "sending", "done", "partial", "failed"])
+      .optional(),
     page: z.coerce.number().int().min(1).max(1000000).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
@@ -814,6 +841,7 @@ export const historyFiltersSchema = z
     path: ["to"],
   });
 export const historyEntrySchema = z.object({
+  scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   title: z.string(),
   color: z.string(),

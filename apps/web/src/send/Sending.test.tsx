@@ -1122,3 +1122,16 @@ test("reloading mid-retry follows the send without asking for the retry again, a
     "1 of these channels already has this message: #news. They’ll get a second copy.",
   );
 });
+
+test("Schedule opens with an empty picker and rejects review until a future time is chosen", async () => {
+  draftWith({ content: "Plan ahead" });
+  renderSend();
+  await tickAll();
+  fireEvent.click(within(tray()).getByRole("button", { name: "Schedule" }));
+  expect(screen.getByLabelText(/Send date and time/)).toHaveValue("");
+  fireEvent.click(screen.getByRole("button", { name: "Review schedule" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Choose a date and time.",
+  );
+  expect(sendRequests()).toHaveLength(0);
+});

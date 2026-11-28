@@ -22,6 +22,7 @@ export type Action =
   | "save-group"
   | "change-group"
   | "delete-group"
+  | "schedule"
   | "send"
   | "retry"
   | "follow"
@@ -43,6 +44,7 @@ const lead: Record<Action, string> = {
   "save-group": "Couldn’t save the group",
   "change-group": "Couldn’t change the group",
   "delete-group": "Couldn’t delete the group",
+  schedule: "Couldn’t save the schedule",
   send: "Couldn’t send",
   retry: "Couldn’t retry",
   follow: "Couldn’t check on the send",
@@ -70,6 +72,9 @@ export class AppError extends Error {
 
 /** Causes by server code. The ones about the message itself say nothing was sent. */
 const byCode: Record<string, string> = {
+  SCHEDULE_PAST: "choose a future date and time.",
+  SCHEDULE_STARTED:
+    "this schedule has already started or was cancelled. Refresh History to see its current state.",
   DISCORD_UNREACHABLE:
     "the bot may be offline, or the app can’t reach Discord. Check the connection, then retry.",
   DISCORD_UNAVAILABLE:

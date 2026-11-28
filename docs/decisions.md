@@ -47,5 +47,12 @@ One line per decision that shaped M1; the PRs hold the detail.
 
 ## Milestone 3
 
+- **Scheduling uses the delivery engine.** UTC due instants live on sends; each timer tick claims due rows in a SQLite transaction before invoking ordinary delivery. A one-second timer also picks up overdue entries after startup.
+- **Scheduled targets have not started.** Restart settlement excludes them; claimed deliveries retain the existing posting/unknown recovery rules and never repost uncertain copies automatically.
+- **Schedules remain mutable until claimed.** Content, due time and destinations change together under the same transaction lock; cancellation excludes the payload from upload retention while completed deliveries retain files for retries.
+- **Scheduler tests control time without production endpoints.** Integration tests inject a clock; only the fake-Discord e2e harness exposes an authenticated, CSRF-protected one-minute advance endpoint and uses a 50 ms tick.
+- **A scheduled send takes its send time when claimed.** Delivery, subsequent edits and retries, previews and history bounds share that persisted instant; the Scheduled filter orders waiting entries by due time.
+- **Listing outages have a bounded delay.** Scheduler listing failures log fixed codes and back off from five seconds to one minute. Permanent refusals fail immediately; transient failures fail due entries only after fifteen continuous minutes of listing failure, allowing an explicit retry. Recovery resets that interval, so downtime does not consume the retry window.
+- **Plans extend at most one year ahead.** Shared validation and the browser enforce a 365-day horizon; missing scheduled files produce an explicit upload failure before posting.
 - **Channel groups add to the selection.** Selecting a group ticks its available channels on top of the ticked ones, like the other quick picks, with Undo; replacing would silently drop channels the operator just ticked. Groups store each channel with its server and name as saved, so a channel that has gone can still be named; availability is worked out in the browser against the listing it shows, so it follows Refresh without another request, and the server refuses to save a channel the bot can’t post to.
 - **Channel groups are bounded and uniquely named.** At most 50 groups of at most 500 channels; names are unique ignoring case, checked by the server on save and rename and at the field before asking. Groups stay listed when the bot has no readable server, so they can still be managed.

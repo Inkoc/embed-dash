@@ -1,0 +1,35 @@
+.picker {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.picker input[type="datetime-local"] {
+  min-height: var(--tap);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-2);
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  color-scheme: inherit;
+}
+.picker p {
+  font-size: var(--text-label);
+}
+.picker > label {
+  font-size: var(--text-label);
+}
+.picker .error {
+  color: var(--danger);
+}
+.picker[data-tray] {
+  color: var(--tray-soft);
+}
+.picker[data-tray] .error {
+  color: var(--tray-danger);
+}
+.destinations {
+  min-width: 0;
+}

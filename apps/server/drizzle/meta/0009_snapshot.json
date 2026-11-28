@@ -1,47 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1d893423-8129-4875-aee5-cc88b56c637e",
+  "id": "24b15164-185d-4426-a02a-3ac976f70b7d",
   "prevId": "8c6cc735-503d-4ec5-ae2f-d18901581031",
   "tables": {
-    "channel_groups": {
-      "name": "channel_groups",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "channels_json": {
-          "name": "channels_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "edit_runs": {
       "name": "edit_runs",
       "columns": {
@@ -287,6 +249,11 @@
         }
       },
       "indexes": {
+        "sends_due_idx": {
+          "name": "sends_due_idx",
+          "columns": ["status", "scheduled_at"],
+          "isUnique": false
+        },
         "sends_created_at_idx": {
           "name": "sends_created_at_idx",
           "columns": ["created_at", "id"],
