@@ -69,6 +69,15 @@ export const sendTargets = sqliteTable(
     channelId: text("channel_id").notNull(),
     channelName: text("channel_name").notNull(),
     messageId: text("message_id"),
+    channelKind: text("channel_kind", {
+      enum: ["text", "forum", "announcement"],
+    })
+      .notNull()
+      .default("text"),
+    publishStatus: text("publish_status", {
+      enum: ["pending", "publishing", "published", "failed"],
+    }),
+    publishError: text("publish_error"),
     attachmentsJson: text("attachments_json"),
     editStatus: text("edit_status", {
       enum: ["pending", "posting", "sent", "failed"],

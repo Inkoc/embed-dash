@@ -31,6 +31,8 @@ interface Sending {
   /** Who the message may notify; none unless the operator ticks a kind. */
   pings: readonly PingKind[];
   setPing: (kind: PingKind, on: boolean) => void;
+  publish: boolean;
+  setPublish: (on: boolean) => void;
   silent: boolean;
   setSilent: (on: boolean) => void;
   /**
@@ -127,6 +129,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
   const [, setSelected] = useSelection();
   const [pings, setPings] = useState<readonly PingKind[]>([]);
   const [silent, setSilent] = useState(false);
+  const [publish, setPublish] = useState(false);
   // What a reload interrupted, read once; it also decides the first `busy`.
   const [resumed] = useState(recallInFlight);
   const [busy, setBusy] = useState<Sending["busy"]>(
@@ -267,6 +270,8 @@ export function SendingProvider({ children }: { children: ReactNode }) {
             : [...kinds, kind]
           : kinds.filter((other) => other !== kind),
       ),
+    publish,
+    setPublish,
     silent,
     setSilent,
     busy,
@@ -288,7 +293,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         url: "/api/sends",
         body: {
           id,
-          payload: { ...message, pings, silent },
+          payload: { ...message, pings, silent, publish },
           channelIds,
         },
         id,
@@ -321,6 +326,7 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       setSelected(new Set());
       setPings([]);
       setSilent(false);
+      setPublish(false);
       clear();
     },
   };

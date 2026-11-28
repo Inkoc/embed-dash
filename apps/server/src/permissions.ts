@@ -67,10 +67,16 @@ export function channelPermissionBits(
 export function missingPermissions(
   context: PermissionContext,
   overwrites: readonly APIOverwrite[],
+  forum = false,
 ): ChannelPermission[] {
   const permissions = channelPermissionBits(context, overwrites);
   const missing = channelPermissions
-    .filter((p) => !(permissions & p.bit))
+    .filter(
+      (p) =>
+        (forum ||
+          !["createPublicThreads", "sendMessagesInThreads"].includes(p.key)) &&
+        !(permissions & p.bit),
+    )
     .map((p) => p.key);
   for (const key of ["viewChannel", "sendMessages"] as const)
     if (missing.includes(key)) return [key];

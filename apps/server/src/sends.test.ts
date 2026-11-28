@@ -647,21 +647,15 @@ test("two uploads whose names collide after shortening are told apart", async ()
   ]);
 });
 
-test("refuses channels that are gone, closed to the bot or forums, sending nothing", async () => {
+test("refuses channels that are gone, closed to the bot, sending nothing", async () => {
   const s = await setup();
-  const response = await post(s, [
-    news,
-    "999",
-    channel(1, "moderators"),
-    channel(1, "bug-reports"),
-  ]);
+  const response = await post(s, [news, "999", channel(1, "moderators")]);
   expect(response.statusCode).toBe(409);
   expect(response.json()).toMatchObject({
     code: "CHANNELS_UNAVAILABLE",
     channels: [
       { id: "999", reason: "gone" },
       { id: channel(1, "moderators"), reason: "permission" },
-      { id: channel(1, "bug-reports"), reason: "forum" },
     ],
   });
   expect(s.fake.messages).toEqual([]);
@@ -2383,4 +2377,157 @@ test("an hour-overdue schedule survives a transient startup failure and delivers
   await scheduler.tick();
   expect((await settle(resumed, nextId)).status).toBe("done");
   expect(s.fake.messages).toHaveLength(2);
+});
+
+test("forum titles and required tags are checked before storage; creation and edits use the starter", async () => {
+  const s = await setup();
+  const forum = channel(1, "bug-reports");
+  expect((await post(s, [forum])).statusCode).toBe(422);
+  expect((await post(s, [forum], { forumTitle: "Report" })).statusCode).toBe(
+    422,
+  );
+  const accepted = await post(s, [forum], {
+    forumTitle: "Report",
+    forumTags: { [forum]: ["123456789012345679"] },
+  });
+  expect(accepted.statusCode).toBe(202);
+  const result = await settle(s, accepted.json().id);
+  expect(result.targets[0].status).toBe("sent");
+  expect(s.fake.threads[0]).toMatchObject({
+    name: "Report",
+    tags: ["123456789012345679"],
+  });
+  expect(result.targets[0].messageId).toBe(s.fake.threads[0].id);
+  const edit = await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${result.id}`,
+    headers: s.headers,
+    payload: { id: randomUUID(), payload: payload({ content: "Corrected" }) },
+  });
+  expect(edit.statusCode).toBe(202);
+  await settle(s, result.id);
+  expect(s.fake.messages[0].payload.content).toBe("Corrected");
+  expect(s.fake.threads).toHaveLength(1);
+});
+
+test.each([
+  { status: 403, code: 50013 },
+  { status: 429, retryAfter: 3600 },
+])(
+  "publish refusal %j leaves the post sent and retries only publication",
+  async (failure) => {
+    const s = await setup();
+    const announcement = channel(1, "announcements");
+    s.fake.failPublish(announcement, failure);
+    const accepted = await post(s, [announcement], { publish: true });
+    const result = await settle(s, accepted.json().id);
+    expect(result.targets[0]).toMatchObject({
+      status: "sent",
+      publishStatus: "failed",
+    });
+    if (failure.status === 429)
+      expect(result.targets[0].publishError).toContain("10 publishes per hour");
+    const retried = await s.app.inject({
+      method: "POST",
+      url: `/api/sends/${result.id}/publish/retry`,
+      headers: s.headers,
+      payload: {},
+    });
+    expect(retried.json().targets[0].publishStatus).toBe("published");
+    expect(s.fake.messages).toHaveLength(1);
+    expect(s.fake.published).toHaveLength(1);
+  },
+);
+
+test("announcement publishing is opt-in and successes are recorded", async () => {
+  const s = await setup();
+  const announcement = channel(1, "announcements");
+  const first = await post(s, [announcement]);
+  expect(
+    (await settle(s, first.json().id)).targets[0].publishStatus,
+  ).toBeNull();
+  const second = await post(s, [announcement], { publish: true });
+  expect((await settle(s, second.json().id)).targets[0].publishStatus).toBe(
+    "published",
+  );
+  expect(s.fake.published).toHaveLength(1);
+});
+
+test("scheduled forum delivery preserves title and tags; a restart during creation stays unknown", async () => {
+  const s = await schedulerHarness();
+  const forum = channel(1, "bug-reports");
+  const { id, response } = await s.create(
+    {
+      forumTitle: "Planned report",
+      forumTags: { [forum]: ["123456789012345679"] },
+    },
+    s.now() + 60000,
+    [forum],
+  );
+  expect(response.statusCode).toBe(202);
+  s.fake.slow(500);
+  s.advance(60000);
+  await s.scheduler.tick();
+  await expect.poll(() => statuses(s.dir, id)[0]).toBe("posting");
+  const snapshot = mkdtempSync(join(tmpdir(), "forum-restart-"));
+  await s.sqlite.backup(join(snapshot, "embed-dash.db"));
+  const restarted = await createApp(
+    { ...s.config, dataDir: snapshot },
+    { logger: false },
+  );
+  cleanups.push(async () => {
+    await restarted.close();
+    rmSync(snapshot, { recursive: true });
+  });
+  expect(statuses(snapshot, id)).toEqual(["unknown:UNKNOWN_OUTCOME"]);
+  await settle(s, id);
+  expect(s.fake.threads).toHaveLength(1);
+  expect(s.fake.threads[0].name).toBe("Planned report");
+});
+
+test("the live listing pre-check refuses missing forum and announcement permissions", async () => {
+  const forum = fakeGuilds[0].channels.find((c) => c.name === "bug-reports")!;
+  const announcement = fakeGuilds[0].channels.find(
+    (c) => c.name === "announcements",
+  )!;
+  const beforeForum = forum.permission_overwrites;
+  const beforeAnnouncement = announcement.permission_overwrites;
+  try {
+    forum.permission_overwrites = [
+      { id: fakeGuilds[0].id, type: 0, allow: "0", deny: String(1n << 35n) },
+    ];
+    announcement.permission_overwrites = [
+      { id: fakeGuilds[0].id, type: 0, allow: "0", deny: String(1n << 11n) },
+    ];
+    const s = await setup();
+    const response = await post(s, [forum.id, announcement.id], {
+      forumTitle: "Report",
+      forumTags: { [forum.id]: ["123456789012345679"] },
+      publish: true,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().channels).toEqual([
+      { id: forum.id, reason: "permission" },
+      { id: announcement.id, reason: "permission" },
+    ]);
+    expect(s.fake.messages).toHaveLength(0);
+  } finally {
+    forum.permission_overwrites = beforeForum;
+    announcement.permission_overwrites = beforeAnnouncement;
+  }
+});
+
+test("a scheduled announcement publishes through ordinary delivery", async () => {
+  const s = await schedulerHarness();
+  const { id, response } = await s.create({ publish: true }, s.now() + 60000, [
+    channel(1, "announcements"),
+  ]);
+  expect(response.statusCode).toBe(202);
+  s.advance(60000);
+  await s.scheduler.tick();
+  expect((await settle(s, id)).targets[0]).toMatchObject({
+    status: "sent",
+    publishStatus: "published",
+  });
+  expect(s.fake.published).toHaveLength(1);
 });

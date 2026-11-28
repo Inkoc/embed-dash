@@ -10,7 +10,7 @@ import {
   scheduleEditSchema,
   sendIdSchema,
   editRequestSchema,
-  canPost,
+  destinationProblem,
   canSendTo,
   deliveryErrors,
   messagePayloadSchema,
@@ -38,6 +38,12 @@ import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
 type Discord = {
+  createForum?: ReturnType<
+    typeof import("./discord.js").createDiscord
+  >["createForum"];
+  publishMessage?: ReturnType<
+    typeof import("./discord.js").createDiscord
+  >["publishMessage"];
   editMessage: (
     channelId: string,
     messageId: string,
@@ -145,6 +151,18 @@ export async function registerSends(
         .all())
         finish(send.id);
     })();
+  db.update(sendTargets)
+    .set({
+      publishStatus: "failed",
+      publishError: "Publishing was interrupted. Retry publish to confirm it.",
+    })
+    .where(
+      and(
+        eq(sendTargets.status, "sent"),
+        inArray(sendTargets.publishStatus, ["pending", "publishing"]),
+      ),
+    )
+    .run();
   settleInterrupted();
 
   // Delivery runs after the answer has gone out. Closing lets the post in
@@ -299,6 +317,10 @@ export async function registerSends(
               .filter((t) => t.editStatus !== null)
               .map((t) => ({
                 id: t.id,
+                sendId: t.sendId,
+                channelKind: t.channelKind,
+                publishStatus: t.publishStatus,
+                publishError: t.publishError,
                 guildId: t.guildId,
                 guildName: t.guildName,
                 channelId: t.channelId,
@@ -318,10 +340,14 @@ export async function registerSends(
         : null,
       targets: targets.map((target) => ({
         id: target.id,
+        sendId: target.sendId,
         guildId: target.guildId,
         guildName: target.guildName,
         channelId: target.channelId,
         channelName: target.channelName,
+        channelKind: target.channelKind,
+        publishStatus: target.publishStatus,
+        publishError: target.publishError,
         status: target.status,
         messageId: target.messageId,
         error: target.error
@@ -411,14 +437,19 @@ export async function registerSends(
       // minute), so this catches channels that changed since the operator
       // looked, not changes within the last minute; Discord has the last word.
       const current = channels.get(target.channelId)?.channel;
-      if (!editing && (!current || !canSendTo(current))) {
+      if (
+        !editing &&
+        (!current ||
+          !canSendTo(current) ||
+          destinationProblem(payload, current))
+      ) {
         record(target, {
           status: "failed",
           error: !current
             ? "CHANNEL_GONE"
-            : current.kind === "forum"
-              ? "FORUM_CHANNEL"
-              : "MISSING_PERMISSION",
+            : !canSendTo(current)
+              ? "MISSING_PERMISSION"
+              : "INVALID_PAYLOAD",
         });
         continue;
       }
@@ -453,13 +484,23 @@ export async function registerSends(
         );
         const message = editing
           ? await discord.editMessage(
-              target.channelId,
+              target.channelKind === "forum"
+                ? target.messageId!
+                : target.channelId,
               target.messageId!,
               body,
               addedFiles,
               retained,
             )
-          : await discord.createMessage(target.channelId, body, files);
+          : current?.kind === "forum"
+            ? await discord.createForum!(
+                target.channelId,
+                payload.forumTitle!.trim(),
+                payload.forumTags?.[target.channelId] ?? [],
+                body,
+                files,
+              )
+            : await discord.createMessage(target.channelId, body, files);
         const attachments = payload.attachments.map((file) => {
           const kept = editing && retained.find((a) => a.uploadId === file.id);
           const returned =
@@ -478,6 +519,8 @@ export async function registerSends(
           error: null,
           attachmentsJson: JSON.stringify(attachments),
         });
+        if (!editing && target.publishStatus === "pending")
+          await publishCopy({ ...target, messageId: message.id });
         if (editing)
           db.update(sends)
             .set({ lastEditedAt: Date.now() })
@@ -696,10 +739,16 @@ export async function registerSends(
     for (const id of channelIds) {
       const found = channels.get(id)?.channel;
       if (!found) unavailable.push({ id, reason: "gone" });
-      else if (found.kind === "forum")
-        unavailable.push({ id, reason: "forum" });
-      else if (!canPost(found)) unavailable.push({ id, reason: "permission" });
+      else if (!canSendTo(found))
+        unavailable.push({ id, reason: "permission" });
     }
+    const problem = channelIds
+      .map((id) => channels.get(id)?.channel)
+      .filter((c) => c !== undefined)
+      .map((c) => destinationProblem(payload, c))
+      .find(Boolean);
+    if (problem)
+      return reply.code(422).send(sendError("INVALID_REQUEST", problem));
     if (unavailable.length > 0)
       return reply
         .code(409)
@@ -748,6 +797,11 @@ export async function registerSends(
               guildName: guild.name,
               channelId: id,
               channelName: channel.name,
+              channelKind: channel.kind,
+              publishStatus:
+                payload.publish && channel.kind === "announcement"
+                  ? ("pending" as const)
+                  : null,
               status: "pending" as const,
               position,
             };
@@ -954,6 +1008,12 @@ export async function registerSends(
         )
       )
         return "channels";
+      if (
+        body.data.channelIds.some((id) =>
+          destinationProblem(body.data.payload, channels.get(id)!.channel),
+        )
+      )
+        return "channels";
       const loaded = loadAttachments(body.data.payload);
       if (
         validateMessage(loaded.payload, { missingFiles: loaded.missing }).length
@@ -980,6 +1040,11 @@ export async function registerSends(
               guildName: guild.name,
               channelId: id,
               channelName: channel.name,
+              channelKind: channel.kind,
+              publishStatus:
+                loaded.payload.publish && channel.kind === "announcement"
+                  ? ("pending" as const)
+                  : null,
               status: "pending" as const,
               position,
             };
@@ -1077,6 +1142,9 @@ export async function registerSends(
         ...parsed.data.payload,
         pings: original.pings,
         silent: original.silent,
+        forumTitle: original.forumTitle,
+        forumTags: original.forumTags,
+        publish: original.publish,
       };
       // Retained metadata comes from the stored payload, never a browser's filename claim.
       candidate.attachments = candidate.attachments.map(
@@ -1162,6 +1230,60 @@ export async function registerSends(
       );
     }
     return reply.code(202).send({ id });
+  });
+
+  async function publishCopy(target: TargetRow) {
+    db.update(sendTargets)
+      .set({ publishStatus: "publishing", publishError: null })
+      .where(eq(sendTargets.id, target.id))
+      .run();
+    try {
+      if (!discord.publishMessage) throw new Error("Publishing unavailable");
+      await discord.publishMessage(target.channelId, target.messageId!);
+      db.update(sendTargets)
+        .set({ publishStatus: "published", publishError: null })
+        .where(eq(sendTargets.id, target.id))
+        .run();
+    } catch (error) {
+      const failure = deliveryFailure(error);
+      const message =
+        failure.code === "RATE_LIMITED"
+          ? "Publish limit reached: Discord allows 10 publishes per hour per channel. Wait before retrying."
+          : failure.code === "MISSING_PERMISSION"
+            ? "Posted successfully, but publishing was refused. Give the bot Send Messages, then retry publish."
+            : "Posted successfully, but publication was not confirmed. Retry publish when Discord is available.";
+      db.update(sendTargets)
+        .set({ publishStatus: "failed", publishError: message })
+        .where(eq(sendTargets.id, target.id))
+        .run();
+    }
+  }
+  app.post("/api/sends/:id/publish/retry", idParams, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = retryRequestSchema.safeParse(request.body ?? {});
+    if (!body.success)
+      return reply
+        .code(400)
+        .send(sendError("INVALID_REQUEST", "Choose copies to publish."));
+    if (!db.select().from(sends).where(eq(sends.id, id)).get())
+      return reply
+        .code(404)
+        .send(sendError("NOT_FOUND", "That send doesn’t exist."));
+    const copies = copiesFor(id).filter(
+      (t) =>
+        t.status === "sent" &&
+        t.messageId &&
+        t.publishStatus === "failed" &&
+        (!body.data.targetIds || body.data.targetIds.includes(t.id)),
+    );
+    // Claim before awaiting Discord so concurrent retries cannot publish the same copy.
+    for (const copy of copies)
+      db.update(sendTargets)
+        .set({ publishStatus: "publishing" })
+        .where(eq(sendTargets.id, copy.id))
+        .run();
+    await Promise.all(copies.map(publishCopy));
+    return readSend(db.select().from(sends).where(eq(sends.id, id)).get()!);
   });
 
   const registerRetry = (editing: boolean) =>

@@ -111,3 +111,17 @@ test("without View Channel or Send Messages only that one is named", () => {
     ]),
   ).toEqual(["sendMessages"]);
 });
+
+test("forums require thread creation and sending; own-message publishing needs Send Messages", () => {
+  expect(missingPermissions(context(posting), [], true)).toEqual([
+    "createPublicThreads",
+    "sendMessagesInThreads",
+  ]);
+  expect(
+    missingPermissions(context(posting | (1n << 35n) | (1n << 38n)), [], true),
+  ).toEqual([]);
+  expect(missingPermissions(context(posting), [])).toEqual([]);
+  expect(
+    missingPermissions(context(posting), [member(0n, SendMessages)]),
+  ).toEqual(["sendMessages"]);
+});

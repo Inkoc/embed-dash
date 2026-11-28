@@ -134,7 +134,7 @@ test("a bot in no servers offers its invite link", async () => {
     await screen.findByRole("link", { name: /Invite the bot/ }),
   ).toHaveAttribute(
     "href",
-    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
+    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=309237697536",
   );
 });
 
@@ -276,7 +276,7 @@ test("a full tray groups slips by server, folds the overflow, and takes slips ou
   ).toHaveFocus();
 });
 
-test("forum channels are listed with a reason and can't be ticked or quick-picked", async () => {
+test("forum selection exposes a required title before sending", async () => {
   const forum: Guild = {
     ...guild("1", "Lanternfall", ["general", "news"]),
     channels: [
@@ -287,16 +287,16 @@ test("forum channels are listed with a reason and can't be ticked or quick-picke
   stub([Response.json(listing([forum]))]);
   renderSend();
   const help = await screen.findByRole("checkbox", { name: "help" });
-  expect(help).toHaveAttribute("aria-disabled", "true");
-  expect(screen.getByText("Forum posting isn’t available yet")).toBeVisible();
+  expect(help).not.toHaveAttribute("aria-disabled");
   fireEvent.click(help);
-  expect(help).not.toBeChecked();
+  expect(help).toBeChecked();
+  expect(screen.getByLabelText("Post title (required)")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: /All postable/ }));
   const tray = screen.getByRole("complementary", { name: "Tray" });
-  expect(tray).toHaveTextContent("1 channel in 1 server");
+  expect(tray).toHaveTextContent("2 channels in 1 server");
   // Only the postable channel counts toward the drawer's total.
   expect(screen.getByRole("region", { name: "Lanternfall" })).toHaveTextContent(
-    "1 of 1 ticked",
+    "2 of 2 ticked",
   );
 });
 
@@ -428,4 +428,36 @@ test("with no groups saved, an empty listing shows only the closed catalogue", a
   await vi.waitFor(() =>
     expect(screen.queryByRole("group", { name: "Groups" })).toBeNull(),
   );
+});
+
+test("forum tags and announcement publishing are labelled and editable", async () => {
+  const destinations: Guild = {
+    ...guild("1", "Lanternfall", []),
+    channels: [
+      {
+        id: "10",
+        name: "reports",
+        kind: "forum",
+        missing: [],
+        requireTag: true,
+        availableTags: [{ id: "123456789012345679", name: "Bug" }],
+      },
+      { id: "11", name: "updates", kind: "announcement", missing: [] },
+    ],
+  };
+  stub([Response.json(listing([destinations]))]);
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "reports" }));
+  const title = screen.getByLabelText("Post title (required)");
+  fireEvent.blur(title);
+  expect(screen.getByRole("alert")).toHaveTextContent("Enter a post title");
+  fireEvent.change(title, { target: { value: "Release report" } });
+  const tag = screen.getByLabelText("Bug");
+  fireEvent.click(tag);
+  expect(tag).toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "updates" }));
+  const publish = screen.getByLabelText(/Publish to following servers/);
+  expect(publish).not.toBeChecked();
+  fireEvent.click(publish);
+  expect(publish).toBeChecked();
 });

@@ -44,6 +44,7 @@ import {
 } from "./draft";
 import { useEditorState } from "./editorState";
 import { EmbedEditor } from "./EmbedEditor";
+import { DestinationFields } from "../send/DestinationFields";
 import { TextControl } from "./TextControl";
 import { stackedQuery, usePreviewWidth } from "./usePreviewWidth";
 import styles from "./ComposeView.module.css";
@@ -299,8 +300,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
               }
               focusHint="Shown above the embeds in the channel."
             />
+            {!editing && <DestinationFields />}
           </section>
-
           {draft.embeds.map((embed, index) => (
             <EmbedEditor
               key={embed.id}

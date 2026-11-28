@@ -1,0 +1,45 @@
+.options {
+  display: grid;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+}
+.options fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.options label,
+.options legend {
+  font-size: var(--text-label);
+  font-weight: var(--weight-label);
+}
+.options label:not(.check) {
+  display: grid;
+  gap: var(--space-2);
+}
+.options input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: var(--space-2);
+  background: var(--field);
+  color: var(--ink);
+  border: var(--rule-width) solid var(--field-line);
+  border-radius: var(--radius-sm);
+}
+.options p,
+.options small {
+  display: block;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-body);
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+}
+.check input {
+  accent-color: var(--accent);
+}

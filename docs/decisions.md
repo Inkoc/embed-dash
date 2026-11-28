@@ -23,7 +23,7 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Sending runs in the background.** `POST /api/sends` stores the send and answers `202`; the browser follows it by id. A client-chosen id makes a repeated request return the same send, so a dropped connection can't post twice.
 - **Each post is marked before it goes out.** After a crash only that target is unconfirmed; untouched targets stay retryable. Unconfirmed targets are never retried automatically.
 - **Main channel of a server** is its system channel, else its first postable announcement channel, else its first postable text channel.
-- **Forum channels are listed but not selectable** until forum posting exists.
+- **Forum channels were initially listed without selection.** Milestone 3 enables new posts with titles and tags.
 - **`@fastify/static` upgraded to 11.0.0** to clear a path-traversal advisory found by the milestone audit. The one remaining advisory is development-only (an `esbuild` copy inside `drizzle-kit`, whose dev server this project never runs).
 
 ## Milestone 2
@@ -56,3 +56,6 @@ One line per decision that shaped M1; the PRs hold the detail.
 - **Plans extend at most one year ahead.** Shared validation and the browser enforce a 365-day horizon; missing scheduled files produce an explicit upload failure before posting.
 - **Channel groups add to the selection.** Selecting a group ticks its available channels on top of the ticked ones, like the other quick picks, with Undo; replacing would silently drop channels the operator just ticked. Groups store each channel with its server and name as saved, so a channel that has gone can still be named; availability is worked out in the browser against the listing it shows, so it follows Refresh without another request, and the server refuses to save a channel the bot can’t post to.
 - **Channel groups are bounded and uniquely named.** At most 50 groups of at most 500 channels; names are unique ignoring case, checked by the server on save and rename and at the field before asking. Groups stay listed when the bot has no readable server, so they can still be managed.
+- **Forum posts share durable delivery.** Titles and per-forum tags travel with immediate and scheduled payloads. The returned thread ID identifies both the post and its starter message, so edits patch that starter. Interrupted creation remains unknown and is never reposted automatically. Media channels remain excluded.
+- **Publishing is a secondary outcome.** Announcement publication is opt-in and recorded separately from successful posting. Failed or interrupted publication can be retried without creating another message; long rate limits explain the per-channel allowance. Own-message publication uses Send Messages, without requesting Manage Messages.
+- **Forum permissions and tags are checked before delivery.** Forum destinations add Create Public Threads and Send Messages in Threads. Required tags and the current selectable tag list are checked when saving and delivering; moderated tags are excluded.

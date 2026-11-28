@@ -27,6 +27,9 @@ test("the history migration folds existing Unicode text and indexes creation tim
     db.exec(
       `DELETE FROM __drizzle_migrations WHERE created_at >= ${historyVersion}`,
     );
+    db.exec(
+      "ALTER TABLE send_targets DROP COLUMN channel_kind; ALTER TABLE send_targets DROP COLUMN publish_status; ALTER TABLE send_targets DROP COLUMN publish_error",
+    );
     db.close();
     db = openDatabase(dir);
     expect(db.prepare("SELECT search_text FROM sends").get()).toEqual({

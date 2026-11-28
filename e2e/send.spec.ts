@@ -249,22 +249,25 @@ test("after a send, Compose a new message clears the draft and the selection", a
   expect(errors).toEqual([]);
 });
 
-test("forum channels are listed with a reason and can't be picked", async ({
+test("forum and announcement copies show independent delivery and publishing results", async ({
   page,
 }) => {
-  await page.goto("/send");
-  const bugs = drawer(page, "Lanternfall Community").getByRole("checkbox", {
-    name: "bug-reports",
-  });
-  await expect(bugs).toHaveAttribute("aria-disabled", "true");
-  await expect(
-    drawer(page, "Lanternfall Community").getByText(
-      "Forum posting isn’t available yet",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await bugs.click({ force: true });
-  await expect(bugs).not.toBeChecked();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await compose(page, "Community update");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await pick(page, "Lanternfall Community", "bug-reports");
+  await pick(page, "Lanternfall Community", "announcements");
+  await tray(page).getByLabel("Post title (required)").fill("Community update");
+  await tray(page).getByLabel("Bug", { exact: true }).check();
+  await tray(page)
+    .getByLabel(/Publish to following servers/)
+    .check();
+  await tray(page).getByRole("button", { name: "Send to 2 channels" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Post title: Community update");
+  await dialog.getByRole("button", { name: "Send to 2 channels" }).click();
+  await expect(tray(page).getByText("Sent", { exact: true })).toHaveCount(2);
+  await expect(tray(page)).toContainText("Published to following servers");
 });
 
 test("a draft with problems keeps Send disabled and points at the field", async ({

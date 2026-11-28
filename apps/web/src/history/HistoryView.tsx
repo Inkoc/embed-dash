@@ -1,3 +1,4 @@
+import { PublishOutcome } from "../send/SendPanel";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -808,6 +809,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         />
                       </p>
                       {target.error && <p>{target.error.message}</p>}
+                      <PublishOutcome target={target} />
                       {target.status === "failed" && !target.messageId && (
                         <button
                           disabled={
@@ -879,6 +881,10 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         <a
                           href={messageLink({
                             ...target,
+                            channelId:
+                              target.channelKind === "forum"
+                                ? target.messageId!
+                                : target.channelId,
                             messageId: target.messageId,
                           })}
                           target="_blank"

@@ -134,6 +134,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
       ...toMessage(draft),
       pings: editing.payload.pings,
       silent: editing.payload.silent,
+      publish: editing.payload.publish,
     };
     if (editing.status === "scheduled") {
       try {

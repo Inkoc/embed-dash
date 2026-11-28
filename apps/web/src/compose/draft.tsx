@@ -34,6 +34,8 @@ export interface Embed extends Omit<EmbedDraft, "fields"> {
   fields: EmbedField[];
 }
 export interface Draft {
+  forumTitle?: string;
+  forumTags?: MessageDraft["forumTags"];
   content: string;
   embeds: Embed[];
   /** Files already on the server; the draft holds only their ids and names. */
@@ -45,6 +47,8 @@ let lastId = 0;
 export const newId = () => `k${++lastId}`;
 
 export const withIds = (message: MessageDraft): Draft => ({
+  forumTitle: message.forumTitle,
+  forumTags: message.forumTags,
   content: message.content,
   attachments: message.attachments,
   embeds: message.embeds.map((embed) => ({
@@ -86,6 +90,8 @@ export const written = (draft: Draft): Draft =>
  * when sent, and is nothing to keep in a template or an export.
  */
 export const toMessage = (draft: Draft): MessageDraft => ({
+  forumTitle: draft.forumTitle,
+  forumTags: draft.forumTags,
   content: draft.content,
   attachments: draft.attachments,
   embeds: draft.embeds.filter(embedHasContent).map((embed) => ({

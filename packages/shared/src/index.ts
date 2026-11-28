@@ -63,7 +63,19 @@ export const attachmentSchema = z.object({
   size: z.number().int().nonnegative(),
   contentType: z.string(),
 });
+export const forumLimits = { title: 100, tags: 5 } as const;
 export const messageDraftSchema = z.object({
+  forumTitle: z.string().max(forumLimits.title).optional(),
+  forumTags: z
+    .record(
+      z.string(),
+      z
+        .array(snowflakeSchema)
+        .max(forumLimits.tags)
+        .refine((ids) => new Set(ids).size === ids.length),
+    )
+    .optional(),
+
   content: z.string(),
   embeds: z.array(embedDraftSchema),
   attachments: z.array(attachmentSchema).default([]),
@@ -533,6 +545,18 @@ export const channelPermissions = [
     bit: 1n << 15n,
     required: false,
   },
+  {
+    key: "createPublicThreads",
+    label: "Create Public Threads",
+    bit: 1n << 35n,
+    required: true,
+  },
+  {
+    key: "sendMessagesInThreads",
+    label: "Send Messages in Threads",
+    bit: 1n << 38n,
+    required: true,
+  },
 ] as const;
 export type ChannelPermission = (typeof channelPermissions)[number]["key"];
 
@@ -549,6 +573,10 @@ export const guildChannelSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   kind: channelKindSchema,
+  availableTags: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .optional(),
+  requireTag: z.boolean().optional(),
   /** Permissions the bot lacks here, in `channelPermissions` order. */
   missing: z.array(
     z.enum(channelPermissions.map((p) => p.key) as [ChannelPermission]),
@@ -581,11 +609,11 @@ export function canPost(channel: Pick<GuildChannel, "missing">): boolean {
   );
 }
 
-/** Forum channels take posts, not messages, so they wait for forum posting. */
+/** Forum creation uses the same delivery eligibility as other destinations. */
 export function canSendTo(
   channel: Pick<GuildChannel, "missing" | "kind">,
 ): boolean {
-  return channel.kind !== "forum" && canPost(channel);
+  return canPost(channel);
 }
 
 /**
@@ -619,6 +647,7 @@ export const messagePayloadSchema = messageDraftSchema.extend({
     .default([]),
   /** Delivered without a push or desktop notification. */
   silent: z.boolean().default(false),
+  publish: z.boolean().optional(),
 });
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
@@ -700,11 +729,18 @@ const deliveryErrorSchema = z.object({
 });
 
 export const sendTargetSchema = z.object({
+  sendId: z.string().optional(),
   id: z.string(),
   guildId: z.string(),
   guildName: z.string(),
   channelId: z.string(),
   channelName: z.string(),
+  channelKind: channelKindSchema.optional(),
+  publishStatus: z
+    .enum(["pending", "publishing", "published", "failed"])
+    .nullable()
+    .optional(),
+  publishError: z.string().nullable().optional(),
   status: z.enum(["pending", "posting", "sent", "failed", "unknown"]),
   messageId: z.string().nullable(),
   error: deliveryErrorSchema.nullable(),
@@ -918,4 +954,20 @@ export function messageTitle(payload: MessagePayload): string {
     payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
     "Untitled message"
   );
+}
+
+/** Destination-specific checks also run when a schedule is delivered. */
+export function destinationProblem(
+  payload: MessagePayload,
+  channel: GuildChannel,
+): string | null {
+  if (channel.kind !== "forum") return null;
+  if (!payload.forumTitle?.trim())
+    return "Enter a post title for forum destinations.";
+  const tags = payload.forumTags?.[channel.id] ?? [];
+  if (channel.requireTag && !tags.length)
+    return `Choose a tag for #${channel.name}.`;
+  if (tags.some((id) => !channel.availableTags?.some((tag) => tag.id === id)))
+    return `Choose available tags for #${channel.name}.`;
+  return null;
 }

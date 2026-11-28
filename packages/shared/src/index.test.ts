@@ -467,10 +467,12 @@ test("names the permissions to check and builds an invite with them", () => {
     "Send Messages",
     "Embed Links",
     "Attach Files",
+    "Create Public Threads",
+    "Send Messages in Threads",
   ]);
   // 1024 + 2048 + 16384 + 32768
   expect(inviteUrl("42")).toBe(
-    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
+    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=309237697536",
   );
 });
 
@@ -531,13 +533,13 @@ describe("sending", () => {
     contentType: "image/png",
   });
 
-  test("forum channels can't be sent to, whatever the permissions", () => {
+  test("forum channels can be selected when thread permissions are present", () => {
     expect(canSendTo({ kind: "text", missing: [] })).toBe(true);
     expect(canSendTo({ kind: "announcement", missing: ["attachFiles"] })).toBe(
       true,
     );
     expect(canSendTo({ kind: "text", missing: ["sendMessages"] })).toBe(false);
-    expect(canSendTo({ kind: "forum", missing: [] })).toBe(false);
+    expect(canSendTo({ kind: "forum", missing: [] })).toBe(true);
   });
 
   test("a payload defaults to no pings and a normal notification", () => {

@@ -219,10 +219,14 @@ export function SlipDetail({
   if (target.status === "sent" && target.messageId)
     return (
       <div className={styles.detail}>
+        <PublishOutcome target={target} />
         <a
           href={messageLink({
             guildId: target.guildId,
-            channelId: target.channelId,
+            channelId:
+              target.channelKind === "forum"
+                ? target.messageId
+                : target.channelId,
             messageId: target.messageId,
           })}
           target="_blank"
@@ -305,6 +309,7 @@ export function SendControls({
     retry,
     pings,
     silent,
+    publish,
     startOver,
   } = useSending();
   const navigate = useNavigate();
@@ -329,7 +334,7 @@ export function SendControls({
         "/api/sends",
         {
           id: scheduleId.current,
-          payload: { ...toMessage(draft), pings, silent },
+          payload: { ...toMessage(draft), pings, silent, publish },
           channelIds: entries.map((e) => e.channel.id),
           scheduledAt: new Date(instant).toISOString(),
         },
@@ -577,6 +582,13 @@ export function SendControls({
             </p>
           )}
           <p className={styles.quietNote}>
+            {draft.forumTitle && <span>Post title: {draft.forumTitle}. </span>}
+            {publish && (
+              <span>
+                Publish announcement copies to following servers (10 per hour
+                per channel).
+              </span>
+            )}
             {silent ? (
               <>
                 <BellOff aria-hidden="true" />
@@ -591,6 +603,75 @@ export function SendControls({
           </p>
         </div>
       </ConfirmDialog>
+    </div>
+  );
+}
+
+export function PublishOutcome({ target }: { target: SendTarget }) {
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [retryResult, setRetryResult] = useState<SendTarget | null>(null);
+  const outcome = retryResult?.id === target.id ? retryResult : target;
+  const [problem, setProblem] = useState<string | null>(null);
+  if (!outcome.publishStatus) return null;
+  async function retry() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch(
+        `/api/sends/${target.sendId}/publish/retry`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-csrf-token":
+              client.getQueryData<Session>(["session"])?.csrfToken ?? "",
+          },
+          body: JSON.stringify({ targetIds: [target.id] }),
+        },
+      );
+      if (!response.ok)
+        throw new Error("Publishing could not be retried. Try again.");
+      const result = (await response.json()) as SendResult;
+      setRetryResult(result.targets.find((t) => t.id === target.id)!);
+    } catch {
+      setProblem("Publishing could not be retried. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div>
+      <Verdict
+        state={
+          outcome.publishStatus === "published"
+            ? "sent"
+            : outcome.publishStatus === "failed"
+              ? "failed"
+              : "waiting"
+        }
+        label={
+          outcome.publishStatus === "published"
+            ? "Published"
+            : outcome.publishStatus === "failed"
+              ? "Publish failed"
+              : "Publishing"
+        }
+        index={0}
+      />
+      <p>
+        {outcome.publishStatus === "published"
+          ? "Published to following servers"
+          : outcome.publishStatus === "failed"
+            ? outcome.publishError
+            : "Publishing to following servers…"}
+      </p>
+      {problem && <p role="alert">{problem}</p>}
+      {outcome.publishStatus === "failed" && (
+        <button type="button" disabled={busy} onClick={() => void retry()}>
+          {busy ? "Publishing…" : "Retry publish"}
+        </button>
+      )}
     </div>
   );
 }
