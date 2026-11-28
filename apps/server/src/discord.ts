@@ -22,7 +22,7 @@ import {
 } from "@embed-dash/shared";
 import type { Config } from "./config.js";
 import { safeErrorDetails } from "./errors.js";
-import { missingPermissions } from "./permissions.js";
+import { channelPermissionBits, missingPermissions } from "./permissions.js";
 
 /** Discord's maximum page size for the current user's guilds. */
 const maxGuildPageSize = 200;
@@ -263,6 +263,7 @@ export function createDiscord(
           const edit: RESTPatchAPIChannelMessageJSONBody = {
             content: body.content ?? "",
             embeds: body.embeds ?? [],
+            components: body.components ?? [],
             allowed_mentions: body.allowed_mentions,
             attachments: [
               ...retained.map((a) => ({ id: a.id, filename: a.filename })),
@@ -371,16 +372,26 @@ async function fetchGuild(
                     }[];
                   }
                 ).available_tags ?? []
-              )
-                .filter((tag) => !tag.moderated)
-                .map((tag) => ({ id: tag.id, name: tag.name })),
+              ).map((tag) => ({
+                id: tag.id,
+                name: tag.name,
+                ...(tag.moderated &&
+                !(
+                  channelPermissionBits(
+                    context,
+                    channel.permission_overwrites ?? [],
+                  ) &
+                  (1n << 34n)
+                )
+                  ? { unavailable: "Requires Manage Threads" }
+                  : {}),
+              })),
               requireTag: !!((channel.flags ?? 0) & 16),
             }
           : {}),
         missing: missingPermissions(
           context,
           channel.permission_overwrites ?? [],
-          kind === "forum",
         ),
       },
     ];

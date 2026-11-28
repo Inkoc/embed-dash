@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  destinationProblem,
+  destinationFailure,
   attachmentName,
   botIdentitySchema,
   canPost,
@@ -43,6 +45,10 @@ test("validates the public bot identity", () => {
 
 test("matches Discord's documented embed limits", () => {
   expect(discordLimits).toEqual({
+    buttonRows: 5,
+    buttonsPerRow: 5,
+    buttonLabel: 80,
+    buttonUrl: 512,
     content: 2000,
     embedsPerMessage: 10,
     title: 256,
@@ -467,12 +473,10 @@ test("names the permissions to check and builds an invite with them", () => {
     "Send Messages",
     "Embed Links",
     "Attach Files",
-    "Create Public Threads",
-    "Send Messages in Threads",
   ]);
-  // 1024 + 2048 + 16384 + 32768
+  // View Channel, Send Messages, Embed Links and Attach Files.
   expect(inviteUrl("42")).toBe(
-    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=309237697536",
+    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
   );
 });
 
@@ -533,7 +537,7 @@ describe("sending", () => {
     contentType: "image/png",
   });
 
-  test("forum channels can be selected when thread permissions are present", () => {
+  test("forum starters use the normal posting permissions", () => {
     expect(canSendTo({ kind: "text", missing: [] })).toBe(true);
     expect(canSendTo({ kind: "announcement", missing: ["attachFiles"] })).toBe(
       true,
@@ -687,4 +691,104 @@ test("an embed has content once any part Discord shows is filled in", () => {
       fields: [{ name: "", value: "", inline: false }],
     }),
   ).toBe(true);
+});
+
+test("embed links reject internal whitespace and accept trimmed or percent-encoded links", () => {
+  const make = (url: string): MessageDraft => ({
+    content: "",
+    embeds: [{ ...emptyEmbed(), title: "Guide", url }],
+    attachments: [],
+  });
+  for (const url of [
+    "https://example.com/a b",
+    "https://example.com/a\nb",
+    "https://example.com/a\u00a0b",
+  ]) {
+    expect(validateMessage(make(url))).toContainEqual(
+      expect.objectContaining({ path: "embeds.0.url" }),
+    );
+  }
+  expect(validateMessage(make(" https://example.com/guide "))).toEqual([]);
+  expect(validateMessage(make("https://example.com/a%20b"))).toEqual([]);
+});
+
+const forumChannel: GuildChannel = {
+  id: "123456789012345678",
+  name: "reports",
+  kind: "forum",
+  missing: [],
+  availableTags: [{ id: "123456789012345679", name: "Bug" }],
+};
+test.each([
+  [{}, forumChannel, "FORUM_TITLE_REQUIRED"],
+  [{ forumTitle: "  " }, forumChannel, "FORUM_TITLE_REQUIRED"],
+  [
+    { forumTitle: "Report" },
+    { ...forumChannel, requireTag: true },
+    "FORUM_TAG_REQUIRED",
+  ],
+  [
+    {
+      forumTitle: "Report",
+      forumTags: { [forumChannel.id]: ["123456789012345680"] },
+    },
+    forumChannel,
+    "FORUM_TAG_UNAVAILABLE",
+  ],
+  [
+    { forumTitle: "Report" },
+    {
+      ...forumChannel,
+      requireTag: true,
+      availableTags: [
+        {
+          id: "123456789012345679",
+          name: "Bug",
+          unavailable: "Requires Manage Threads",
+        },
+      ],
+    },
+    "FORUM_NO_TAG_ACCESS",
+  ],
+  [
+    {
+      forumTitle: "Report",
+      forumTags: { [forumChannel.id]: ["123456789012345679"] },
+    },
+    {
+      ...forumChannel,
+      availableTags: [
+        {
+          id: "123456789012345679",
+          name: "Bug",
+          unavailable: "Requires Manage Threads",
+        },
+      ],
+    },
+    "FORUM_TAG_PERMISSION",
+  ],
+  [{ forumTitle: "Report" }, forumChannel, null],
+  [{}, { ...forumChannel, kind: "text" }, null],
+] as const)("forum destination rule %j", (changes, channel, code) => {
+  const message = messagePayloadSchema.parse({
+    content: "Message",
+    embeds: [],
+    ...changes,
+  });
+  expect(destinationFailure(message, channel as GuildChannel)).toBe(code);
+  expect(destinationProblem(message, channel as GuildChannel)).toBe(
+    code ? deliveryErrors[code] : null,
+  );
+});
+test("forum tags reject duplicate ids", () => {
+  expect(
+    messagePayloadSchema.safeParse({
+      content: "Message",
+      embeds: [],
+      forumTitle: "Report",
+      forumTags: {
+        [forumChannel.id]: ["123456789012345679", "123456789012345679"],
+      },
+    }).success,
+  ).toBe(false);
 });

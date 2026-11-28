@@ -32,6 +32,7 @@ import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import { Segmented, segmentedItem } from "../ui/Segmented";
 import { MessageJson, type Imported } from "./MessageJson";
 import { SaveUpdatesAction } from "./EditPanel";
+import { Buttons } from "./Buttons";
 import { Attachments } from "./Attachments";
 import { BudgetRuler } from "./BudgetRuler";
 import {
@@ -337,6 +338,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
             </span>
           </section>
 
+          <Buttons />
+
           <section className={styles.section} aria-labelledby="s-files">
             <div className={styles.sectionHead}>
               <h3 id="s-files">Files</h3>
@@ -421,8 +424,8 @@ export function ComposeView({ theme }: { theme: Theme }) {
         onCancel={() => setConfirmClear(false)}
       >
         <p>
-          This removes the message text and every embed from this browser. It
-          can’t be undone.
+          This removes the message text, embeds and buttons from this browser.
+          It can’t be undone.
         </p>
       </ConfirmDialog>
     </section>
@@ -498,7 +501,11 @@ function NextStep() {
         {issues.slice(0, listed).map((issue, index) => (
           <li key={`${issue.path}-${index}`}>
             <button type="button" onClick={() => reveal(issue.path)}>
-              <b>{issue.label}:</b> {issue.message}
+              <b>
+                {issue.label}
+                {issue.label.includes(":") ? "" : ":"}
+              </b>{" "}
+              {issue.message}
             </button>
           </li>
         ))}

@@ -12,6 +12,7 @@ import type {
   PingKind,
   SendResult,
   SendTarget,
+  GuildsResponse,
 } from "@embed-dash/shared";
 import { toMessage, useDraft, type Draft } from "../compose/draft";
 import { asAppError, type AppError } from "../errors";
@@ -25,9 +26,11 @@ import {
   SendFailure,
   startSend,
 } from "./sendApi";
+import { deliveryPayload } from "./delivery";
 import { inFlight } from "./summary";
 
 interface Sending {
+  publicationUpdated: (result: SendResult) => void;
   /** Who the message may notify; none unless the operator ticks a kind. */
   pings: readonly PingKind[];
   setPing: (kind: PingKind, on: boolean) => void;
@@ -272,6 +275,8 @@ export function SendingProvider({ children }: { children: ReactNode }) {
       ),
     publish,
     setPublish,
+    publicationUpdated: (next) =>
+      setResult((before) => (before?.id === next.id ? next : before)),
     silent,
     setSilent,
     busy,
@@ -293,7 +298,13 @@ export function SendingProvider({ children }: { children: ReactNode }) {
         url: "/api/sends",
         body: {
           id,
-          payload: { ...message, pings, silent, publish },
+          payload: deliveryPayload(
+            { ...message, pings: [...pings], silent, publish },
+            client
+              .getQueryData<GuildsResponse>(["guilds"])
+              ?.guilds.flatMap((g) => g.channels)
+              .filter((c) => channelIds.includes(c.id)) ?? [],
+          ),
           channelIds,
         },
         id,
@@ -338,3 +349,6 @@ export function useSending() {
   if (!value) throw new Error("useSending needs a SendingProvider");
   return value;
 }
+
+export const usePublicationUpdate = () =>
+  useContext(SendingContext)?.publicationUpdated;

@@ -390,6 +390,9 @@ function Picker({
               All postable
               <span className={styles.n}>{allPostable.length}</span>
             </button>
+            <span className={styles.quickHint}>
+              Forums need a post title and may require tags.
+            </span>
             <button
               type="button"
               className={styles.pick}

@@ -312,3 +312,31 @@ describe("embeds added and not written in yet", () => {
     expect(isBlank({ ...draft, content: "x" })).toBe(false);
   });
 });
+
+test("portable drafts preserve complete buttons without editor keys and omit unfinished rows", () => {
+  const complete = {
+    type: 2 as const,
+    style: 5 as const,
+    label: "Guide",
+    url: "https://example.com",
+  };
+  const draft = withIds({
+    content: "Resources",
+    embeds: [],
+    attachments: [],
+    components: [
+      {
+        type: 1,
+        components: [complete, { ...complete, label: "Unfinished", url: "" }],
+      },
+      { type: 1, components: [{ ...complete, url: "" }] },
+    ],
+  });
+  expect(toMessage(draft).components).toEqual([
+    { type: 1, components: [complete] },
+  ]);
+  expect(JSON.stringify(toMessage(draft))).not.toContain('"key"');
+  expect(locate(draft, "components.0.components.0.url").id).toBe(
+    `${draft.components![0]!.components[0]!.key}-url`,
+  );
+});

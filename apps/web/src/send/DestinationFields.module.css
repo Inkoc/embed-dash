@@ -1,7 +1,15 @@
 .options {
+  --destination-soft: var(--ink-2);
+  --destination-danger: var(--danger);
+  --destination-check: var(--accent);
   display: grid;
   gap: var(--space-3);
   padding-block: var(--space-3);
+}
+.tray {
+  --destination-soft: var(--tray-soft);
+  --destination-danger: var(--tray-danger);
+  --destination-check: var(--tray-accent);
 }
 .options fieldset {
   border: 0;
@@ -14,19 +22,27 @@
   font-size: var(--text-label);
   font-weight: var(--weight-label);
 }
-.options label:not(.check) {
+.options legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.title {
   display: grid;
   gap: var(--space-2);
 }
-.options input:not([type="checkbox"]) {
+.optional {
+  font-weight: var(--weight-body);
+  color: var(--destination-soft);
+}
+.title input {
   width: 100%;
   min-width: 0;
   min-height: var(--tap);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--field);
   color: var(--ink);
   border: var(--rule-width) solid var(--field-line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 .options p,
 .options small {
@@ -34,12 +50,72 @@
   font-size: var(--text-meta);
   font-weight: var(--weight-body);
 }
+.options small {
+  color: var(--destination-soft);
+}
+.options .problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--destination-danger);
+  font-size: var(--text-label);
+}
+.problem svg {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
 .check {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  position: relative;
+  align-items: flex-start;
+  gap: var(--space-3);
   min-height: var(--tap);
+  padding-block: var(--space-2);
+  cursor: pointer;
 }
 .check input {
-  accent-color: var(--accent);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  border: var(--line-strong) solid var(--field-line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--on-accent);
+}
+.box svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  opacity: 0;
+}
+.check input:checked + .box {
+  background: var(--destination-check);
+  border-color: var(--destination-check);
+}
+.tray .box {
+  color: var(--tray-on-accent);
+}
+.check input:checked + .box svg {
+  opacity: 1;
+}
+.check:has(input:focus-visible) {
+  outline: var(--line-strong) solid var(--ring);
+  outline-offset: var(--space-1);
+}
+.check:has(input:disabled) {
+  cursor: not-allowed;
+}
+.check input:disabled + .box {
+  border-style: dashed;
 }

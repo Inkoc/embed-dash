@@ -134,7 +134,7 @@ test("a bot in no servers offers its invite link", async () => {
     await screen.findByRole("link", { name: /Invite the bot/ }),
   ).toHaveAttribute(
     "href",
-    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=309237697536",
+    "https://discord.com/oauth2/authorize?client_id=42&scope=bot&permissions=52224",
   );
 });
 
@@ -460,4 +460,43 @@ test("forum tags and announcement publishing are labelled and editable", async (
   expect(publish).not.toBeChecked();
   fireEvent.click(publish);
   expect(publish).toBeChecked();
+});
+
+test("a required moderated tag explains the permission needed rather than hiding every tag", async () => {
+  stub([
+    Response.json(
+      listing([
+        {
+          ...guild("1", "Lanternfall", []),
+          channels: [
+            {
+              id: "10",
+              name: "staff-posts",
+              kind: "forum",
+              missing: [],
+              requireTag: true,
+              availableTags: [
+                {
+                  id: "123456789012345679",
+                  name: "Staff",
+                  unavailable: "Requires Manage Threads",
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    ),
+  ]);
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "staff-posts" }));
+  expect(
+    screen.getByRole("checkbox", { name: /Staff Requires Manage Threads/ }),
+  ).toBeDisabled();
+  expect(
+    screen.getByText(/This forum requires a tag, but none can be applied/),
+  ).toBeVisible();
+  expect(
+    screen.getByText("Forums need a post title and may require tags."),
+  ).toBeVisible();
 });

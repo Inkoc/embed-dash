@@ -1,4 +1,11 @@
+import { attachmentReference, linkProblem } from "./links.js";
 import { z } from "zod";
+import {
+  buttonLimits,
+  buttonRowDraftSchema,
+  buttonProblems,
+} from "./buttons.js";
+export * from "./buttons.js";
 export const botIdentitySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -19,6 +26,7 @@ export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 /** Discord's message and embed limits, in characters unless noted. */
 export const discordLimits = {
+  ...buttonLimits,
   content: 2000,
   embedsPerMessage: 10,
   title: 256,
@@ -77,6 +85,7 @@ export const messageDraftSchema = z.object({
     .optional(),
 
   content: z.string(),
+  components: z.array(buttonRowDraftSchema).optional(),
   embeds: z.array(embedDraftSchema),
   attachments: z.array(attachmentSchema).default([]),
 });
@@ -257,43 +266,9 @@ const characters = (n: number) =>
   `${format(n)} ${n === 1 ? "character" : "characters"}`;
 const hexColor = /^#[0-9a-f]{6}$/i;
 
-/**
- * An uploaded file is referenced as `attachment://filename`; Discord only
- * matches filenames made of ASCII letters, digits, dots, dashes and underscores.
- */
-const attachmentReference = /^attachment:\/\/(?!\.+$)[\w.-]+$/;
-
-/**
- * Whether Discord would accept the link; empty counts as acceptable, since every link is optional.
- * Title and author links open in a browser, so they must be web links; images
- * and icons may also point at a file uploaded with the message.
- */
+/** Whether an optional web or uploaded-media link is accepted by Discord. */
 export function isAcceptedLink(url: string, media: boolean): boolean {
   return linkProblem(url, media) === null;
-}
-
-function linkProblem(url: string, media: boolean): string | null {
-  const value = url.trim();
-  if (!value) return null;
-  const schemes = media
-    ? ["http:", "https:", "attachment:"]
-    : ["http:", "https:"];
-  let protocol: string;
-  try {
-    protocol = new URL(value).protocol;
-  } catch {
-    return media
-      ? "Use a full link that starts with https://, or attachment:// for an uploaded file."
-      : "Use a full link that starts with https://.";
-  }
-  if (protocol === "attachment:" && media)
-    return attachmentReference.test(value)
-      ? null
-      : "Name an uploaded file as attachment://filename, using only letters, digits, dots, dashes and underscores.";
-  if (schemes.includes(protocol)) return null;
-  return media
-    ? `Discord only shows images from https://, http:// or attachment:// links, not ${protocol}//.`
-    : `Discord only accepts https:// or http:// links here, not ${protocol}//.`;
 }
 
 /** Whether an embed has anything Discord would show; an empty one is never sent. */
@@ -358,7 +333,11 @@ export function validateMessage(
       );
   };
 
-  if (!message.content.trim() && message.embeds.length === 0)
+  if (
+    !message.content.trim() &&
+    message.embeds.length === 0 &&
+    !message.components?.some((row) => row.components.length)
+  )
     add("content", "Message", "Add message text or an embed.");
   limit(
     "content",
@@ -373,6 +352,33 @@ export function validateMessage(
       "Embeds",
       `A message holds at most ${discordLimits.embedsPerMessage} embeds; remove ${message.embeds.length - discordLimits.embedsPerMessage}.`,
     );
+
+  const rows = message.components ?? [];
+  if (rows.length > discordLimits.buttonRows)
+    add(
+      "components",
+      "Buttons",
+      `Use at most ${discordLimits.buttonRows} rows.`,
+    );
+  rows.forEach((row, r) => {
+    if (
+      !row.components.length ||
+      row.components.length > discordLimits.buttonsPerRow
+    )
+      add(
+        `components.${r}`,
+        `Button row ${r + 1}`,
+        `Add between 1 and ${discordLimits.buttonsPerRow} buttons, or remove the row.`,
+      );
+    row.components.forEach((button, b) => {
+      for (const problem of buttonProblems(button))
+        add(
+          `components.${r}.components.${b}.${problem.field}`,
+          `Row ${r + 1}, button ${b + 1}: ${{ label: "Label", url: "Button URL", emoji: "Button emoji" }[problem.field]}`,
+          problem.message,
+        );
+    });
+  });
 
   const files = message.attachments;
   if (files.length > uploadLimits.attachmentsPerMessage)
@@ -545,18 +551,6 @@ export const channelPermissions = [
     bit: 1n << 15n,
     required: false,
   },
-  {
-    key: "createPublicThreads",
-    label: "Create Public Threads",
-    bit: 1n << 35n,
-    required: true,
-  },
-  {
-    key: "sendMessagesInThreads",
-    label: "Send Messages in Threads",
-    bit: 1n << 38n,
-    required: true,
-  },
 ] as const;
 export type ChannelPermission = (typeof channelPermissions)[number]["key"];
 
@@ -574,7 +568,13 @@ export const guildChannelSchema = z.object({
   name: z.string(),
   kind: channelKindSchema,
   availableTags: z
-    .array(z.object({ id: z.string(), name: z.string() }))
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        unavailable: z.string().optional(),
+      }),
+    )
     .optional(),
   requireTag: z.boolean().optional(),
   /** Permissions the bot lacks here, in `channelPermissions` order. */
@@ -648,6 +648,7 @@ export const messagePayloadSchema = messageDraftSchema.extend({
   /** Delivered without a push or desktop notification. */
   silent: z.boolean().default(false),
   publish: z.boolean().optional(),
+  forumTagNames: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type MessagePayload = z.infer<typeof messagePayloadSchema>;
 
@@ -688,6 +689,16 @@ export const retryRequestSchema = z.object({
 
 /** Why a copy did not arrive, in words for the operator. */
 export const deliveryErrors = {
+  THREAD_ARCHIVED:
+    "This forum post is archived. Unarchive it in Discord, then retry the update.",
+  FORUM_TITLE_REQUIRED: "Enter a post title for forum destinations.",
+  FORUM_TAG_REQUIRED: "Choose at least one tag for this forum.",
+  FORUM_TAG_UNAVAILABLE:
+    "A selected forum tag is no longer available. Choose current tags before retrying.",
+  FORUM_TAG_PERMISSION:
+    "A selected tag requires Manage Threads. Choose another tag or grant that permission.",
+  FORUM_NO_TAG_ACCESS:
+    "This forum requires a tag, but none can be applied. Grant Manage Threads or make a tag available in Discord.",
   UPLOAD_MISSING:
     "A file needed for this message is missing from the server. Compose it again with the file restored or removed.",
   EDIT_UNCONFIRMED:
@@ -735,6 +746,8 @@ export const sendTargetSchema = z.object({
   guildName: z.string(),
   channelId: z.string(),
   channelName: z.string(),
+  forumTitle: z.string().optional(),
+  forumTags: z.array(z.string()).optional(),
   channelKind: channelKindSchema.optional(),
   publishStatus: z
     .enum(["pending", "publishing", "published", "failed"])
@@ -877,6 +890,8 @@ export const historyFiltersSchema = z
     path: ["to"],
   });
 export const historyEntrySchema = z.object({
+  forumTags: z.array(z.string()).optional(),
+  publishFailureCount: z.number().optional(),
   scheduledAt: z.number().nullable().optional(),
   id: z.string(),
   title: z.string(),
@@ -930,6 +945,7 @@ export type HistoryDestination = z.infer<
 /** What a later search will look in: every text a reader sees. */
 export function searchText(payload: MessagePayload): string {
   return [
+    payload.forumTitle ?? "",
     payload.content,
     ...payload.embeds.flatMap((embed) => [
       embed.title,
@@ -949,6 +965,7 @@ export function searchText(payload: MessagePayload): string {
 export function messageTitle(payload: MessagePayload): string {
   const line = (text: string) => text.split("\n").find((part) => part.trim());
   return (
+    payload.forumTitle?.trim() ||
     payload.embeds.find((embed) => embed.title.trim())?.title ||
     line(payload.content) ||
     payload.embeds.map((embed) => line(embed.description)).find(Boolean) ||
@@ -957,17 +974,33 @@ export function messageTitle(payload: MessagePayload): string {
 }
 
 /** Destination-specific checks also run when a schedule is delivered. */
+export function destinationFailure(
+  payload: MessagePayload,
+  channel: GuildChannel,
+): DeliveryErrorCode | null {
+  if (channel.kind !== "forum") return null;
+  if (!payload.forumTitle?.trim()) return "FORUM_TITLE_REQUIRED";
+  const tags = payload.forumTags?.[channel.id] ?? [];
+  if (
+    channel.requireTag &&
+    !channel.availableTags?.some((tag) => !tag.unavailable)
+  )
+    return "FORUM_NO_TAG_ACCESS";
+  if (channel.requireTag && !tags.length) return "FORUM_TAG_REQUIRED";
+  if (tags.some((id) => !channel.availableTags?.some((tag) => tag.id === id)))
+    return "FORUM_TAG_UNAVAILABLE";
+  if (
+    tags.some(
+      (id) => channel.availableTags?.find((tag) => tag.id === id)?.unavailable,
+    )
+  )
+    return "FORUM_TAG_PERMISSION";
+  return null;
+}
 export function destinationProblem(
   payload: MessagePayload,
   channel: GuildChannel,
 ): string | null {
-  if (channel.kind !== "forum") return null;
-  if (!payload.forumTitle?.trim())
-    return "Enter a post title for forum destinations.";
-  const tags = payload.forumTags?.[channel.id] ?? [];
-  if (channel.requireTag && !tags.length)
-    return `Choose a tag for #${channel.name}.`;
-  if (tags.some((id) => !channel.availableTags?.some((tag) => tag.id === id)))
-    return `Choose available tags for #${channel.name}.`;
-  return null;
+  const code = destinationFailure(payload, channel);
+  return code ? deliveryErrors[code] : null;
 }

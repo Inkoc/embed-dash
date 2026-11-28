@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import { ExternalLink } from "lucide-react";
+import { completeButtonRows } from "@embed-dash/shared";
 import type { BotIdentity } from "@embed-dash/shared";
 import type { Draft, Embed } from "../compose/draft";
 import { fieldRows } from "./fieldRows";
@@ -79,6 +81,35 @@ export function DiscordPreview({ draft, bot, botPending, time }: Props) {
             draft={draft}
             time={time}
           />
+        ))}
+        {completeButtonRows(draft.components).map((row, r) => (
+          <div className={styles.buttonRow} key={r}>
+            {row.components.map((button, b) => (
+              <a
+                className={styles.linkButton}
+                key={b}
+                href={button.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {button.emoji &&
+                  (button.emoji.id ? (
+                    <img
+                      className={styles.buttonEmoji}
+                      src={`https://cdn.discordapp.com/emojis/${button.emoji.id}.${button.emoji.animated ? "gif" : "png"}`}
+                      alt={`:${button.emoji.name}:`}
+                      width="20"
+                      height="20"
+                    />
+                  ) : (
+                    <span>{button.emoji.name}</span>
+                  ))}
+                {button.label}
+                <ExternalLink aria-hidden="true" />
+                <span className="visually-hidden"> (opens in a new tab)</span>
+              </a>
+            ))}
+          </div>
         ))}
       </div>
     </article>

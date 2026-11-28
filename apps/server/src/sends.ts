@@ -11,6 +11,7 @@ import {
   sendIdSchema,
   editRequestSchema,
   destinationProblem,
+  destinationFailure,
   canSendTo,
   deliveryErrors,
   messagePayloadSchema,
@@ -38,10 +39,10 @@ import { sends, sendTargets, editRuns } from "./schema.js";
 import { createUploadStore } from "./uploads.js";
 
 type Discord = {
-  createForum?: ReturnType<
+  createForum: ReturnType<
     typeof import("./discord.js").createDiscord
   >["createForum"];
-  publishMessage?: ReturnType<
+  publishMessage: ReturnType<
     typeof import("./discord.js").createDiscord
   >["publishMessage"];
   editMessage: (
@@ -139,6 +140,20 @@ export async function registerSends(
           ),
         )
         .run();
+      db.update(sendTargets)
+        .set({
+          publishStatus: "failed",
+          publishError:
+            "Publishing was interrupted. Retry publish to confirm it.",
+        })
+        .where(
+          and(
+            eq(sendTargets.status, "sent"),
+            inArray(sendTargets.publishStatus, ["pending", "publishing"]),
+            sendId ? eq(sendTargets.sendId, sendId) : undefined,
+          ),
+        )
+        .run();
       for (const send of db
         .select({ id: sends.id })
         .from(sends)
@@ -151,18 +166,6 @@ export async function registerSends(
         .all())
         finish(send.id);
     })();
-  db.update(sendTargets)
-    .set({
-      publishStatus: "failed",
-      publishError: "Publishing was interrupted. Retry publish to confirm it.",
-    })
-    .where(
-      and(
-        eq(sendTargets.status, "sent"),
-        inArray(sendTargets.publishStatus, ["pending", "publishing"]),
-      ),
-    )
-    .run();
   settleInterrupted();
 
   // Delivery runs after the answer has gone out. Closing lets the post in
@@ -319,6 +322,7 @@ export async function registerSends(
                 id: t.id,
                 sendId: t.sendId,
                 channelKind: t.channelKind,
+                ...forumDetails(payload, t),
                 publishStatus: t.publishStatus,
                 publishError: t.publishError,
                 guildId: t.guildId,
@@ -346,6 +350,7 @@ export async function registerSends(
         channelId: target.channelId,
         channelName: target.channelName,
         channelKind: target.channelKind,
+        ...forumDetails(payload, target),
         publishStatus: target.publishStatus,
         publishError: target.publishError,
         status: target.status,
@@ -360,6 +365,37 @@ export async function registerSends(
     };
   };
 
+  function forumDetails(payload: MessagePayload, target: TargetRow) {
+    return target.channelKind === "forum"
+      ? {
+          forumTitle: payload.forumTitle,
+          forumTags:
+            payload.forumTagNames?.[target.channelId] ??
+            payload.forumTags?.[target.channelId] ??
+            [],
+        }
+      : {};
+  }
+  function tagNames(
+    payload: MessagePayload,
+    channels: ReturnType<typeof listed>,
+    ids: string[],
+  ) {
+    return Object.fromEntries(
+      ids
+        .filter((id) => channels.get(id)?.channel.kind === "forum")
+        .map((id) => [
+          id,
+          (payload.forumTags?.[id] ?? []).map(
+            (tagId) =>
+              channels
+                .get(id)
+                ?.channel.availableTags?.find((tag) => tag.id === tagId)
+                ?.name ?? tagId,
+          ),
+        ]),
+    );
+  }
   function listed(listing: GuildsResponse) {
     const byId = new Map<string, { guild: Guild; channel: GuildChannel }>();
     for (const guild of listing.guilds)
@@ -449,7 +485,7 @@ export async function registerSends(
             ? "CHANNEL_GONE"
             : !canSendTo(current)
               ? "MISSING_PERMISSION"
-              : "INVALID_PAYLOAD",
+              : destinationFailure(payload, current),
         });
         continue;
       }
@@ -493,7 +529,7 @@ export async function registerSends(
               retained,
             )
           : current?.kind === "forum"
-            ? await discord.createForum!(
+            ? await discord.createForum(
                 target.channelId,
                 payload.forumTitle!.trim(),
                 payload.forumTags?.[target.channelId] ?? [],
@@ -528,6 +564,16 @@ export async function registerSends(
             .run();
         refusals.delete(target.guildId);
       } catch (error) {
+        // A confirmed post stays sent even if recording its secondary publication fails.
+        if (
+          !editing &&
+          db
+            .select()
+            .from(sendTargets)
+            .where(eq(sendTargets.id, target.id))
+            .get()?.status === "sent"
+        )
+          throw error;
         const failure = deliveryFailure(error);
         app.log.warn(
           { code: failure.code, channelId: target.channelId },
@@ -732,6 +778,17 @@ export async function registerSends(
       return listingFailed(reply, error);
     }
     const channels = listed(listing);
+    if (!channelIds.some((id) => channels.get(id)?.channel.kind === "forum")) {
+      delete payload.forumTitle;
+      delete payload.forumTags;
+      delete payload.forumTagNames;
+    }
+    if (
+      !channelIds.some(
+        (id) => channels.get(id)?.channel.kind === "announcement",
+      )
+    )
+      delete payload.publish;
     const unavailable: {
       id: string;
       reason: "gone" | "forum" | "permission";
@@ -761,6 +818,7 @@ export async function registerSends(
         );
 
     const now = clock.now();
+    payload.forumTagNames = tagNames(payload, channels, channelIds);
     const due = parsed.data.scheduledAt
       ? Date.parse(parsed.data.scheduledAt)
       : null;
@@ -870,9 +928,9 @@ export async function registerSends(
       // Escape LIKE metacharacters so an operator searches literal message text.
       const pattern = `%${term.replace(/[!%_]/g, "!$&")}%`;
       conditions.push(
-        "(s.search_text LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (fold(t.guild_name) LIKE ? ESCAPE '!' OR fold(t.channel_name) LIKE ? ESCAPE '!' OR t.guild_id LIKE ? ESCAPE '!' OR t.channel_id LIKE ? ESCAPE '!')))",
+        "(s.search_text LIKE ? ESCAPE '!' OR fold(json_extract(s.payload_json, '$.forumTitle')) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM send_targets t WHERE t.send_id = s.id AND (fold(t.guild_name) LIKE ? ESCAPE '!' OR fold(t.channel_name) LIKE ? ESCAPE '!' OR t.guild_id LIKE ? ESCAPE '!' OR t.channel_id LIKE ? ESCAPE '!')))",
       );
-      params.push(pattern, pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern);
     }
     const rows = sqlite
       .prepare(
@@ -899,7 +957,18 @@ export async function registerSends(
         const payload = messagePayloadSchema.parse(
           JSON.parse(row.payload_json),
         );
+        const copies = copiesFor(row.id);
         return {
+          forumTags: copies.flatMap((t) =>
+            t.channelKind === "forum"
+              ? [
+                  `#${t.channelName}: ${(payload.forumTagNames?.[t.channelId] ?? payload.forumTags?.[t.channelId] ?? []).join(", ") || "No tags"}`,
+                ]
+              : [],
+          ),
+          publishFailureCount: copies.filter(
+            (t) => t.status === "sent" && t.publishStatus === "failed",
+          ).length,
           id: row.id,
           title: messageTitle(payload),
           color: payload.embeds[0]?.color ?? "",
@@ -1008,13 +1077,18 @@ export async function registerSends(
         )
       )
         return "channels";
-      if (
-        body.data.channelIds.some((id) =>
+      const forumProblem = body.data.channelIds
+        .map((id) =>
           destinationProblem(body.data.payload, channels.get(id)!.channel),
         )
-      )
-        return "channels";
+        .find(Boolean);
+      if (forumProblem) return { forumProblem };
       const loaded = loadAttachments(body.data.payload);
+      loaded.payload.forumTagNames = tagNames(
+        loaded.payload,
+        channels,
+        body.data.channelIds,
+      );
       if (
         validateMessage(loaded.payload, { missingFiles: loaded.missing }).length
       )
@@ -1054,6 +1128,10 @@ export async function registerSends(
       destinations = undefined;
       return "saved";
     })();
+    if (typeof outcome === "object" && "forumProblem" in outcome)
+      return reply
+        .code(422)
+        .send(sendError("INVALID_REQUEST", outcome.forumProblem!));
     if (typeof outcome === "object")
       return refusal(reply, outcome.invalid.payload, outcome.invalid.missing);
     if (outcome !== "saved")
@@ -1144,6 +1222,7 @@ export async function registerSends(
         silent: original.silent,
         forumTitle: original.forumTitle,
         forumTags: original.forumTags,
+        forumTagNames: original.forumTagNames,
         publish: original.publish,
       };
       // Retained metadata comes from the stored payload, never a browser's filename claim.
@@ -1238,13 +1317,19 @@ export async function registerSends(
       .where(eq(sendTargets.id, target.id))
       .run();
     try {
-      if (!discord.publishMessage) throw new Error("Publishing unavailable");
       await discord.publishMessage(target.channelId, target.messageId!);
       db.update(sendTargets)
         .set({ publishStatus: "published", publishError: null })
         .where(eq(sendTargets.id, target.id))
         .run();
     } catch (error) {
+      if (safeErrorDetails(error).discordCode === 40033) {
+        db.update(sendTargets)
+          .set({ publishStatus: "published", publishError: null })
+          .where(eq(sendTargets.id, target.id))
+          .run();
+        return;
+      }
       const failure = deliveryFailure(error);
       const message =
         failure.code === "RATE_LIMITED"

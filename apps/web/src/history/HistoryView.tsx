@@ -1,4 +1,4 @@
-import { PublishOutcome } from "../send/SendPanel";
+import { PublishOutcome, ForumReceipt } from "../send/SendPanel";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -436,6 +436,16 @@ export function HistoryList() {
                         <span className={styles.names}>
                           {destinationSummary(entry.destinations, urlQuery)}
                         </span>
+                        {entry.forumTags?.map((tags) => (
+                          <span className={styles.names} key={tags}>
+                            {tags}
+                          </span>
+                        ))}
+                        {!!entry.publishFailureCount && (
+                          <span className={styles.updateNotice}>
+                            {entry.publishFailureCount} not published
+                          </span>
+                        )}
                         {entry.lastEditedAt && (
                           <span className={styles.names}>
                             Last edited {date(entry.lastEditedAt)}
@@ -489,7 +499,9 @@ export function HistoryList() {
                           label={
                             entry.unconfirmed
                               ? "Unconfirmed"
-                              : statusLabel[entry.status]
+                              : entry.publishFailureCount
+                                ? "Sent · publish failed"
+                                : statusLabel[entry.status]
                           }
                           index={0}
                         />
@@ -765,7 +777,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                     (target) => target.status === "unknown",
                   )
                     ? "Unconfirmed"
-                    : statusLabel[query.data.status]}{" "}
+                    : query.data.targets.some(
+                          (t) =>
+                            t.status === "sent" && t.publishStatus === "failed",
+                        )
+                      ? "Sent · publish failed"
+                      : statusLabel[query.data.status]}{" "}
                   · {query.data.targets.length}{" "}
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
@@ -809,6 +826,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                         />
                       </p>
                       {target.error && <p>{target.error.message}</p>}
+                      <ForumReceipt target={target} />
                       <PublishOutcome target={target} />
                       {target.status === "failed" && !target.messageId && (
                         <button

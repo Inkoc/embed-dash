@@ -1,4 +1,64 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { buttonLimits } from "../packages/shared/src/buttons.js";
+
+function validComponents(value: unknown): boolean {
+  const object = (item: unknown): item is Record<string, unknown> =>
+    !!item && typeof item === "object" && !Array.isArray(item);
+  if (!Array.isArray(value) || value.length > buttonLimits.buttonRows)
+    return false;
+  return value.every(
+    (row) =>
+      object(row) &&
+      row.type === 1 &&
+      Array.isArray(row.components) &&
+      row.components.length >= 1 &&
+      row.components.length <= buttonLimits.buttonsPerRow &&
+      row.components.every((button) => {
+        if (
+          !object(button) ||
+          button.type !== 2 ||
+          button.style !== 5 ||
+          typeof button.url !== "string"
+        )
+          return false;
+        if (
+          button.url !== button.url.trim() ||
+          /\s/u.test(button.url) ||
+          [...button.url].length > buttonLimits.buttonUrl
+        )
+          return false;
+        try {
+          if (!["http:", "https:"].includes(new URL(button.url).protocol))
+            return false;
+        } catch {
+          return false;
+        }
+        if (
+          button.label !== undefined &&
+          (typeof button.label !== "string" ||
+            button.label !== button.label.trim() ||
+            [...button.label].length > buttonLimits.buttonLabel)
+        )
+          return false;
+        if (
+          button.emoji !== undefined &&
+          (!object(button.emoji) ||
+            typeof button.emoji.name !== "string" ||
+            !button.emoji.name.trim() ||
+            (button.emoji.id !== undefined &&
+              (typeof button.emoji.id !== "string" ||
+                !/^\d{17,20}$/.test(button.emoji.id))) ||
+            (button.emoji.animated !== undefined &&
+              typeof button.emoji.animated !== "boolean"))
+        )
+          return false;
+        return (
+          (typeof button.label === "string" && !!button.label.trim()) ||
+          button.emoji !== undefined
+        );
+      }),
+  );
+}
 
 const botId = "123456789012345678";
 
@@ -24,9 +84,7 @@ const view = 1 << 10;
 const send = 1 << 11;
 const embed = 1 << 14;
 const attach = 1 << 15;
-const posting = String(
-  BigInt(view | send | embed | attach) | (1n << 35n) | (1n << 38n),
-);
+const posting = String(view | send | embed | attach);
 
 interface FakeChannel {
   id: string;
@@ -232,6 +290,7 @@ export function startFakeDiscord(port: number) {
   const removed = new Set<string>();
   let lastMessage = 9_000_000_000_000_000;
   let postDelayMs = 0;
+  let publishDelayMs = 0;
   let listingDelayMs = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
@@ -321,7 +380,11 @@ export function startFakeDiscord(port: number) {
         )
       )
         return reply({ code: 10008 }, 404);
+      if (published.includes(memberId))
+        return reply({ message: "Already crossposted", code: 40033 }, 400);
       published.push(memberId);
+      if (publishDelayMs)
+        await new Promise((resolve) => setTimeout(resolve, publishDelayMs));
       return reply({ id: memberId });
     }
     if (
@@ -388,6 +451,13 @@ export function startFakeDiscord(port: number) {
           tags.length > 5 ||
           new Set(tags).size !== tags.length ||
           tags.some((t) => !forum.available_tags?.some((a) => a.id === t)) ||
+          tags.some(
+            (t) =>
+              forum.available_tags?.find((a) => a.id === t)?.moderated &&
+              !forum.permission_overwrites?.some(
+                (o) => BigInt(o.allow) & (1n << 34n),
+              ),
+          ) ||
           ((forum.flags ?? 0) & 16 && !tags.length)
         )
           return reply({ message: "Invalid forum post", code: 50035 }, 400);
@@ -412,6 +482,12 @@ export function startFakeDiscord(port: number) {
           filename: part.filename!,
           size: part.data.length,
         }));
+
+      if (
+        payload.components !== undefined &&
+        !validComponents(payload.components)
+      )
+        return reply({ message: "Invalid components", code: 50035 }, 400);
 
       const declared = payload.attachments as
         { id: string | number; filename: string }[] | undefined;
@@ -516,6 +592,7 @@ export function startFakeDiscord(port: number) {
     messages,
     threads,
     published,
+    slowPublish: (ms: number) => void (publishDelayMs = ms),
     failPublish: (
       channelId: string,
       failure: Omit<Forced, "times"> & { times?: number },

@@ -132,17 +132,16 @@ export function Tray({
       ),
     )
     .find(Boolean);
-  const blocked =
-    destinationError ??
-    (busy
-      ? null
-      : entries.length === 0
+  const blocked = busy
+    ? null
+    : (destinationError ??
+      (entries.length === 0
         ? "Tick channels in the catalogue to choose where this goes."
         : isBlank(draft)
           ? "Nothing to send yet. Write a message in Compose."
           : issues.length > 0
             ? `${plural(issues.length, "problem", "problems")} to fix before sending.`
-            : null);
+            : null));
 
   // The summary takes focus when results arrive, so they are read out and the
   // Retry button that vanished doesn't leave focus nowhere. A layout effect, so
@@ -422,11 +421,13 @@ export function Tray({
           <b>{outcome.sentence}</b>{" "}
           {outcome.stoppedByToken
             ? "Discord rejected the bot token, so the send stopped."
-            : outcome.failed
-              ? "Retry sends only to the failed channels."
-              : outcome.unknown
-                ? "Look at the unconfirmed channels in Discord before sending again."
-                : "Every copy arrived."}
+            : outcome.publishFailed
+              ? "Some announcements were not published. Use Retry publish on those copies."
+              : outcome.failed
+                ? "Retry sends only to the failed channels."
+                : outcome.unknown
+                  ? "Look at the unconfirmed channels in Discord before sending again."
+                  : "Every copy arrived."}
         </p>
       ) : (
         <p

@@ -1,3 +1,4 @@
+import { ForumReceipt } from "../send/SendPanel";
 import { date } from "../history/presentation";
 import { ScheduledFields } from "../send/ScheduledFields";
 import { localInput, scheduleInstant } from "../send/SchedulePicker";
@@ -299,6 +300,7 @@ export function ReadOnlyChannels({ send }: { send: HistoryDetail }) {
                 <strong>#{t.channelName || t.channelId}</strong>
               </span>
               <span>{t.guildName || t.guildId}</span>
+              <ForumReceipt target={t} />
             </div>
             <span className={styles.callNumber}>
               {!t.messageId
@@ -544,7 +546,15 @@ export function EditPanel() {
       {scheduleFields ? (
         <div className={styles.schedule}>{scheduleFields}</div>
       ) : (
-        <ReadOnlyChannels send={message} />
+        <>
+          {message.targets.some((t) => t.channelKind === "forum") && (
+            <p className={styles.note}>
+              Forum updates change only the starter message. Post titles and
+              tags stay as sent.
+            </p>
+          )}
+          <ReadOnlyChannels send={message} />
+        </>
       )}
       {!wide && <UpdateOutcome />}
       <ConfirmDialog

@@ -1897,6 +1897,151 @@ test("history identifies a send with only unconfirmed copies", async () => {
   expect(list.json().entries[0]).toMatchObject({ unconfirmed: true });
 });
 
+test("link components survive sending, retry, editing and removal", async () => {
+  const s = await setup();
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "Read more",
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  s.fake.fail(results, { status: 403, code: 50013 });
+  const initial = await sent(s, [news, results], { components });
+  expect(s.fake.messages[0].payload.components).toEqual(components);
+  await retried(s, initial.id);
+  expect(s.fake.messages[1].payload.components).toEqual(components);
+  const revised = [
+    {
+      ...components[0]!,
+      components: [{ ...components[0]!.components[0]!, label: "Updated" }],
+    },
+  ];
+  expect((await edit(s, initial.id, { components: revised })).statusCode).toBe(
+    202,
+  );
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        JSON.stringify(message.payload.components) === JSON.stringify(revised),
+    ),
+  ).toBe(true);
+  expect((await edit(s, initial.id, { components: [] })).statusCode).toBe(202);
+  await settle(s, initial.id);
+  expect(
+    s.fake.messages.every(
+      (message) =>
+        Array.isArray(message.payload.components) &&
+        message.payload.components.length === 0,
+    ),
+  ).toBe(true);
+});
+
+test("Discord payload trims button text and URLs and omits blank labels", () => {
+  const components: NonNullable<MessagePayload["components"]> = [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "  Guide  ",
+          url: "  https://example.com/guide \n",
+        },
+        {
+          type: 2,
+          style: 5,
+          label: " \t ",
+          url: " https://example.com ",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ];
+  expect(
+    JSON.parse(
+      JSON.stringify(discordMessage(payload({ components }), new Date())),
+    ).components,
+  ).toEqual([
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Guide", url: "https://example.com/guide" },
+        {
+          type: 2,
+          style: 5,
+          url: "https://example.com",
+          emoji: { name: "🔗" },
+        },
+      ],
+    },
+  ]);
+});
+
+test("the fake Discord rejects malformed raw components independently", async () => {
+  const s = await setup();
+  const address = s.fake.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  const button = {
+    type: 2 as const,
+    style: 5 as const,
+    label: "Guide",
+    url: "https://example.com",
+  };
+  const row = (change: object) => [
+    { type: 1, components: [{ ...button, ...change }] },
+  ];
+  for (const components of [
+    row({ url: " https://example.com " }),
+    row({ url: "https://example.com/a b" }),
+    row({ url: "ftp://example.com" }),
+    row({ label: " " }),
+    row({ label: " Guide " }),
+    row({ label: "x".repeat(81) }),
+    row({ url: "https://example.com/".padEnd(513, "a") }),
+    row({ style: 1 }),
+    row({ emoji: { name: "" } }),
+    [{ type: 1, components: [] }],
+    Array.from({ length: 6 }, () => ({ type: 1, components: [button] })),
+    [{ type: 1, components: Array.from({ length: 6 }, () => button) }],
+  ]) {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v10/channels/${news}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bot e2e-test-token",
+        },
+        body: JSON.stringify({ content: "Resources", components }),
+      },
+    );
+    expect(response.status, JSON.stringify(components)).toBe(400);
+  }
+  const sentMessage = await sent(s, [news], {
+    components: [
+      {
+        type: 1,
+        components: [
+          { ...button, label: " Guide ", url: " https://example.com " },
+        ],
+      },
+    ],
+  });
+  expect(sentMessage.status).toBe("done");
+  expect(s.fake.messages[0].payload.components).toEqual([
+    { type: 1, components: [button] },
+  ]);
+});
+
 test("scheduled sends survive restart, claim once, allow edits and cancellation, and release files", async () => {
   const env = await setup();
   const due = Date.now() + 60000;
@@ -2494,7 +2639,7 @@ test("the live listing pre-check refuses missing forum and announcement permissi
   const beforeAnnouncement = announcement.permission_overwrites;
   try {
     forum.permission_overwrites = [
-      { id: fakeGuilds[0].id, type: 0, allow: "0", deny: String(1n << 35n) },
+      { id: fakeGuilds[0].id, type: 0, allow: "0", deny: String(1n << 11n) },
     ];
     announcement.permission_overwrites = [
       { id: fakeGuilds[0].id, type: 0, allow: "0", deny: String(1n << 11n) },
@@ -2530,4 +2675,272 @@ test("a scheduled announcement publishes through ordinary delivery", async () =>
     publishStatus: "published",
   });
   expect(s.fake.published).toHaveLength(1);
+});
+test.each([false, true])(
+  "scheduled components reach Discord after editing is %s",
+  async (edited) => {
+    const s = await schedulerHarness();
+    const components: NonNullable<MessagePayload["components"]> = [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 5,
+            label: "Guide",
+            url: "https://example.com/guide",
+            emoji: { name: "📖" },
+          },
+        ],
+      },
+    ];
+    const due = s.now() + 60000;
+    const created = await s.create({ components }, due, [news]);
+    expect(created.response.statusCode).toBe(202);
+    let expected = components;
+    if (edited) {
+      expected = [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 5,
+              label: "Updated guide",
+              url: "https://example.com/updated",
+              emoji: { name: "wave", id: "123456789012345678", animated: true },
+            },
+            {
+              type: 2,
+              style: 5,
+              label: "Status",
+              url: "https://example.com/status",
+            },
+          ],
+        },
+      ];
+      const response = await s.app.inject({
+        method: "PUT",
+        url: `/api/sends/${created.id}/schedule`,
+        payload: {
+          payload: payload({
+            content: "Updated resources",
+            components: expected,
+          }),
+          channelIds: [news],
+          scheduledAt: new Date(due + 10000).toISOString(),
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect((await read(s, created.id)).json().payload.components).toEqual(
+      expected,
+    );
+    expect(s.fake.messages).toHaveLength(0);
+    s.advance(edited ? 70000 : 60000);
+    await s.scheduler.tick();
+    expect((await settle(s, created.id)).status).toBe("done");
+    expect(s.fake.messages).toHaveLength(1);
+    expect(s.fake.messages[0].payload.components).toEqual(expected);
+  },
+);
+
+test("forum starter buttons survive creation and edits, and titles/tags remain searchable", async () => {
+  const s = await setup();
+  const forum = channel(1, "bug-reports");
+  const components: MessagePayload["components"] = [
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 5, label: "Guide", url: "https://example.com/guide" },
+      ],
+    },
+  ];
+  const result = await sent(s, [forum], {
+    forumTitle: "Unique forum heading",
+    forumTags: { [forum]: ["123456789012345679"] },
+    components,
+  });
+  expect(s.fake.messages[0].payload.components).toEqual(components);
+  expect(result.targets[0]).toMatchObject({
+    forumTitle: "Unique forum heading",
+    forumTags: ["Bug"],
+  });
+  const updated = [
+    {
+      ...components[0]!,
+      components: [
+        { ...components[0]!.components[0]!, label: "Updated guide" },
+      ],
+    },
+  ];
+  await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${result.id}`,
+    headers: s.headers,
+    payload: { id: randomUUID(), payload: payload({ components: updated }) },
+  });
+  await settle(s, result.id);
+  expect(s.fake.messages[0].payload.components).toEqual(updated);
+  const history = await s.app.inject({
+    url: "/api/sends?q=Unique%20forum%20heading",
+    headers: s.headers,
+  });
+  expect(history.json().entries[0]).toMatchObject({
+    title: "Unique forum heading",
+    forumTags: ["#bug-reports: Bug"],
+  });
+  s.fake.failEdit(result.targets[0].messageId, { status: 400, code: 50083 });
+  await s.app.inject({
+    method: "PUT",
+    url: `/api/sends/${result.id}`,
+    headers: s.headers,
+    payload: {
+      id: randomUUID(),
+      payload: payload({ content: "Archived edit" }),
+    },
+  });
+  const archived = await settle(s, result.id);
+  expect(archived.edit.targets[0].error).toMatchObject({
+    code: "THREAD_ARCHIVED",
+    message: expect.stringContaining("Unarchive"),
+  });
+});
+
+test("an interrupted publication restarts as retryable and already-crossposted confirms success", async () => {
+  const s = await setup();
+  s.fake.slowPublish(500);
+  const response = await post(s, [channel(1, "announcements")], {
+    publish: true,
+  });
+  const id = response.json().id;
+  await expect.poll(() => s.fake.published.length).toBe(1);
+  const sqlite = openDatabase(s.dir);
+  const snapshot = mkdtempSync(join(tmpdir(), "publish-restart-"));
+  await sqlite.backup(join(snapshot, "embed-dash.db"));
+  sqlite.close();
+  const restarted = await createApp(
+    { ...s.config, dataDir: snapshot },
+    { logger: false },
+  );
+  cleanups.push(async () => {
+    await restarted.close();
+    rmSync(snapshot, { recursive: true });
+  });
+  const before = (
+    await restarted.inject({ url: `/api/sends/${id}`, headers: s.headers })
+  ).json();
+  expect(before.targets[0]).toMatchObject({
+    status: "sent",
+    publishStatus: "failed",
+    publishError: expect.stringContaining("interrupted"),
+  });
+  const retry = await restarted.inject({
+    method: "POST",
+    url: `/api/sends/${id}/publish/retry`,
+    headers: s.headers,
+    payload: {},
+  });
+  expect(retry.json().targets[0].publishStatus).toBe("published");
+  expect(s.fake.published).toHaveLength(1);
+  expect(s.fake.messages).toHaveLength(1);
+  await settle(s, id);
+});
+
+test("an unexpected delivery error settles publication immediately and History counts it", async () => {
+  const s = await setup();
+  const sqlite = openDatabase(s.dir);
+  sqlite.exec(`CREATE TRIGGER reject_publish_result BEFORE UPDATE OF publish_status ON send_targets
+    WHEN NEW.publish_status IN ('published', 'failed') AND COALESCE(NEW.publish_error, '') NOT LIKE 'Publishing was interrupted%'
+    BEGIN SELECT RAISE(ABORT, 'Publication recording interrupted'); END`);
+  const response = await post(s, [channel(1, "announcements")], {
+    publish: true,
+  });
+  const id = response.json().id;
+  const result = await settle(s, id);
+  expect(result.targets[0]).toMatchObject({
+    status: "sent",
+    publishStatus: "failed",
+    publishError: expect.stringContaining("interrupted"),
+  });
+  const history = await s.app.inject({ url: "/api/sends", headers: s.headers });
+  expect(history.json().entries[0].publishFailureCount).toBe(1);
+  sqlite.exec("DROP TRIGGER reject_publish_result");
+  sqlite.close();
+  const retry = await s.app.inject({
+    method: "POST",
+    url: `/api/sends/${id}/publish/retry`,
+    headers: s.headers,
+    payload: {},
+  });
+  expect(retry.json().targets[0].publishStatus).toBe("published");
+});
+
+test.each([false, true])(
+  "moderated forum tags follow Manage Threads (%s)",
+  async (canManage) => {
+    const forum = fakeGuilds[0].channels.find((c) => c.name === "bug-reports")!;
+    const tags = forum.available_tags;
+    const overwrites = forum.permission_overwrites;
+    try {
+      forum.available_tags = [
+        { id: "123456789012345679", name: "Staff", moderated: true },
+      ];
+      forum.permission_overwrites = canManage
+        ? [
+            {
+              id: fakeGuilds[0].id,
+              type: 0,
+              allow: String(1n << 34n),
+              deny: "0",
+            },
+          ]
+        : [];
+      const s = await setup();
+      const listing = (
+        await s.app.inject({ url: "/api/guilds", headers: s.headers })
+      ).json();
+      const listedForum = listing.guilds[0].channels.find(
+        (c: { id: string }) => c.id === forum.id,
+      );
+      expect(listedForum.availableTags[0].unavailable).toBe(
+        canManage ? undefined : "Requires Manage Threads",
+      );
+      const response = await post(s, [forum.id], {
+        forumTitle: "Staff post",
+        forumTags: { [forum.id]: ["123456789012345679"] },
+      });
+      expect(response.statusCode).toBe(canManage ? 202 : 422);
+      if (canManage)
+        expect((await settle(s, response.json().id)).targets[0].status).toBe(
+          "sent",
+        );
+      else expect(response.json().error).toContain("none can be applied");
+    } finally {
+      forum.available_tags = tags;
+      forum.permission_overwrites = overwrites;
+    }
+  },
+);
+
+test("scheduled forum tag changes produce a specific delivery result", async () => {
+  const s = await schedulerHarness();
+  const forum = channel(1, "bug-reports");
+  const response = await s.create(
+    {
+      forumTitle: "Scheduled report",
+      forumTags: { [forum]: ["123456789012345679"] },
+    },
+    s.now() + 60000,
+    [forum],
+  );
+  const listing = await s.list();
+  listing.guilds[0].channels.find((c) => c.id === forum)!.availableTags = [];
+  s.advance(60000);
+  await s.scheduler.tick();
+  const result = await settle(s, response.id);
+  expect(result.targets[0].error).toMatchObject({
+    code: "FORUM_NO_TAG_ACCESS",
+    message: expect.stringContaining("none can be applied"),
+  });
 });
