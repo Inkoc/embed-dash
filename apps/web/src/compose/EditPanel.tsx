@@ -9,24 +9,19 @@ import {
 import { useBlocker, useBeforeUnload, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Hash, LockKeyhole } from "lucide-react";
-import {
-  historyDetailSchema,
-  type MessagePayload,
-  type HistoryDetail,
-} from "@embed-dash/shared";
+import { type MessagePayload, type HistoryDetail } from "@embed-dash/shared";
 import { useDraft, toMessage, withIds } from "./draft";
-import { newSendId, startSend, SendFailure } from "../send/sendApi";
+import { newSendId, startSend, SendFailure, fetchEdit } from "../send/sendApi";
 import { Verdict, SlipDetail } from "../send/SendPanel";
 import { messageSummary } from "../send/summary";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { AppError, asAppError } from "../errors";
+import { FailureDetail } from "../ui/FailureDetail";
 import type { Session } from "../shell/SessionGate";
 import { ForwardKeys, forwardShortcut } from "../ui/Keys";
 import composeStyles from "./ComposeView.module.css";
 import trayStyles from "../send/Tray.module.css";
 import styles from "./EditPanel.module.css";
-
-const connectionProblem =
-  "Unable to connect. Check your connection and try again.";
 
 export function EditGuard() {
   const { dirty, endEdit } = useDraft();
@@ -67,10 +62,10 @@ export function EditGuard() {
 
 interface Editing {
   busy: boolean;
-  problem: string;
+  problem: AppError | null;
   result: HistoryDetail["edit"] | null;
   loading: boolean;
-  queryProblem: string;
+  queryProblem: AppError | null;
   refresh: () => void;
   save: () => Promise<void>;
   retry: (targetId: string) => Promise<void>;
@@ -86,7 +81,7 @@ function useEditing() {
 export function EditProvider({ children }: { children: ReactNode }) {
   const { editing, draft, markEdited } = useDraft();
   const client = useQueryClient();
-  const [problem, setProblem] = useState("");
+  const [problem, setProblem] = useState<AppError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const attempt = useRef<{ id: string; payload: MessagePayload } | null>(null);
@@ -95,17 +90,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
     queryKey: ["edit-result", editing?.id, activeId],
     enabled: !!editing && !!activeId,
     retry: false,
-    queryFn: async () => {
-      try {
-        const response = await fetch(`/api/sends/${editing!.id}`);
-        if (!response.ok) throw new Error();
-        return historyDetailSchema.parse(await response.json());
-      } catch {
-        throw new Error(
-          "Could not load update results. Check your connection and try again.",
-        );
-      }
-    },
+    queryFn: () => fetchEdit(editing!.id),
     refetchInterval: (q) =>
       activeId &&
       (!q.state.data?.edit ||
@@ -120,7 +105,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
     if (!editing || running.current) return;
     running.current = true;
     setSubmitting(true);
-    setProblem("");
+    setProblem(null);
     const payload = {
       ...toMessage(draft),
       pings: editing.payload.pings,
@@ -135,28 +120,7 @@ export function EditProvider({ children }: { children: ReactNode }) {
     const body = attempt.current;
     setActiveId(body.id);
     try {
-      const response = await fetch(`/api/sends/${editing.id}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json", "x-csrf-token": csrf() },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const failure = (await response.json().catch(() => null)) as {
-          code?: string;
-          error?: string;
-        } | null;
-        if (
-          typeof failure?.code === "string" &&
-          typeof failure.error === "string"
-        ) {
-          attempt.current = null;
-          setActiveId(null);
-          throw new SendFailure(failure.error);
-        }
-        throw new SendFailure(
-          "The update could not be confirmed. Save again to check this update.",
-        );
-      }
+      await startSend("edit", `/api/sends/${editing.id}`, body, csrf(), "PUT");
       attempt.current = null;
       markEdited(body.payload);
       await query.refetch();
@@ -165,9 +129,11 @@ export function EditProvider({ children }: { children: ReactNode }) {
         queryKey: ["history-detail", editing.id],
       });
     } catch (error) {
-      setProblem(
-        error instanceof SendFailure ? error.message : connectionProblem,
-      );
+      if (!(error instanceof SendFailure && error.details.lost)) {
+        attempt.current = null;
+        setActiveId(null);
+      }
+      setProblem(asAppError("edit", error));
     } finally {
       running.current = false;
       setSubmitting(false);
@@ -177,18 +143,17 @@ export function EditProvider({ children }: { children: ReactNode }) {
     if (!editing || running.current) return;
     running.current = true;
     setSubmitting(true);
-    setProblem("");
+    setProblem(null);
     try {
       await startSend(
+        "retry-edit",
         `/api/sends/${editing.id}/edits/retry`,
         { id: newSendId(), targetIds: [targetId] },
         csrf(),
       );
       await query.refetch();
     } catch (error) {
-      setProblem(
-        error instanceof SendFailure ? error.message : connectionProblem,
-      );
+      setProblem(asAppError("retry-edit", error));
     } finally {
       running.current = false;
       setSubmitting(false);
@@ -201,7 +166,9 @@ export function EditProvider({ children }: { children: ReactNode }) {
         problem,
         result: query.data?.edit?.id === activeId ? query.data.edit : null,
         loading: !!activeId && query.isPending,
-        queryProblem: query.isError ? query.error.message : "",
+        queryProblem: query.isError
+          ? asAppError("follow-edit", query.error)
+          : null,
         refresh: () => {
           void query.refetch();
         },
@@ -344,9 +311,10 @@ export function EditPanel() {
       </p>
       <ReadOnlyChannels send={editing} />
       {problem && (
-        <p className={styles.problem} role="alert">
-          {problem}
-        </p>
+        <div className={styles.problem}>
+          <p role="alert">{problem.message}</p>
+          <FailureDetail error={problem} />
+        </div>
       )}
       {loading && (
         <p className={styles.note} role="status">
@@ -354,9 +322,11 @@ export function EditPanel() {
         </p>
       )}
       {queryProblem && (
-        <p className={styles.problem} role="alert">
-          {queryProblem} <button onClick={refresh}>Try again</button>
-        </p>
+        <div className={styles.problem}>
+          <p role="alert">{queryProblem.message}</p>
+          <FailureDetail error={queryProblem} />
+          <button onClick={refresh}>Try again</button>
+        </div>
       )}
       {result && (
         <div className={styles.results} aria-live="polite">

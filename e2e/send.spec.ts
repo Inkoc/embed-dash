@@ -33,6 +33,11 @@ test("compose, pick two channels, confirm, and see two sent copies", async ({
   const errors = collectErrors(page);
   await compose(page, "Server maintenance");
   await page.getByRole("link", { name: "Send", exact: true }).click();
+  // What is about to go out stays in view while channels are picked.
+  await expect(page.getByText("Sending", { exact: true })).toBeVisible();
+  await expect(page.locator("main")).toContainText(
+    "Sending Server maintenance 1 embed",
+  );
   await pick(page, "Lanternfall Cup EU", "news");
   await pick(page, "Lanternfall Modding Guild", "release-notes");
   await expect(tray(page)).toContainText("2 channels in 2 servers");
@@ -73,6 +78,8 @@ test("compose, pick two channels, confirm, and see two sent copies", async ({
   await page.getByRole("link", { name: "Send", exact: true }).click();
   await expect(tray(page)).toContainText("2 sent.");
 
+  // Measure the settled colours; view-arrival motion is covered by the navigation specs.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const violations = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
@@ -113,11 +120,50 @@ test("one refused channel fails on its own slip and retry sends only that one", 
     0,
   );
 
-  // A new send returns to the selection, still ticked.
-  await tray(page).getByRole("button", { name: "New send" }).click();
+  // Keeping the draft unticks the channels that have it and marks them.
+  await tray(page).getByRole("button", { name: "Keep this draft" }).click();
+  await expect(tray(page)).toContainText("Nothing ticked yet");
+  const results = drawer(page, "Lanternfall Cup EU").getByRole("checkbox", {
+    name: "results",
+  });
+  await expect(results).not.toBeChecked();
+  await expect(results).toHaveAccessibleDescription(/Already has this message/);
+});
+
+test("after a send, Compose a new message clears the draft and the selection", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const errors = collectErrors(page);
+  await compose(page, "Weekly digest");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await pick(page, "Lanternfall Cup EU", "news");
+  await tray(page).getByRole("button", { name: "Send to 1 channel" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Send to 1 channel" })
+    .click();
+  await expect(tray(page)).toContainText("Every copy arrived.");
+
+  await tray(page)
+    .getByRole("button", { name: "Compose a new message" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Start a new message?" });
+  await expect(dialog).toContainText(
+    "The copies already posted stay in Discord.",
+  );
+  await dialog.getByRole("button", { name: "Clear and compose" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Description", { exact: true })).toHaveValue("");
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await expect(tray(page)).toContainText("Nothing ticked yet");
   await expect(
-    tray(page).getByRole("button", { name: "Send to 2 channels" }),
-  ).toBeEnabled();
+    drawer(page, "Lanternfall Cup EU").getByRole("checkbox", { name: "news" }),
+  ).not.toBeChecked();
+  await expect(page.locator("main")).toContainText("Nothing written yet");
+  expect(errors).toEqual([]);
 });
 
 test("forum channels are listed with a reason and can't be picked", async ({
@@ -179,7 +225,7 @@ test("on a phone the sheet's Send button works and the results fit", async ({
     .toBe(true);
 });
 
-test("reloading mid-send shows its progress again, the lock note stays in view and New send looks disabled", async ({
+test("reloading mid-send shows its progress again, the lock note stays in view and the next steps look disabled", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -194,7 +240,10 @@ test("reloading mid-send shows its progress again, the lock note stays in view a
     .getByRole("button", { name: "Send to 3 channels" })
     .click();
   await expect(
-    tray(page).getByRole("button", { name: "New send" }),
+    tray(page).getByRole("button", { name: "Keep this draft" }),
+  ).toBeDisabled();
+  await expect(
+    tray(page).getByRole("button", { name: "Compose a new message" }),
   ).toBeDisabled();
 
   // Scrolled down, the note is still there, and a locked row isn't live-looking.

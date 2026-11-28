@@ -9,7 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   deliveryErrors,
@@ -18,9 +18,9 @@ import {
   type SendResult,
   type SendTarget,
 } from "@embed-dash/shared";
-import { DraftProvider } from "../compose/draft";
+import { DraftProvider, useDraft } from "../compose/draft";
 import { SelectionProvider } from "./selection";
-import { SendingProvider } from "./sending";
+import { messageKey, SendingProvider } from "./sending";
 import { SendView } from "./SendView";
 
 vi.mock("./sendApi", async (original) => ({
@@ -162,6 +162,21 @@ function serve(...results: SendResult[]) {
   };
 }
 
+/** Stands in for the composer: one edit to the message, from inside the providers. */
+function EditText() {
+  const { setDraft } = useDraft();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        setDraft((draft) => ({ ...draft, content: `${draft.content}!` }))
+      }
+    >
+      Edit the text
+    </button>
+  );
+}
+
 function renderSend() {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -171,8 +186,24 @@ function renderSend() {
           <SelectionProvider>
             <SendingProvider>
               <Routes>
-                <Route path="/send" element={<SendView />} />
-                <Route path="/" element={<p>Compose view</p>} />
+                <Route
+                  path="/send"
+                  element={
+                    <>
+                      <SendView />
+                      <EditText />
+                    </>
+                  }
+                />
+                <Route
+                  path="/"
+                  element={
+                    <>
+                      <p>Compose view</p>
+                      <Link to="/send">Back to Send</Link>
+                    </>
+                  }
+                />
               </Routes>
             </SendingProvider>
           </SelectionProvider>
@@ -394,11 +425,90 @@ test("Retry failed re-sends to the failed channels only and updates the slips", 
   expect(tray()).toHaveTextContent("Every copy arrived.");
   expect(within(tray()).queryByRole("button", { name: /Retry/ })).toBeNull();
 
-  // New send goes back to the selection, which is still ticked.
-  fireEvent.click(within(tray()).getByRole("button", { name: "New send" }));
+  // Keeping the draft goes back to choosing channels; the ones that have it are
+  // unticked and marked, so sending there again takes a deliberate tick.
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Keep this draft" }),
+  );
+  expect(tray()).toHaveTextContent("Nothing ticked yet");
+  const general = screen.getByRole("checkbox", { name: "general" });
+  expect(general).not.toBeChecked();
+  expect(general).toHaveAccessibleDescription(/Already has this message/);
+  fireEvent.click(general);
+  expect(tray()).toHaveTextContent("Already has this message");
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Send to 1 channel" }),
+  );
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    "1 of these channels already has this message: #general. They’ll get a second copy.",
+  );
+});
+
+test("editing the message after a send clears the already-received marks", async () => {
+  draftWith({ content: "Patch day" });
+  serve({
+    id: "s1",
+    status: "done",
+    targets: [target("t1", "1", "10", "general")],
+  });
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  await startSending("Send to 1 channel");
+  fireEvent.click(
+    await within(tray()).findByRole("button", { name: "Keep this draft" }),
+  );
+  const general = screen.getByRole("checkbox", { name: "general" });
+  expect(general).toHaveAccessibleDescription(/Already has this message/);
+  fireEvent.click(screen.getByRole("button", { name: "Edit the text" }));
+  expect(general).not.toHaveAccessibleDescription(/Already has this message/);
+});
+
+test("Compose a new message asks first, then clears the draft, the selection and the delivery options", async () => {
+  draftWith({ content: "Patch day" });
+  serve({
+    id: "s1",
+    status: "done",
+    targets: [target("t1", "1", "10", "general")],
+  });
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Send silently/ }));
+  await startSending("Send to 1 channel");
+  const next = await within(tray()).findByRole("button", {
+    name: "Compose a new message",
+  });
+  // Cancelling keeps everything as it was.
+  fireEvent.click(next);
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveTextContent("Start a new message?");
+  expect(dialog).toHaveTextContent(
+    "This clears the composer and takes the 1 channel out of the tray. The copies already posted stay in Discord.",
+  );
+  expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(tray()).toHaveTextContent("1 sent.");
+  expect(localStorage.getItem("embed-dash:draft")).toContain("Patch day");
+
+  fireEvent.click(next);
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "Clear and compose",
+    }),
+  );
+  expect(await screen.findByText("Compose view")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(localStorage.getItem("embed-dash:draft")).not.toContain("Patch day"),
+  );
+  // Back on Send: nothing ticked, no results, nothing marked, and the options start off again.
+  fireEvent.click(screen.getByRole("link", { name: "Back to Send" }));
+  const general = await screen.findByRole("checkbox", { name: "general" });
+  expect(general).not.toBeChecked();
+  expect(general).not.toHaveAccessibleDescription(/Already has this message/);
+  expect(tray()).toHaveTextContent("Nothing ticked yet");
+  fireEvent.click(general);
   expect(
-    within(tray()).getByRole("button", { name: "Send to 3 channels" }),
-  ).toBeEnabled();
+    screen.getByRole("checkbox", { name: /Send silently/ }),
+  ).not.toBeChecked();
 });
 
 test("a refused bot token reads as such in the summary", async () => {
@@ -492,13 +602,55 @@ test("channels the server refuses leave the tray and nothing is marked sent", as
     }),
   );
   expect(await within(tray()).findByRole("alert")).toHaveTextContent(
-    "Nothing was sent.",
+    "nothing was sent",
   );
   expect(tray()).toHaveTextContent("2 channels in 2 servers");
   expect(screen.getByRole("checkbox", { name: "news" })).not.toBeChecked();
   // The list was refreshed so the picker shows what the server sees.
   expect(calls.filter((c) => c.url === "/api/guilds?refresh=1")).toHaveLength(
     1,
+  );
+});
+
+test("the confirmation lists the files and every delivery setting", async () => {
+  draftWith({
+    content: "Patch day",
+    attachments: [
+      {
+        id: "u1",
+        filename: "notes.pdf",
+        size: 1_572_864,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+  handlers.push((url, init) =>
+    url === "/api/uploads/u1" && !init?.method ? Response.json({}) : undefined,
+  );
+  renderSend();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
+  const send = within(tray()).getByRole("button", {
+    name: "Send to 1 channel",
+  });
+  await waitFor(() => expect(send).toBeEnabled());
+  fireEvent.click(send);
+  let dialog = await screen.findByRole("dialog");
+  const files = within(dialog).getByRole("list", { name: "Files" });
+  expect(files).toHaveTextContent("notes.pdf");
+  expect(files).toHaveTextContent("1.5 MB");
+  expect(dialog).toHaveTextContent("Mentions won’t notify anyone.");
+  expect(dialog).toHaveTextContent(
+    "Sent with the usual push and desktop notification.",
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  fireEvent.click(screen.getByRole("checkbox", { name: /Roles/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: /Send silently/ }));
+  fireEvent.click(send);
+  dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveTextContent("Pings are on for roles");
+  expect(dialog).toHaveTextContent(
+    "Sent silently: no push or desktop notification.",
   );
 });
 
@@ -578,7 +730,10 @@ test("connection and session failures are explained without losing the tray", as
     () => Response.json({}, { status: 403 }),
     () =>
       Response.json(
-        { error: "Discord is temporarily unavailable." },
+        {
+          code: "DISCORD_UNAVAILABLE",
+          error: "Discord is temporarily unavailable.",
+        },
         { status: 502 },
       ),
   ];
@@ -599,10 +754,23 @@ test("connection and session failures are explained without losing the tray", as
     );
     return within(tray()).findByRole("alert");
   };
-  expect(await attempt()).toHaveTextContent("Your session ended");
-  expect(await attempt()).toHaveTextContent("Your session changed");
   expect(await attempt()).toHaveTextContent(
-    "Discord is temporarily unavailable.",
+    "Couldn’t send: your session ended",
+  );
+  expect(await attempt()).toHaveTextContent(
+    "Couldn’t send: your session changed",
+  );
+  const last = await attempt();
+  expect(last).toHaveTextContent(
+    "Couldn’t send: Discord is having problems on its side. Try again in a few minutes.",
+  );
+  // The server's own words and the status are kept for Details, folded away
+  // and outside the alert, so opening it isn't announced again.
+  expect(last.querySelector("details")).toBeNull();
+  const details = last.parentElement!.querySelector("details")!;
+  expect(details.open).toBe(false);
+  expect(details).toHaveTextContent(
+    "HTTP 502 · DISCORD_UNAVAILABLE · Server said: “Discord is temporarily unavailable.”",
   );
   expect(screen.getByRole("checkbox", { name: "general" })).toBeChecked();
 });
@@ -768,6 +936,12 @@ test("the selection is locked while the send is delivered, and says so", async (
   fireEvent.click(await screen.findByRole("checkbox", { name: "general" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "news" }));
   await startSending("Send to 2 channels");
+  // What a reload needs to pick the send up again, including which message it is.
+  expect(
+    JSON.parse(sessionStorage.getItem("embed-dash:send-in-flight")!),
+  ).toMatchObject({
+    message: messageKey({ content: "Patch day", embeds: [], attachments: [] }),
+  });
   expect(
     await screen.findByText(/The selection is locked/),
   ).toBeInTheDocument();
@@ -790,7 +964,10 @@ test("the selection is locked while the send is delivered, and says so", async (
   ).toBe(true);
   expect(tray()).toHaveTextContent("Channels stay locked");
   expect(
-    await within(tray()).findByRole("button", { name: "New send" }),
+    await within(tray()).findByRole("button", { name: "Keep this draft" }),
+  ).toBeDisabled();
+  expect(
+    within(tray()).getByRole("button", { name: "Compose a new message" }),
   ).toBeDisabled();
   feed.release();
   await within(tray()).findByText("Every copy arrived.");
@@ -878,7 +1055,7 @@ test("reloading mid-send shows the progress again and keeps the lock", async () 
   expect(screen.queryByText(/The selection is locked/)).toBeNull();
 });
 
-test("reloading mid-retry follows the send without asking for the retry again", async () => {
+test("reloading mid-retry follows the send without asking for the retry again, and still knows which channels have the message", async () => {
   draftWith({ content: "Patch day" });
   sessionStorage.setItem(
     "embed-dash:send-in-flight",
@@ -887,6 +1064,11 @@ test("reloading mid-retry follows the send without asking for the retry again", 
       body: {},
       id: "s1",
       retrying: ["t2"],
+      message: messageKey({
+        content: "Patch day",
+        embeds: [],
+        attachments: [],
+      }),
     }),
   );
   serve(
@@ -896,20 +1078,41 @@ test("reloading mid-retry follows the send without asking for the retry again", 
       targets: [
         target("t1", "1", "10", "general"),
         { ...target("t2", "1", "11", "news"), status: "pending" },
+        target("t3", "2", "20", "edits", "failed", "MISSING_PERMISSION"),
       ],
     },
     {
       id: "s1",
-      status: "done",
+      status: "partial",
       targets: [
         target("t1", "1", "10", "general"),
         target("t2", "1", "11", "news"),
+        target("t3", "2", "20", "edits", "failed", "MISSING_PERMISSION"),
       ],
     },
   );
   renderSend();
   await screen.findByRole("complementary", { name: "Tray" });
-  await within(tray()).findByText("Every copy arrived.");
+  await within(tray()).findByText("2 sent, 1 failed.");
   expect(sendRequests()).toEqual([]);
   expect(sessionStorage.getItem("embed-dash:send-in-flight")).toBeNull();
+
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Keep this draft" }),
+  );
+  for (const name of ["general", "news"])
+    expect(screen.getByRole("checkbox", { name })).toHaveAccessibleDescription(
+      /Already has this message/,
+    );
+  // The channel that failed never got it, so it isn't marked.
+  expect(
+    screen.getByRole("checkbox", { name: "edits" }),
+  ).not.toHaveAccessibleDescription(/Already has this message/);
+  fireEvent.click(screen.getByRole("checkbox", { name: "news" }));
+  fireEvent.click(
+    within(tray()).getByRole("button", { name: "Send to 1 channel" }),
+  );
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    "1 of these channels already has this message: #news. They’ll get a second copy.",
+  );
 });

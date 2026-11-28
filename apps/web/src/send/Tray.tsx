@@ -6,7 +6,7 @@ import {
   type RefObject,
 } from "react";
 import type { Guild, GuildChannel, SendTarget } from "@embed-dash/shared";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, CopyCheck, X } from "lucide-react";
 import { isBlank, useDraft } from "../compose/draft";
 import {
   BlockedList,
@@ -15,7 +15,7 @@ import {
   SlipDetail,
   Verdict,
 } from "./SendPanel";
-import { useSending } from "./sending";
+import { useSending, type Received } from "./sending";
 import { inFlight, plural, tally } from "./summary";
 import styles from "./Tray.module.css";
 
@@ -64,15 +64,18 @@ interface Slip {
  */
 export function Tray({
   entries,
+  received,
   onRemove,
   flightRef,
 }: {
   entries: TrayEntry[];
+  /** Channels that already have the message in the composer, or may have it. */
+  received: ReadonlyMap<string, Received>;
   onRemove: (id: string) => void;
   flightRef: RefObject<Flight | null>;
 }) {
   const { draft, issues } = useDraft();
-  const { busy, reconnecting, result, retry, dismiss, pings, silent } =
+  const { busy, reconnecting, result, retry, keepDraft, pings, silent } =
     useSending();
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -227,6 +230,7 @@ export function Tray({
   const slip = (item: Slip) => {
     const index = position.get(item.channelId)!;
     const pending = waiting(item);
+    const has = !item.target && received.get(item.channelId);
     return (
       <li
         key={item.target?.id ?? item.channelId}
@@ -237,6 +241,14 @@ export function Tray({
         <span className={styles.slipText}>
           <b>#{item.channelName}</b>
           {!grouped && <small>{item.guildName}</small>}
+          {has && (
+            <small className={styles.has}>
+              <CopyCheck aria-hidden="true" />
+              {has === "sent"
+                ? "Already has this message"
+                : "May already have it"}
+            </small>
+          )}
         </span>
         {item.target || pending ? (
           <>
@@ -347,10 +359,11 @@ export function Tray({
       <SendControls
         draft={draft}
         entries={entries}
+        received={received}
         blocked={blocked}
         describedBy="tray-note"
-        onDismiss={() => {
-          dismiss();
+        onKeep={() => {
+          keepDraft();
           setShowAll(false);
           requestAnimationFrame(() => heading.current?.focus());
         }}

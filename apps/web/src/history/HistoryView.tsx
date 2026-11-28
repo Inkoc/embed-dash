@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Link, useParams, useSearchParams, useNavigate } from "react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   historyQuerySchema,
   historyDetailSchema,
@@ -11,7 +15,16 @@ import {
 import { withIds, useDraft } from "../compose/draft";
 import { DiscordPreview } from "../preview/DiscordPreview";
 import { useBot } from "../bot";
+import {
+  asAppError,
+  connectionFailure,
+  failureFrom,
+  type AppError,
+} from "../errors";
+import { startSend } from "../send/sendApi";
+import type { Session } from "../shell/SessionGate";
 import type { Theme } from "../theme";
+import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./HistoryView.module.css";
 
 const statusLabel = {
@@ -21,13 +34,13 @@ const statusLabel = {
   sending: "Sending",
 };
 async function load(url: string) {
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new Error(
-      response.status === 404
-        ? "That send doesn’t exist."
-        : "History could not be loaded. Check your connection and try again.",
-    );
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw connectionFailure("load-history");
+  }
+  if (!response.ok) throw await failureFrom("load-history", response);
   return response.json() as Promise<unknown>;
 }
 function Loading() {
@@ -40,10 +53,12 @@ function Loading() {
     </div>
   );
 }
-function Failure({ message, retry }: { message: string; retry: () => void }) {
+function Failure({ error, retry }: { error: Error; retry: () => void }) {
+  const failure = asAppError("load-history", error);
   return (
-    <div className={styles.state} role="alert">
-      <p>✗ {message}</p>
+    <div className={styles.state}>
+      <p role="alert">✗ {failure.message}</p>
+      <FailureDetail error={failure} />
       <button onClick={retry}>Try again</button>
     </div>
   );
@@ -247,10 +262,7 @@ export function HistoryList() {
         ) : query.isPending ? (
           <Loading />
         ) : query.isError ? (
-          <Failure
-            message={query.error.message}
-            retry={() => void query.refetch()}
-          />
+          <Failure error={query.error} retry={() => void query.refetch()} />
         ) : query.data.entries.length === 0 ? (
           <div className={styles.state}>
             <h3>
@@ -329,6 +341,9 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
   const bot = useBot();
   const { beginEdit } = useDraft();
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+  const [retryProblem, setRetryProblem] = useState<AppError | null>(null);
   const query = useQuery({
     queryKey: ["history-detail", id],
     queryFn: async () =>
@@ -342,6 +357,24 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
         ? 1000
         : false,
   });
+  async function retryDelivery(targetId: string) {
+    setRetrying(true);
+    setRetryProblem(null);
+    try {
+      await startSend(
+        "retry",
+        `/api/sends/${id}/retry`,
+        { targetIds: [targetId] },
+        client.getQueryData<Session>(["session"])?.csrfToken ?? "",
+      );
+      await query.refetch();
+      void client.invalidateQueries({ queryKey: ["history"] });
+    } catch (error) {
+      setRetryProblem(asAppError("retry", error));
+    } finally {
+      setRetrying(false);
+    }
+  }
   const draft = useMemo(
     () => (query.data ? withIds(query.data.payload) : null),
     [query.data],
@@ -408,10 +441,7 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
-        <Failure
-          message={query.error.message}
-          retry={() => void query.refetch()}
-        />
+        <Failure error={query.error} retry={() => void query.refetch()} />
       ) : (
         draft && (
           <div className={styles.detail}>
@@ -440,6 +470,12 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                   {query.data.targets.length === 1 ? "channel" : "channels"}
                 </p>
               </div>
+              {retryProblem && (
+                <div className={styles.state}>
+                  <p role="alert">{retryProblem.message}</p>
+                  <FailureDetail error={retryProblem} />
+                </div>
+              )}
               <ul>
                 {query.data.targets.map((target) => (
                   <li className={styles.target} key={target.id}>
@@ -457,6 +493,22 @@ function Detail({ id, theme }: { id: string; theme: Theme }) {
                       }
                     </p>
                     {target.error && <p>{target.error.message}</p>}
+                    {target.status === "failed" && !target.messageId && (
+                      <button
+                        disabled={
+                          retrying ||
+                          query.data.status === "sending" ||
+                          query.data.edit?.status === "sending"
+                        }
+                        onClick={() => void retryDelivery(target.id)}
+                      >
+                        Retry delivery
+                        <span className="visually-hidden">
+                          {" "}
+                          to #{target.channelName || target.channelId}
+                        </span>
+                      </button>
+                    )}
                     {target.messageId && (
                       <a
                         href={messageLink({

@@ -26,7 +26,7 @@
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
 }
-.paneToggle {
+.compose .paneToggle {
   display: none;
 }
 
@@ -417,13 +417,14 @@
     padding-bottom: calc(var(--tap) + var(--space-7) + var(--space-5));
   }
   .handle,
-  .next {
+  .next,
+  .editNext {
     display: none;
   }
   .head {
     padding: var(--space-5) var(--space-1) var(--space-4);
   }
-  .paneToggle {
+  .compose .paneToggle {
     position: sticky;
     top: calc(var(--bar-height) + var(--space-2));
     z-index: 5;

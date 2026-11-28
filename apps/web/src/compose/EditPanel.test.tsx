@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider, Link } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
+import { connectionFailure, describeFailure } from "../errors";
 import type { HistoryDetail } from "@embed-dash/shared";
 import { DraftProvider, useDraft } from "./draft";
 import {
@@ -342,11 +343,7 @@ test("a lost save answer keeps an unchanged request id but changed content gets 
   showEditor();
   fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
   expect(
-    (
-      await screen.findAllByText(
-        "Unable to connect. Check your connection and try again.",
-      )
-    ).length,
+    (await screen.findAllByText(connectionFailure("edit").message)).length,
   ).toBeGreaterThan(0);
   expect(screen.queryByText("Failed to fetch")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
@@ -379,9 +376,12 @@ test("a refused save shows the server's reason and clears the attempt for a corr
   showEditor();
   fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
   expect(
-    await screen.findByText("Wait for delivery to finish.", {
-      selector: "p[class*='problem']",
-    }),
+    await screen.findByText(
+      describeFailure("edit", 409, {
+        code: "EDIT_BLOCKED",
+        error: "Wait for delivery to finish.",
+      }).message,
+    ),
   ).toBeVisible();
   expect(screen.getByRole("button", { name: /Save updates/ })).toBeEnabled();
 });

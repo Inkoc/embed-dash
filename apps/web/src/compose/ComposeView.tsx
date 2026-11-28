@@ -101,7 +101,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
       ) {
         event.preventDefault();
         setPane("edit");
-        document.getElementById("pane-edit")?.focus();
+        document.getElementById("pane-edit")?.focus({ preventScroll: true });
       }
     };
     addEventListener("keydown", onKey);
@@ -438,7 +438,12 @@ const listed = 5;
 function NextStep() {
   const { draft, issues, editing } = useDraft();
   const { reveal } = useEditorState();
-  if (editing) return <SaveUpdatesAction />;
+  if (editing)
+    return (
+      <div className={styles.editNext}>
+        <SaveUpdatesAction />
+      </div>
+    );
   if (isBlank(draft))
     return (
       <div className={styles.next}>

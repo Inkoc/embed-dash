@@ -232,6 +232,12 @@ export async function registerSends(
         "This channel is unavailable. Restore the bot’s access, then retry.",
       RATE_LIMITED:
         "Discord’s rate limit held up this update. Wait a moment, then retry.",
+      DISCORD_UNAVAILABLE:
+        "Discord had a problem applying this update. Retry to apply the current version.",
+      UNREACHABLE:
+        "The app couldn’t reach Discord. Check the connection, then retry this update.",
+      INVALID_TOKEN:
+        "Discord rejected the bot token, so updates stopped. Fix the configured token, restart the app, then retry.",
       INVALID_PAYLOAD:
         "Discord rejected this update. Check the message and its files, then save again.",
       NOT_ATTEMPTED: deliveryErrors.EDIT_NOT_ATTEMPTED,
@@ -820,7 +826,7 @@ export async function registerSends(
         .code(409)
         .send(
           sendError(
-            "EDIT_BLOCKED",
+            claim === "blocked" ? "EDIT_IN_PROGRESS" : "NO_EDITABLE_COPIES",
             claim === "blocked"
               ? "Wait for the current delivery or update to finish, then try again."
               : "There are no existing copies to update.",

@@ -14,9 +14,9 @@ mkdir -p secrets
 docker compose up --build
 ```
 
-Open <http://127.0.0.1:8742> and sign in with the instance password. The composer starts blank ("Start from an example" fills in a sample); the top bar shows which bot is connected. Write the message, choose **Choose channels**, tick the channels (search by channel name, server name or ID), then **Send** and confirm. Each channel reports its result, with **Retry** for failures. SQLite and uploaded files live in the named `embed-data` volume and migrations run at startup. Stop with `docker compose down`; the volume persists.
+Open <http://127.0.0.1:8742> and sign in with the instance password. The composer starts blank ("Start from an example" fills in a sample); the top bar shows which bot is connected. Write the message, choose **Choose channels**, tick the channels (search by channel name, server name or ID), then **Send** and confirm. Each channel reports its result, with **Retry** for failures; then start the next one with **Compose a new message**, or **Keep this draft** to send it to more channels. SQLite and uploaded files live in the named `embed-data` volume and migrations run at startup. Stop with `docker compose down`; the volume persists.
 
-The bot must already be in your servers. When you invite it, give it **View Channels**, **Send Messages** and **Embed Links**, plus **Attach Files** if you send files; channels where it lacks these are shown but can't be ticked. Mentions in a message don't notify anyone unless you allow it in the send options. Forum channels are listed but not yet supported, and sent messages can't be edited from the app yet. Running behind an HTTPS reverse proxy? Set `TRUST_PROXY` (see below) or `PUBLIC_URL`, otherwise sign-in is refused.
+The bot must already be in your servers. When you invite it, give it **View Channels**, **Send Messages** and **Embed Links**, plus **Attach Files** if you send files; channels where it lacks these are shown but can't be ticked. Mentions in a message don't notify anyone unless you allow it in the send options. Forum channels are listed but not yet supported, and sent messages can't be edited from the app yet. Running behind an HTTPS reverse proxy? Set `TRUST_PROXY` (see below) or `PUBLIC_URL`, otherwise sign-in is refused, and the sign-in page says which of the two to set.
 
 ### Development
 

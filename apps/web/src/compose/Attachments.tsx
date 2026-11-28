@@ -26,6 +26,8 @@ import {
   uploadFile,
   useUploadPresent,
 } from "./uploads";
+import { asAppError, type AppError } from "../errors";
+import { FailureDetail } from "../ui/FailureDetail";
 import styles from "./Attachments.module.css";
 
 interface Pending {
@@ -34,6 +36,8 @@ interface Pending {
   size: number;
   /** Set once the upload has failed or was refused before it began. */
   error?: string;
+  /** The server's side of a failed upload, for "Details". */
+  failure?: AppError;
 }
 
 let lastKey = 0;
@@ -96,8 +100,8 @@ export function Attachments() {
               item.key === key
                 ? {
                     ...item,
-                    error:
-                      error instanceof Error ? error.message : "Upload failed.",
+                    error: asAppError("upload", error).message,
+                    failure: asAppError("upload", error),
                   }
                 : item,
             ),
@@ -206,6 +210,7 @@ export function Attachments() {
                 >
                   {item.error ?? `Uploading ${megabytes(item.size)}…`}
                 </span>
+                {item.failure && <FailureDetail error={item.failure} />}
               </span>
               {item.error && (
                 <button

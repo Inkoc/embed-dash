@@ -1505,6 +1505,9 @@ test.each([0, 500, 502, 503, 504])(
     expect(failed.status).toBe("done");
     expect(failed.targets[0].status).toBe("sent");
     expect(failed.edit.targets[0].status).toBe("failed");
+    expect(failed.edit.targets[0].error.message).not.toMatch(
+      /\bposted\b|\bsent\b/,
+    );
     expect((await retryEdit(s, initial.id)).statusCode).toBe(202);
     expect((await settle(s, initial.id)).edit.targets[0].status).toBe("sent");
     expect(s.fake.messages).toHaveLength(1);
@@ -1735,4 +1738,23 @@ test("fake Discord rejects invented attachment IDs and unmatched new files; omit
   expect((await patch({ content: "Keep files" })).status).toBe(200);
   expect(message.attachments).toEqual(attachments);
   expect(message.files.map((f) => f.filename)).toEqual(["chart.png"]);
+});
+
+test("edit retry routes require authentication and CSRF", async () => {
+  const s = await setup();
+  const initial = await sent(s, [news]);
+  const url = `/api/sends/${initial.id}/edits/retry`;
+  expect(
+    (await s.app.inject({ method: "POST", url, payload: {} })).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await s.app.inject({
+        method: "POST",
+        url,
+        payload: {},
+        headers: { cookie: s.headers.cookie, origin: s.headers.origin },
+      })
+    ).statusCode,
+  ).toBe(403);
 });

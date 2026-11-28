@@ -26,14 +26,21 @@ const idParams = {
     },
   },
 };
-const notFound = { error: "That template no longer exists." };
+const notFound = {
+  code: "TEMPLATE_NOT_FOUND",
+  error: "That template no longer exists.",
+};
 /** Says which part was refused: the name is typed by hand, the message comes from the composer. */
-const invalid = (issues: readonly { path: readonly PropertyKey[] }[]) => ({
-  error:
-    issues[0]?.path[0] === "name"
-      ? `Give the template a name of 1 to ${templateNameMax} characters.`
-      : "The message couldn’t be read. Refresh the page and try again.",
-});
+const invalid = (issues: readonly { path: readonly PropertyKey[] }[]) =>
+  issues[0]?.path[0] === "name"
+    ? {
+        code: "INVALID_TEMPLATE_NAME",
+        error: `Give the template a name of 1 to ${templateNameMax} characters.`,
+      }
+    : {
+        code: "INVALID_TEMPLATE_MESSAGE",
+        error: "The message couldn’t be read. Refresh the page and try again.",
+      };
 
 /**
  * Saved messages to start new ones from. A template names its files by id,
