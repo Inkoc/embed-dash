@@ -247,6 +247,7 @@ export function ComposeView({ theme }: { theme: Theme }) {
         >
           {isBlank(draft) && (
             <div
+              id="starter"
               className={styles.starter}
               data-nudged={nothingToSend || undefined}
             >

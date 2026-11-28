@@ -55,8 +55,12 @@ test("without ResizeObserver the thumb measures again after the parent restacks 
   expect(thumb.dataset.ready).toBeUndefined();
   nextFrame();
   expect(thumb.dataset.ready).toBe("true");
+  // A resize waits for the top bar's refit in the next frame, then measures.
   left = 60;
   fireEvent(window, new Event("resize"));
+  nextFrame();
+  expect(thumb.style.getPropertyValue("--thumb-x")).toBe("4px");
+  nextFrame();
   expect(thumb.style.getPropertyValue("--thumb-x")).toBe("60px");
   expect(thumb.dataset.ready).toBeUndefined();
 });

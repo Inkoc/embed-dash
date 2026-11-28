@@ -25,6 +25,7 @@ import {
   useDraft,
   type Embed,
   type EmbedField,
+  isUnwritten,
 } from "./draft";
 import { UploadedImagePicker } from "./Attachments";
 import { Disclosure } from "./Disclosure";
@@ -186,6 +187,9 @@ export function EmbedEditor({ embed, index, count }: Props) {
           />
         )}
       </div>
+      {!folded && isUnwritten(embed) && (
+        <p className={styles.unwritten}>Not sent until you write in it.</p>
+      )}
       <div id={`${e}-body`} className={styles.body} hidden={folded}>
         {embedProblem && (
           <div className={styles.emptyProblem}>

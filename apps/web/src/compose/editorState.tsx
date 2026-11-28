@@ -81,12 +81,17 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
     },
     [draft, focusAfter, touch],
   );
+  // The answer is the line above the message, so that line is what comes into
+  // view (clear of the sticky bars); the cursor then goes to the message
+  // text without scrolling it away.
   const nudge = useCallback(() => {
-    focusAfter("in-content", () => {
+    flushSync(() => {
       setPane("edit");
       setNudged(draft);
     });
-  }, [draft, focusAfter]);
+    document.getElementById("starter")?.scrollIntoView?.({ block: "nearest" });
+    document.getElementById("in-content")?.focus({ preventScroll: true });
+  }, [draft]);
   const reset = useCallback(() => {
     setOpenKeys(new Set());
     setTouched(new Set());

@@ -138,9 +138,22 @@
   position: sticky;
   top: calc(var(--bar-height) + var(--space-5));
   display: grid;
+  /* its parts keep to the column, even when it is squeezed below their natural width */
+  container-type: inline-size;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   min-width: 0;
   margin-top: var(--space-5);
+}
+/*
+ * While editing, the sticky column also holds Save updates and the update
+ * results, which can run past the bottom of the screen; it scrolls on its own
+ * so they can be reached and brought into view.
+ */
+.compose[data-editing] .previewColumn {
+  max-height: calc(100vh - var(--bar-height) - var(--space-5) * 2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .widthBar {
   display: flex;
@@ -159,6 +172,18 @@
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
+}
+/*
+ * A column squeezed below --preview-min (a root font size the breakpoints
+ * don't see) drops the presets' icons and the forward action's key cap, so
+ * their words still fit. In rem, so it never applies at the column's
+ * ordinary widths.
+ */
+@container (max-width: 19.99rem) {
+  .widthBar svg,
+  .next kbd {
+    display: none;
+  }
 }
 .frame {
   overflow: hidden;
@@ -428,8 +453,11 @@
   .compose {
     padding: 0 var(--space-4) var(--space-7);
   }
-  .previewColumn {
+  .previewColumn,
+  .compose[data-editing] .previewColumn {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
   /* The preview scrolls here, so Save updates would leave with it; it pins to the bottom instead. */
   .compose[data-editing] {
@@ -588,6 +616,15 @@
   margin-left: 0;
 }
 /* the forward action tried on a blank draft: the line answers in the accent wash */
+.starter {
+  /* brought into view clear of the sticky bar; stacked screens pad the page for it instead */
+  scroll-margin-top: calc(var(--bar-height) + var(--space-4));
+}
+@media (max-width: 47em) {
+  .starter {
+    scroll-margin-top: 0;
+  }
+}
 .starter[data-nudged] {
   background: var(--accent-wash);
   transition: background-color var(--dur-base);

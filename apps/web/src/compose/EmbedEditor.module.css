@@ -21,6 +21,12 @@
   min-height: var(--tap);
   margin-top: calc(var(--space-2) * -1);
 }
+/* an embed just added: says why the preview doesn't show it yet */
+.unwritten {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
 .head h3 {
   font-size: var(--text-section);
   font-weight: var(--weight-section);

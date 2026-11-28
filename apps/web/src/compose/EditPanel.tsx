@@ -308,30 +308,45 @@ const useWide = () =>
   );
 
 /** What became of the last update: a failure to start it, or each copy's result. */
-function UpdateOutcome({ farFromSave = false }: { farFromSave?: boolean }) {
+/** Scrolls an update's outcome into view, gliding unless motion is reduced. */
+const bringIntoView = (element: HTMLElement | null) =>
+  element?.scrollIntoView?.({
+    block: "nearest",
+    behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+  });
+
+function UpdateOutcome() {
   const { busy, result, retry, loading, queryProblem, refresh, problem } =
     useEditing();
-  // Saved from the bar pinned to the bottom, a new update's results arrive at
-  // the top of the page, so they are brought into view; ones restored on
-  // opening the editor are left where they are.
+  // A new update's results, or a failure to start or follow one, are brought
+  // into view: Save updates may be pinned to the bottom of the screen with
+  // its outcome at the top, or sit in a column whose results run below the
+  // fold. Results restored on opening the editor stay where they are.
   const results = useRef<HTMLDivElement>(null);
-  const shown = useRef(result?.id);
+  const refused = useRef<HTMLDivElement>(null);
+  const lost = useRef<HTMLDivElement>(null);
+  // Again once the update finishes, since its answers make the results taller.
+  const stage = result && `${result.id}:${result.status}`;
+  const shown = useRef(stage);
   useEffect(() => {
-    if (!result || result.id === shown.current) return;
-    shown.current = result.id;
-    if (farFromSave)
-      results.current?.scrollIntoView?.({
-        block: "nearest",
-        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")
-          .matches
-          ? "auto"
-          : "smooth",
-      });
-  }, [result, farFromSave]);
+    if (!stage || stage === shown.current) return;
+    shown.current = stage;
+    bringIntoView(results.current);
+  }, [stage]);
+  useEffect(() => {
+    if (problem) bringIntoView(refused.current);
+  }, [problem]);
+  // The follow-up failure is described afresh on every render, so its arrival is what counts.
+  const followFailed = !!queryProblem;
+  useEffect(() => {
+    if (followFailed) bringIntoView(lost.current);
+  }, [followFailed]);
   return (
     <>
       {problem && (
-        <div className={styles.problem}>
+        <div ref={refused} className={styles.problem}>
           <p role="alert">{problem.message}</p>
           <FailureDetail error={problem} />
         </div>
@@ -342,7 +357,7 @@ function UpdateOutcome({ farFromSave = false }: { farFromSave?: boolean }) {
         </p>
       )}
       {queryProblem && (
-        <div className={styles.problem}>
+        <div ref={lost} className={styles.problem}>
           <p role="alert">{queryProblem.message}</p>
           <FailureDetail error={queryProblem} />
           <button onClick={refresh}>Try again</button>
@@ -442,7 +457,7 @@ export function EditPanel() {
         Your earlier draft comes back when you close the editor.
       </p>
       <ReadOnlyChannels send={message} />
-      {!wide && <UpdateOutcome farFromSave />}
+      {!wide && <UpdateOutcome />}
       <ConfirmDialog
         open={confirmClose}
         title="Discard unsaved edits?"

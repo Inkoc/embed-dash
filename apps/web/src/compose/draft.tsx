@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  embedHasContent,
   emptyEmbed,
   messageDraftSchema,
   validateMessage,
@@ -61,12 +62,12 @@ const withoutId = <T extends { id: string }>(value: T): Omit<T, "id"> => {
 
 /*
  * Embeds just added and not written in yet. Every edit replaces an embed's
- * object, so holding the very objects Add embed made is enough to tell; a
- * reload starts them over as ordinary embeds.
+ * object, so holding the very objects Add embed made is enough to tell; the
+ * stored draft records them too, so a reload keeps them apart.
  */
 const unwritten = new WeakSet<Embed>();
 
-/** A blank embed for Add embed: not a problem, and not part of the message, until something is written in it. */
+/** A blank embed for Add embed: not a problem, and not shown in the preview, until something is written in it. */
 export const addedEmbed = (): Embed => {
   const embed = blankEmbed();
   unwritten.add(embed);
@@ -79,11 +80,15 @@ export const written = (draft: Draft): Draft =>
     ? { ...draft, embeds: draft.embeds.filter((embed) => !isUnwritten(embed)) }
     : draft;
 
-/** The message without the editor's row ids or untouched added embeds, as the server takes it. */
+/**
+ * The message without the editor's row ids, as the server takes it. An empty
+ * embed is never part of it, however it came about: it would only be refused
+ * when sent, and is nothing to keep in a template or an export.
+ */
 export const toMessage = (draft: Draft): MessageDraft => ({
   content: draft.content,
   attachments: draft.attachments,
-  embeds: written(draft).embeds.map((embed) => ({
+  embeds: draft.embeds.filter(embedHasContent).map((embed) => ({
     ...withoutId(embed),
     fields: embed.fields.map(withoutId),
   })),
@@ -164,8 +169,17 @@ export function loadDraft(): Draft {
   try {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      const parsed = messageDraftSchema.safeParse(JSON.parse(stored));
-      if (parsed.success) return withIds(parsed.data);
+      const raw: unknown = JSON.parse(stored);
+      const parsed = messageDraftSchema.safeParse(raw);
+      if (parsed.success) {
+        const draft = withIds(parsed.data);
+        const marked = (raw as { unwritten?: unknown }).unwritten;
+        if (Array.isArray(marked))
+          for (const index of marked)
+            if (typeof index === "number" && draft.embeds[index])
+              unwritten.add(draft.embeds[index]);
+        return draft;
+      }
     }
   } catch {
     // Unreadable storage or JSON: start blank.
@@ -188,7 +202,13 @@ const lastSave = () => lastSaveWorked;
 function saveDraft(draft: Draft) {
   let worked = true;
   try {
-    localStorage.setItem(storageKey, JSON.stringify(draft));
+    const marked = draft.embeds.flatMap((embed, index) =>
+      isUnwritten(embed) ? [index] : [],
+    );
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(marked.length ? { ...draft, unwritten: marked } : draft),
+    );
   } catch {
     // Full, blocked or unserialisable: the draft stays in memory and the composer says so.
     worked = false;

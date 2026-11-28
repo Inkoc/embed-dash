@@ -284,7 +284,8 @@ function linkProblem(url: string, media: boolean): string | null {
     : `Discord only accepts https:// or http:// links here, not ${protocol}//.`;
 }
 
-function hasContent(embed: EmbedDraft) {
+/** Whether an embed has anything Discord would show; an empty one is never sent. */
+export function embedHasContent(embed: EmbedDraft) {
   return (
     [
       embed.title,
@@ -393,7 +394,7 @@ export function validateMessage(
   message.embeds.forEach((embed, e) => {
     const at = `embeds.${e}`;
     const name = `Embed ${e + 1}`;
-    if (!hasContent(embed)) {
+    if (!embedHasContent(embed)) {
       add(
         at,
         name,

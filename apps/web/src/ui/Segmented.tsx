@@ -58,10 +58,20 @@ export function Segmented({ activeKey, children, className, ...aria }: Props) {
       if (typeof ResizeObserver === "undefined") follow();
     });
     if (typeof ResizeObserver === "undefined") {
-      addEventListener("resize", follow);
+      // A resize refits the top bar in the next frame, so the thumb measures
+      // in the frame after that, once the items are where they end up.
+      let later = 0;
+      const resized = () => {
+        cancelAnimationFrame(later);
+        later = requestAnimationFrame(
+          () => (later = requestAnimationFrame(follow)),
+        );
+      };
+      addEventListener("resize", resized);
       return () => {
         cancelAnimationFrame(frame);
-        removeEventListener("resize", follow);
+        cancelAnimationFrame(later);
+        removeEventListener("resize", resized);
       };
     }
     // A resize (the bar reflowing onto two rows, even before first paint)

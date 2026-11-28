@@ -379,11 +379,13 @@ test("an added embed isn't a problem, or part of the message, until something is
   expect(
     screen.getAllByRole("link", { name: /Choose channels/ }).length,
   ).toBeGreaterThan(0);
-  // The preview shows only what would be sent.
+  // The preview shows only what would be sent, and the embed says why.
   expect(preview().querySelectorAll("[data-embed]").length).toBe(1);
+  expect(screen.getByText("Not sent until you write in it.")).toBeTruthy();
   fireEvent.change(screen.getAllByRole("textbox", { name: "Title" })[1]!, {
     target: { value: "Second" },
   });
+  expect(screen.queryByText("Not sent until you write in it.")).toBeNull();
   expect(preview().querySelectorAll("[data-embed]").length).toBe(2);
   fireEvent.change(screen.getAllByRole("textbox", { name: "Title" })[1]!, {
     target: { value: "" },
@@ -576,4 +578,47 @@ test("the import note goes once the imported draft is edited or cleared", () => 
     ),
   );
   expect(screen.queryByText(/Message imported/)).toBeNull();
+});
+
+test("after a reload an added embed is still not a problem, and is never exported or saved in a template", async () => {
+  const { unmount } = renderApp();
+  fireEvent.click(button("Add embed"));
+  unmount();
+  renderApp();
+  expect(screen.getAllByRole("textbox", { name: "Title" })).toHaveLength(2);
+  expect(screen.queryByText(/to fix before sending/)).toBeNull();
+
+  fireEvent.click(button("Export JSON"));
+  const exported = JSON.parse(
+    (screen.getByLabelText("Message JSON") as HTMLTextAreaElement).value,
+  ) as { embeds: unknown[] };
+  expect(exported.embeds).toHaveLength(1);
+  fireEvent.click(button("Close"));
+
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) =>
+    url.includes("/api/templates")
+      ? Response.json({
+          id: "t1",
+          name: "Patch",
+          createdAt: 1,
+          updatedAt: 1,
+          ...JSON.parse(init!.body as string),
+        })
+      : Response.json({ id: "1", name: "Test bot", avatarUrl: null }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  fireEvent.click(button("Save as template"));
+  fireEvent.click(button("Save template"));
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(([url]) => url.includes("/api/templates")),
+    ).toBe(true),
+  );
+  const [, init] = fetcher.mock.calls.find(([url]) =>
+    url.includes("/api/templates"),
+  )!;
+  const saved = JSON.parse(init!.body as string) as {
+    message: { embeds: unknown[] };
+  };
+  expect(saved.message.embeds).toHaveLength(1);
 });

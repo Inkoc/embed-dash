@@ -256,12 +256,19 @@ test("saving uses the original mention settings and shows only this run's confir
     return Response.json(result);
   });
   vi.stubGlobal("fetch", fetcher);
+  const scrolled = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scrolled;
   showEditor();
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "Revised" },
   });
   fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
   expect(await screen.findByText("Updated", { exact: true })).toBeVisible();
+  // A new update's results are brought into view, wherever Save updates sits.
+  expect(scrolled.mock.contexts).toContain(
+    screen.getByRole("heading", { name: "Update results" }).parentElement,
+  );
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   expect(put!.payload).toEqual({ ...send.payload, content: "Revised" });
   expect(
     fetcher.mock.calls.find(([, options]) => options?.method === "PUT")![1]!
@@ -373,17 +380,21 @@ test("a refused save shows the server's reason and clears the attempt for a corr
         : Response.json(send),
     ),
   );
+  const scrolled = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scrolled;
   showEditor();
   fireEvent.click(screen.getByRole("button", { name: /Save updates/ }));
-  expect(
-    await screen.findByText(
-      describeFailure("edit", 409, {
-        code: "EDIT_BLOCKED",
-        error: "Wait for delivery to finish.",
-      }).message,
-    ),
-  ).toBeVisible();
+  const reason = await screen.findByText(
+    describeFailure("edit", 409, {
+      code: "EDIT_BLOCKED",
+      error: "Wait for delivery to finish.",
+    }).message,
+  );
+  expect(reason).toBeVisible();
   expect(screen.getByRole("button", { name: /Save updates/ })).toBeEnabled();
+  // Saved from a bar pinned far from the panel, the reason is brought into view.
+  expect(scrolled.mock.contexts).toContain(reason.parentElement);
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });
 
 test("update result loading errors offer a refresh and the save action follows validation", async () => {
@@ -530,6 +541,8 @@ test.each([
   { width: "wide", narrow: false, where: "under Save updates" },
   { width: "narrow", narrow: true, where: "in the panel" },
 ])("on a $width screen, update results show $where", ({ narrow }) => {
+  const scrolled = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scrolled;
   vi.stubGlobal("fetch", () => new Promise(() => {}));
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: query === "(max-width: 68.75em)" ? narrow : false,
@@ -553,4 +566,7 @@ test.each([
     .closest("section")!;
   expect(panel.contains(results)).toBe(narrow);
   expect(save.parentElement!.contains(results)).toBe(!narrow);
+  // Results restored on opening stay where they are.
+  expect(scrolled).not.toHaveBeenCalled();
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 });

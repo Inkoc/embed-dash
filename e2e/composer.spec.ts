@@ -419,3 +419,62 @@ test("an embed is built with fields, and a limit breach blocks sending", async (
   await expect(page.getByText("1 problem to fix before sending")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("on a short phone, going forward from a blank draft shows that there is nothing to send", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+  await page.keyboard.press("Control+Enter");
+  const line = page.getByText("Nothing to send yet.", { exact: true }).first();
+  await expect(line).toBeVisible();
+  await expect(page.locator("#in-content")).toBeFocused();
+  const layout = await page.evaluate(() => {
+    const box = (selector: string) =>
+      document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      line: box("#starter"),
+      stickyBottom: box("[aria-label='Show']").bottom,
+      barTop: box("#action-meta").top,
+    };
+  });
+  // The whole answer sits between the sticky bars, not under them.
+  expect(layout.line.top).toBeGreaterThanOrEqual(layout.stickyBottom);
+  expect(layout.line.bottom).toBeLessThanOrEqual(layout.barTop);
+});
+
+test("an embed added and left empty is not sent, even after a reload", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page
+    .getByLabel("Title", { exact: true })
+    .fill(`Reload check ${Date.now()}`);
+  await page.getByRole("button", { name: "Add embed" }).click();
+  await expect(page.getByText("Not sent until you write in it.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Not sent until you write in it.")).toBeVisible();
+  await expect(page.getByText("Looks right?")).toBeVisible();
+  await page.getByRole("link", { name: "Send", exact: true }).click();
+  await expect(page.getByText(/1 embed/).first()).toBeVisible();
+  await page
+    .getByRole("region", { name: "Lanternfall Cup EU", exact: true })
+    .getByRole("checkbox", { name: "match-schedule", exact: true })
+    .check();
+  const tray = page.getByRole("complementary", { name: "Tray" });
+  await tray
+    .getByRole("button", { name: "Send to 1 channel", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Send to 1 channel", exact: true })
+    .click();
+  // The server refuses an empty embed, so a confirmed copy shows it was left out.
+  await expect(tray.getByText("Sent", { exact: true })).toHaveCount(1);
+});

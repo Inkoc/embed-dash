@@ -288,8 +288,21 @@ describe("embeds added and not written in yet", () => {
     expect(written(draft).embeds).toHaveLength(0);
     expect(written(base)).toBe(base);
     const edited = updateEmbed(draft, added.id, () => ({ title: "" }));
-    // An edit replaces the embed, even one that leaves it empty again.
-    expect(toMessage(edited).embeds).toHaveLength(1);
+    // An edit replaces the embed, even one that leaves it empty again: it is
+    // shown from then on, but an empty embed is still never in the message.
+    expect(written(edited).embeds).toHaveLength(1);
+    expect(toMessage(edited).embeds).toHaveLength(0);
+    const titled = updateEmbed(draft, added.id, () => ({ title: "Hi" }));
+    expect(toMessage(titled).embeds).toHaveLength(1);
+  });
+
+  test("an empty embed is never in the message, however it came about", () => {
+    const draft = withIds({
+      content: "Hello",
+      attachments: [],
+      embeds: [{ ...blankDraft().embeds[0]!, color: "#123456" }],
+    });
+    expect(toMessage(draft).embeds).toHaveLength(0);
   });
 
   test("leave a draft blank if nothing else is in it", () => {
